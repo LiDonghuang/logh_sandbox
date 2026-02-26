@@ -1,7 +1,7 @@
 {
   "reinhard_von_lohengramm": {
     "archetype_id": "reinhard",
-    "color_code": "FFD700",
+    "color_code": "FFA500",
     "force_concentration_ratio": 9.0,
     "mobility_bias": 6.0,
     "offense_defense_weight": 9.0,
@@ -29,7 +29,7 @@
   },
   "oskar_von_reuenthal": {
     "archetype_id": "reuenthal",
-    "color_code": "000080",
+    "color_code": "0000FF",
     "force_concentration_ratio": 6.0,
     "mobility_bias": 6.0,
     "offense_defense_weight": 5.0,
@@ -57,7 +57,7 @@
   },
   "fritz_josef_bittenfeld": {
     "archetype_id": "bittenfeld",
-    "color_code": "202020",
+    "color_code": "000000",
     "force_concentration_ratio": 9.0,
     "mobility_bias": 6.0,
     "offense_defense_weight": 10.0,
@@ -82,5 +82,33 @@
     "perception_radius": 9.0,
     "pursuit_threshold": 8.0,
     "retreat_threshold": 2.0
+  },
+  "test_01": {
+    "archetype_id": "Char",
+    "color_code": "",
+    "force_concentration_ratio": 5.0,
+    "mobility_bias": 5.0,
+    "offense_defense_weight": 5.0,
+    "risk_appetite": 5.0,
+    "time_preference": 5.0,
+    "targeting_logic": 5.0,
+    "formation_rigidity": 5.0,
+    "perception_radius": 5.0,
+    "pursuit_threshold": 5.0,
+    "retreat_threshold": 5.0
+  },
+  "test_02": {
+    "archetype_id": "Amuro",
+    "color_code": "",
+    "force_concentration_ratio": 5.0,
+    "mobility_bias": 5.0,
+    "offense_defense_weight": 5.0,
+    "risk_appetite": 5.0,
+    "time_preference": 5.0,
+    "targeting_logic": 5.0,
+    "formation_rigidity": 5.0,
+    "perception_radius": 5.0,
+    "pursuit_threshold": 5.0,
+    "retreat_threshold": 5.0
   }
 }

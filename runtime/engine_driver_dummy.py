@@ -10,9 +10,20 @@ def run_dummy_ticks(
     capture_positions: bool = False,
     frame_stride: int = 1,
     attack_range: float = 3.0,
+    damage_per_tick: float = 1.0,
     separation_radius: float = 1.0,
+    fire_quality_alpha: float = 0.1,
+    contact_hysteresis_h: float = 0.1,
+    ch_enabled: bool = True,
 ):
-    engine = EngineTickSkeleton(attack_range=attack_range, separation_radius=separation_radius)
+    engine = EngineTickSkeleton(
+        attack_range=attack_range,
+        damage_per_tick=damage_per_tick,
+        separation_radius=separation_radius,
+    )
+    engine.fire_quality_alpha = float(fire_quality_alpha)
+    engine.contact_hysteresis_h = float(contact_hysteresis_h)
+    engine.CH_ENABLED = bool(ch_enabled)
     state = replace(
         initial_state,
         last_target_direction={

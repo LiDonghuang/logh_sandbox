@@ -320,6 +320,10 @@ class EngineTickSkeleton:
         snapshot_positions = {unit_id: (unit.position.x, unit.position.y) for unit_id, unit in state.units.items()}
         snapshot_hp = {unit_id: unit.hit_points for unit_id, unit in state.units.items()}
         snapshot_alive = {unit_id: (unit.hit_points > 0.0) for unit_id, unit in state.units.items()}
+        snapshot_engaged = {
+            unit_id: (unit.engaged, unit.engaged_target_id)
+            for unit_id, unit in state.units.items()
+        }
 
         target_local_rank = {}
         for fleet in state.fleets.values():
@@ -333,6 +337,7 @@ class EngineTickSkeleton:
         in_contact_count = 0
         damage_events_count = 0
         sample_contact_debug = None
+        engaged_updates = {}
 
         # Snapshot target assignment (no HP writeback dependence).
         w_hp = 1.0
@@ -423,34 +428,37 @@ class EngineTickSkeleton:
         for attacker_id, target_id in assigned_target.items():
             attacker = alive_units[attacker_id]
             if target_id is None:
-                updated_attacker = replace(attacker, engaged=False, engaged_target_id=None)
-                alive_units[attacker_id] = updated_attacker
+                engaged_updates[attacker_id] = (False, None)
                 continue
             attacker_pos = snapshot_positions[attacker_id]
             target_pos = snapshot_positions[target_id]
             dx_contact = target_pos[0] - attacker_pos[0]
             dy_contact = target_pos[1] - attacker_pos[1]
             d_sq = (dx_contact * dx_contact) + (dy_contact * dy_contact)
+            prev_engaged, prev_target_id = snapshot_engaged.get(attacker_id, (False, None))
 
             if CH_ENABLED:
-                if attacker.engaged and attacker.engaged_target_id == target_id:
-                    in_contact = d_sq <= (r_exit_sq - combat_cmp_eps)
+                if prev_engaged and prev_target_id == target_id:
+                    in_contact = d_sq <= (r_exit_sq + combat_cmp_eps)
                 else:
-                    in_contact = d_sq <= (r_enter_sq - combat_cmp_eps)
+                    in_contact = d_sq <= (r_enter_sq + combat_cmp_eps)
             else:
-                in_contact = d_sq <= (r_exit_sq - combat_cmp_eps)
+                in_contact = d_sq <= (r_exit_sq + combat_cmp_eps)
 
             if in_contact:
-                updated_attacker = replace(attacker, engaged=True, engaged_target_id=target_id)
+                engaged_updates[attacker_id] = (True, target_id)
             else:
-                updated_attacker = replace(attacker, engaged=False, engaged_target_id=None)
-            alive_units[attacker_id] = updated_attacker
+                engaged_updates[attacker_id] = (False, None)
 
             if not in_contact:
                 continue
 
             in_contact_count += 1
-            attacker = alive_units[attacker_id]
+            attacker = replace(
+                attacker,
+                engaged=engaged_updates[attacker_id][0],
+                engaged_target_id=engaged_updates[attacker_id][1],
+            )
             target = alive_units[target_id]
             p_attacker = participation_by_fleet.get(attacker.fleet_id, 0.0)
             p_target = participation_by_fleet.get(target.fleet_id, 0.0)
@@ -523,14 +531,22 @@ class EngineTickSkeleton:
         for unit_id, unit in alive_units.items():
             new_hp = unit.hit_points - incoming_damage.get(unit_id, 0.0)
             if new_hp > 0.0:
+                engaged_state = engaged_updates.get(unit_id, snapshot_engaged.get(unit_id, (False, None)))
                 if unit_id in orientation_override:
                     updated_units[unit_id] = replace(
                         unit,
                         hit_points=new_hp,
+                        engaged=engaged_state[0],
+                        engaged_target_id=engaged_state[1],
                         orientation_vector=orientation_override[unit_id],
                     )
                 else:
-                    updated_units[unit_id] = replace(unit, hit_points=new_hp)
+                    updated_units[unit_id] = replace(
+                        unit,
+                        hit_points=new_hp,
+                        engaged=engaged_state[0],
+                        engaged_target_id=engaged_state[1],
+                    )
         total_hp_after = sum(unit.hit_points for unit in updated_units.values())
         self.debug_last_combat_stats = {
             "in_contact_count": in_contact_count,

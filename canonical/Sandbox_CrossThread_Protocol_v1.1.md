@@ -162,3 +162,18 @@ Non-compliance invalidates structural integrity.
 ------------------------------------------------------------------------
 
 Sandbox Cross-Thread Collaboration Protocol v1.0 Frozen / Authoritative
+
+------------------------------------------------------------------------
+
+# X. Dual-Core Operational Protocol (New)
+
+## Section X — Dual-Core Operational Protocol (New)
+
+1. App thread is Governance authority only.
+2. Engineering derivations must occur in VS Code / CODEX.
+3. App thread may not host implementation expansion.
+4. Engineering may not reinterpret Canonical text.
+5. All structural disagreements resolved by Governance.
+6. All Phase escalation requires App-side confirmation.
+
+Violation triggers freeze review.
