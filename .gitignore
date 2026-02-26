@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+.venv_check/
+
+# Local env/config
+.env
+
+# Local artifacts
+*.zip
+analysis/test_run_v1_0_battlefield.mp4
+analysis/test_run_v1_0_battlefield.gif

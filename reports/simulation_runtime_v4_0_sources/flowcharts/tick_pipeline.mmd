@@ -1,0 +1,9 @@
+flowchart LR
+    S[State(t)] --> T[Tick +1 Snapshot]
+    T --> C1[evaluate_cohesion]
+    C1 --> C2[evaluate_target]
+    C2 --> C3[evaluate_utility]
+    C3 --> C4[integrate_movement]
+    C4 --> C5[resolve_combat]
+    C5 --> N[State(t+1)]
+

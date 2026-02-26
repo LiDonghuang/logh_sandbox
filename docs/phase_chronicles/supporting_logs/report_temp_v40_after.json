@@ -1,0 +1,191 @@
+{
+  "odw_duel": [
+    {
+      "odw_a": 0.3,
+      "odw_b": 0.7,
+      "winner": "B",
+      "ticks": 273,
+      "survivors_A": 0,
+      "survivors_B": 56
+    },
+    {
+      "odw_a": 0.7,
+      "odw_b": 0.3,
+      "winner": "A",
+      "ticks": 279,
+      "survivors_A": 54,
+      "survivors_B": 0
+    },
+    {
+      "odw_a": 0.5,
+      "odw_b": 0.7,
+      "winner": "B",
+      "ticks": 300,
+      "survivors_A": 7,
+      "survivors_B": 38
+    },
+    {
+      "odw_a": 0.7,
+      "odw_b": 0.5,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 43,
+      "survivors_B": 1
+    },
+    {
+      "odw_a": 0.3,
+      "odw_b": 0.5,
+      "winner": "B",
+      "ticks": 300,
+      "survivors_A": 7,
+      "survivors_B": 38
+    },
+    {
+      "odw_a": 0.5,
+      "odw_b": 0.3,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 43,
+      "survivors_B": 1
+    }
+  ],
+  "fr_duel": [
+    {
+      "fr_a": 0.2,
+      "fr_b": 0.6,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 30,
+      "survivors_B": 18
+    },
+    {
+      "fr_a": 0.6,
+      "fr_b": 0.2,
+      "winner": "Draw",
+      "ticks": 300,
+      "survivors_A": 23,
+      "survivors_B": 23
+    },
+    {
+      "fr_a": 0.3,
+      "fr_b": 0.5,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 21
+    },
+    {
+      "fr_a": 0.5,
+      "fr_b": 0.3,
+      "winner": "Draw",
+      "ticks": 300,
+      "survivors_A": 24,
+      "survivors_B": 24
+    },
+    {
+      "fr_a": 0.4,
+      "fr_b": 0.6,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 24,
+      "survivors_B": 23
+    },
+    {
+      "fr_a": 0.6,
+      "fr_b": 0.4,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 23
+    }
+  ],
+  "sym_3x3": [
+    {
+      "fr": 0.2,
+      "odw": 0.3,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 24,
+      "survivors_B": 20
+    },
+    {
+      "fr": 0.2,
+      "odw": 0.5,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 24,
+      "survivors_B": 20
+    },
+    {
+      "fr": 0.2,
+      "odw": 0.7,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 27,
+      "survivors_B": 19
+    },
+    {
+      "fr": 0.4,
+      "odw": 0.3,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 23
+    },
+    {
+      "fr": 0.4,
+      "odw": 0.5,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 23
+    },
+    {
+      "fr": 0.4,
+      "odw": 0.7,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 23
+    },
+    {
+      "fr": 0.6,
+      "odw": 0.3,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 24
+    },
+    {
+      "fr": 0.6,
+      "odw": 0.5,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 24
+    },
+    {
+      "fr": 0.6,
+      "odw": 0.7,
+      "winner": "A",
+      "ticks": 300,
+      "survivors_A": 25,
+      "survivors_B": 23
+    }
+  ],
+  "deterministic_midpoint": true,
+  "midpoint_run_1": {
+    "winner": "A",
+    "ticks": 300,
+    "survivors_A": 25,
+    "survivors_B": 23
+  },
+  "midpoint_run_2": {
+    "winner": "A",
+    "ticks": 300,
+    "survivors_A": 25,
+    "survivors_B": 23
+  },
+  "mean_abs_antisym_error": 4.82,
+  "diagonal_mean": 1.1
+}

@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "test_run_v1.0",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/analysis/test_run_v1_0.py",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
+    }
+  ]
+}

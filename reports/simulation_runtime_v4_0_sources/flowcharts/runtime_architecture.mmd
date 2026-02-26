@@ -1,0 +1,7 @@
+flowchart TD
+    A[runtime_v0_1.py\n数据模型 + 种子工具] --> B[runtime/engine_skeleton.py\nTick引擎]
+    B --> C[runtime/engine_driver_dummy.py\n运行驱动]
+    D[analysis/test_run_v1_0.py\n场景构建 + 可视化] --> C
+    E[analysis/archetypes_v1_5.json\n角色参数库] --> D
+    F[analysis/test_run_v1_0.settings.json\n运行配置] --> D
+

@@ -1,0 +1,7 @@
+flowchart LR
+    A[analysis/archetypes_v1_5.json] --> B[PersonalityParameters]
+    B --> C[FleetState.parameters]
+    C --> D[EngineTickSkeleton]
+    D --> E[formation_rigidity -> cohesion + movement]
+    U[UnitState.offense_defense_weight] --> F[combat bias]
+
