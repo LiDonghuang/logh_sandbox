@@ -1,0 +1,54 @@
+{
+  "target_scenario": "Phase V Reference Scenario Alpha",
+  "reference_path": "analysis/phase_v_reference_scenario_alpha.json",
+  "diagnostic_scope": "DIAG4-alpha mechanism deep dive (state transition + topology + displacement attribution)",
+  "determinism_reference_pass": true,
+  "debug_overhead_alpha": {
+    "diag_on_seconds_mean": 7.051462100003846,
+    "diag_off_seconds_mean": 6.161896450037602,
+    "overhead_ratio": 1.1443655629689808,
+    "overhead_pct": 14.436556296898084
+  },
+  "alpha_runtime": {
+    "ticks": 300,
+    "first_contact_tick": 99,
+    "survivors_A": 13,
+    "survivors_B": 30
+  },
+  "mechanism_readout": {
+    "persistent_unit_count": 7,
+    "absorbing_ratio": 0.8571428571428571,
+    "reversible_ratio": 0.14285714285714285,
+    "metastable_ratio": 0.0,
+    "isolation_ratio": 0.7190000000000001,
+    "blockage_ratio": 0.0745,
+    "cum_delta_move_norm": 49.00000000000003,
+    "cum_delta_fsr_norm": 4.569167383841926,
+    "cum_delta_projection_norm": 4.293723521758795,
+    "dominant_component_counts": {
+      "move": 7,
+      "fsr": 0,
+      "projection": 0,
+      "mixed": 0
+    },
+    "mechanism_label": "persistent_isolation_absorbing"
+  },
+  "transition_counts": {
+    "A": {
+      "CORE->SHELL": 271,
+      "SHELL->CORE": 237,
+      "SHELL->OUTLIER": 42,
+      "OUTLIER->SHELL": 14
+    },
+    "B": {
+      "SHELL->CORE": 191,
+      "CORE->SHELL": 184,
+      "SHELL->OUTLIER": 4,
+      "OUTLIER->SHELL": 4
+    }
+  },
+  "artifacts": {
+    "timeseries_csv": "diag4_alpha_timeseries.csv",
+    "persistent_units_csv": "diag4_alpha_persistent_units.csv"
+  }
+}

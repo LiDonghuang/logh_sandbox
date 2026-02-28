@@ -1,0 +1,135 @@
+{
+  "reference_id": "Phase V Reference Scenario Alpha",
+  "created_at": "2026-02-28 00:05:37",
+  "source_files": {
+    "settings_path": "analysis/test_run_v1_0.settings.json",
+    "archetypes_path": "analysis/archetypes_v1_5.json",
+    "settings_sha256": "d0fdd7a4bccb5721c028ca1148f411c2a2879927b6d3cb8109de6c519e9ef19b",
+    "archetypes_sha256": "25d9b9d8c71657032342943093aa31274e093bb5258480e12ac78455ec1573b1"
+  },
+  "scenario_parameters": {
+    "fleet_a_archetype_key_at_capture": "grillparzer",
+    "fleet_b_archetype_key_at_capture": "knappstein",
+    "fleet_a_archetype_parameters": {
+      "name": "grillparzer",
+      "disp_name_EN": "Grillparzer",
+      "disp_name_ZH": "鏍煎埄椴佸笗灏斿吂",
+      "full_name_EN": "Alfred Grillparzer",
+      "full_name_ZH": "闃垮紬闆峰痉路鏍煎埄椴佸笗灏斿吂",
+      "color_code": "",
+      "force_concentration_ratio": 5.0,
+      "mobility_bias": 5.0,
+      "offense_defense_weight": 5.0,
+      "risk_appetite": 5.0,
+      "time_preference": 5.0,
+      "targeting_logic": 5.0,
+      "formation_rigidity": 4.0,
+      "perception_radius": 5.0,
+      "pursuit_threshold": 5.0,
+      "retreat_threshold": 5.0
+    },
+    "fleet_b_archetype_parameters": {
+      "name": "knappstein",
+      "disp_name_EN": "Knappstein",
+      "disp_name_ZH": "鍏嬬撼鏅柉鍧?",
+      "full_name_EN": "Bruno von Knappstein",
+      "full_name_ZH": "甯冮瞾璇郝峰啹路鍏嬬撼鏅柉鍧?",
+      "color_code": "",
+      "force_concentration_ratio": 5.0,
+      "mobility_bias": 5.0,
+      "offense_defense_weight": 5.0,
+      "risk_appetite": 5.0,
+      "time_preference": 5.0,
+      "targeting_logic": 5.0,
+      "formation_rigidity": 1.0,
+      "perception_radius": 5.0,
+      "pursuit_threshold": 5.0,
+      "retreat_threshold": 5.0
+    },
+    "fleet_a_formation_rigidity_1_to_10": 4.0,
+    "fleet_b_formation_rigidity_1_to_10": 1.0,
+    "fleet_a_formation_rigidity_norm": 0.3333333333333333,
+    "fleet_b_formation_rigidity_norm": 0.0,
+    "fsr_enabled": true,
+    "fsr_strength": 0.1,
+    "attack_range": 30.0,
+    "min_unit_spacing": 2.0,
+    "initial_fleet_size": 100,
+    "arena_size": 200.0
+  },
+  "regression_baseline": {
+    "run_ticks": 300,
+    "determinism_pass": true,
+    "digest": "afce74a074f5c15405dbd693d564e2293946c6399149ee63db26a6ea980fe2af",
+    "final_tick": 300,
+    "survivors_A": 13,
+    "survivors_B": 30,
+    "first_contact_tick": 99,
+    "milestone_samples": [
+      {
+        "tick": 10,
+        "R_rms_A": 8.49943217880268,
+        "LEW_A": 25.067738093387852,
+        "alive_A": 100,
+        "R_rms_B": 9.801029908260102,
+        "LEW_B": 30.026662539537103,
+        "alive_B": 100
+      },
+      {
+        "tick": 30,
+        "R_rms_A": 8.019896781574984,
+        "LEW_A": 19.561368929038103,
+        "alive_A": 100,
+        "R_rms_B": 9.91403451940321,
+        "LEW_B": 29.16997792372702,
+        "alive_B": 100
+      },
+      {
+        "tick": 60,
+        "R_rms_A": 8.3678958309868,
+        "LEW_A": 14.09945055471374,
+        "alive_A": 100,
+        "R_rms_B": 9.796422942836463,
+        "LEW_B": 28.275525928936553,
+        "alive_B": 100
+      },
+      {
+        "tick": 100,
+        "R_rms_A": 9.086317949261451,
+        "LEW_A": 9.050501818194473,
+        "alive_A": 100,
+        "R_rms_B": 9.777145808213989,
+        "LEW_B": 26.3965511513869,
+        "alive_B": 100
+      },
+      {
+        "tick": 160,
+        "R_rms_A": 6.83724101694068,
+        "LEW_A": 9.208747977734149,
+        "alive_A": 66,
+        "R_rms_B": 9.693400217394,
+        "LEW_B": 28.31772584676822,
+        "alive_B": 74
+      },
+      {
+        "tick": 220,
+        "R_rms_A": 5.031920252351079,
+        "LEW_A": 7.4329205373098635,
+        "alive_A": 37,
+        "R_rms_B": 8.363723123248594,
+        "LEW_B": 8.54187050030281,
+        "alive_B": 48
+      },
+      {
+        "tick": 280,
+        "R_rms_A": 3.7386310860056198,
+        "LEW_A": 7.328349810332859,
+        "alive_A": 18,
+        "R_rms_B": 6.814673576322682,
+        "LEW_B": 10.25572488605312,
+        "alive_B": 33
+      }
+    ]
+  },
+  "usage_rule": "All future structural/runtime adjustments must run this scenario and compare digest + milestone metrics before acceptance. Archetype parameter snapshots above are authoritative for this reference."
+}

@@ -1,0 +1,43 @@
+{
+  "diag2_scope": {
+    "fr_a_set": [
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "fr_b_set": [
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "fsr_strength": 0.2,
+    "seed": 20260227,
+    "scenario_count": 16
+  },
+  "priority_gate_results": {
+    "determinism_all_pass": true,
+    "fsr_zero_regression_all_pass": true,
+    "outlier_persistence_detected_scenarios": 16,
+    "mirror_macro_mean_abs_Mij_plus_Mji": 3.0625,
+    "jitter_mean": 522.0
+  },
+  "hypothesis_tests": {
+    "H1_projection_spike_is_primary_precursor": {
+      "support_ratio_on_persistent_scenarios": 0.0,
+      "supported": false
+    },
+    "H2_collision_pair_spike_is_primary_precursor": {
+      "support_ratio_on_persistent_scenarios": 0.625,
+      "supported": false
+    }
+  },
+  "attractor_check": {
+    "proxy": "monotonic_alive_sequences",
+    "risk_flag": false,
+    "all_monotonic_alive": true
+  },
+  "if_confirmed_then": "Enter Phase V.1-PATCH1 Stability Safeguard review (projection single-tick displacement clamp proposal only, no implementation yet).",
+  "if_not_confirmed_then": "Revert projection-primary hypothesis and run alternative causal diagnostics (formation axis anisotropy / contact topology concentration) before any patch proposal."
+}

@@ -1,0 +1,63 @@
+{
+  "diag3_scope": {
+    "fr_a_set": [
+      0.7,
+      0.8,
+      0.9,
+      1.0
+    ],
+    "fr_b_set": [
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "fsr_strength": 0.2,
+    "fsr_enabled": true,
+    "seed": 20260227,
+    "scenario_count": 16,
+    "diagnostic_only": true,
+    "behavioral_modification": false
+  },
+  "priority_gate_results": {
+    "determinism_all_pass": true,
+    "fsr_zero_regression_all_pass": true,
+    "outlier_persistence_detected_scenarios": 16,
+    "mirror_macro_mean_abs_Mij_plus_Mji_ref_diag2": 3.0625,
+    "jitter_mean_ref_diag2": 522.0,
+    "runtime_overhead_ratio_debug_on_off": 1.0244256793698132,
+    "runtime_overhead_pct_debug_on_off": 2.4425679369813214
+  },
+  "hypothesis_tests": {
+    "H3_anisotropy_precursor_primary": {
+      "support_ratio_on_persistent_scenarios": 0.0,
+      "support_threshold": 0.7,
+      "supported": false,
+      "corr_with_max_outlier_persistence": 0.48861793026630257
+    },
+    "H4_contact_pressure_precursor_primary": {
+      "support_ratio_on_persistent_scenarios": 0.0,
+      "support_threshold": 0.7,
+      "supported": false,
+      "corr_with_max_outlier_persistence": 0.0
+    },
+    "control_H1_projection_precursor": {
+      "support_ratio_on_persistent_scenarios": 0.125,
+      "corr_with_max_outlier_persistence": 0.26508568379018194
+    },
+    "control_H2_collision_precursor": {
+      "support_ratio_on_persistent_scenarios": 0.0,
+      "corr_with_max_outlier_persistence": 0.766118564357614
+    }
+  },
+  "attractor_check": {
+    "proxy": "monotonic_alive_sequences",
+    "risk_flag": false,
+    "all_monotonic_alive": true
+  },
+  "decision_branch": {
+    "if_confirmed": "If any DIAG3 hypothesis support ratio >= 0.70 with stable gate results, prepare DIAG4 targeted falsification package (still no behavior patch).",
+    "if_not_confirmed": "If no DIAG3 hypothesis reaches threshold, reject single-factor causality and continue multi-factor diagnostics (contact-topology + anisotropy coupling) with zero behavior changes.",
+    "current_path": "if_not_confirmed"
+  }
+}

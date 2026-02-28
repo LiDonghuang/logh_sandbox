@@ -1,0 +1,164 @@
+{
+  "_comment_figure_size": "figure_size: [width, height], matplotlib figure size in inches.",
+  "figure_size": [
+    20,
+    8
+  ],
+
+  "_comment_layout": "layout_width_ratios: [battlefield, debug panel, right plot column]. Suggested baseline for 1920x1080 is [100, 35, 35]. layout_height_ratios: [right-top plot, right-bottom plot, right-spacer row].",
+  "layout_width_ratios": [
+    100,
+    45,
+    45
+  ],
+  "layout_height_ratios": [
+    1.0,
+    1.0,
+    0.2
+  ],
+
+  "_comment_battlefield_style": "battlefield_bg_color: panel background hex; grid_line_style: grid linestyle; grid_line_width: grid line width; grid_alpha: grid opacity.",
+  "battlefield_bg_color": "#F0F0F0",
+  "grid_line_style": "-",
+  "grid_line_width": 0.4,
+  "grid_alpha": 0.35,
+
+  "_comment_ticks": "tick_step_thresholds: choose axis tick step by current span (gt_140/gt_80/gt_40/else).",
+  "tick_step_thresholds": {
+    "gt_140": 20,
+    "gt_80": 10,
+    "gt_40": 5,
+    "else": 2
+  },
+
+  "_comment_quiver": "quiver_geometry: head_base=head width, head_height=head length, shaft_length=tail length, shaft_width=tail width.",
+  "quiver_geometry": {
+    "head_base": 1.2,
+    "head_height": 0.8,
+    "shaft_length": 0.4,
+    "shaft_width": 0.8
+  },
+  "_comment_vector_display_mode": "vector_display_mode: effective=post-projection displacement; free=pre-projection composite movement; radial_debug=fixed radial arrows with sign colors (green inward / red outward / yellow near-zero).",
+  "vector_display_mode": "effective",
+
+  "_comment_death_linger": "death_linger: ticks=linger duration, ring_radius=red circle radius, ring_color=red circle color.",
+  "death_linger": {
+    "ticks": 1,
+    "ring_radius": 1.0,
+    "ring_color": "#ff0000"
+  },
+
+  "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
+  "auto_zoom": {
+    "tick_interval": 5,
+    "center_deadband": 0.5,
+    "min_factor": 4.0,
+    "offscreen_trigger_ratio": 0.1,
+    "centroid_trigger_ratio": 0.5,
+    "follow_out_of_bounds": true,
+    "transition_ms": 1000,
+    "zoomin_trigger_ratio": 0.8
+  },
+
+  "_comment_background_haze": "background_haze: center_ratio=[cx,cy]; angle_deg=rotation; inner_size_ratio=inner layer major-axis scale; outer_inner_ratio=outer/inner size multiplier; axis_ratio=minor/major; outer/inner_color=color; outer/inner_alpha=opacity.",
+  "background_haze": {
+    "center_ratio": [
+      0.5,
+      0.5
+    ],
+    "angle_deg": 135.0,
+    "inner_size_ratio": 1.2,
+    "outer_inner_ratio": 1.8,
+    "axis_ratio": 0.25,
+    "outer_color": "#d7deea",
+    "inner_color": "#c7d3e5",
+    "outer_alpha": 0.2,
+    "inner_alpha": 0.15
+  },
+
+  "_comment_background_major_star": "background_major_star: radius_range=[min,max]; colors=candidate palette; glow_scale=halo radius multiplier; glow_alpha=halo opacity; core_alpha=core opacity.",
+  "background_major_star": {
+    "radius_range": [
+      20.0,
+      30.0
+    ],
+    "colors": [
+      "#fff9dc",
+      "#ffe38a",
+      "#ff9a7a"
+    ],
+    "glow_scale": 1.5,
+    "glow_alpha": 0.25,
+    "core_alpha": 0.4
+  },
+
+  "_comment_background_asteroids": "background_asteroids: count_range=[min,max] objects; radius_range=[min,max]; colors=palette (per asteroid sampling); alpha=opacity; gas_giant_ring applies when sampled radius exceeds percentile threshold, rendered as a single ellipse.",
+  "background_asteroids": {
+    "count_range": [
+      1,
+      5
+    ],
+    "radius_range": [
+      3.0,
+      10.0
+    ],
+    "colors": [
+      "#6f7f95",
+      "#9a7f5f",
+      "#7aa08a"
+    ],
+    "alpha": 0.45,
+    "gas_giant_ring": {
+      "enabled": true,
+      "trigger_percentile": 0.6,
+      "diameter_scale_range": [
+        1.5,
+        3.0
+      ],
+      "axis_ratio_range": [
+        0.25,
+        0.5
+      ],
+      "angle_deg_range": [
+        0.0,
+        180.0
+      ],
+      "color": "#c6ccd6",
+      "alpha": 0.4
+    }
+  },
+
+  "_comment_background_belts": "background_belts: cluster_count_range=number of belts; points_per_cluster_range=asteroids per belt; major/minor_range=belt ellipse scales; curvature_range=bend; angle_range=rotation; asteroid_radius_range=size; color/alpha=style.",
+  "background_belts": {
+    "cluster_count_range": [
+      2,
+      10
+    ],
+    "points_per_cluster_range": [
+      20,
+      60
+    ],
+    "major_range": [
+      10.0,
+      30.0
+    ],
+    "minor_range": [
+      1.0,
+      2.0
+    ],
+    "curvature_range": [
+      -0.5,
+      0.5
+    ],
+    "angle_range": [
+      -0.45,
+      0.45
+    ],
+    "asteroid_radius_range": [
+      0.1,
+      0.5
+    ],
+    "color": "#8e96a3",
+    "alpha": 0.5
+  }
+}

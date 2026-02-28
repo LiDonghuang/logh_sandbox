@@ -15,6 +15,8 @@ def run_dummy_ticks(
     fire_quality_alpha: float = 0.1,
     contact_hysteresis_h: float = 0.1,
     ch_enabled: bool = True,
+    fsr_enabled: bool = False,
+    fsr_strength: float = 0.0,
 ):
     engine = EngineTickSkeleton(
         attack_range=attack_range,
@@ -24,6 +26,8 @@ def run_dummy_ticks(
     engine.fire_quality_alpha = float(fire_quality_alpha)
     engine.contact_hysteresis_h = float(contact_hysteresis_h)
     engine.CH_ENABLED = bool(ch_enabled)
+    engine.FSR_ENABLED = bool(fsr_enabled)
+    engine.fsr_strength = float(fsr_strength)
     state = replace(
         initial_state,
         last_target_direction={
@@ -56,6 +60,7 @@ def run_dummy_ticks(
                         unit = state.units[unit_id]
                         points.append(
                             (
+                                unit_id,
                                 unit.position.x,
                                 unit.position.y,
                                 unit.orientation_vector.x,

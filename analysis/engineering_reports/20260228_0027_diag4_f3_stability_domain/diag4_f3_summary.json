@@ -1,0 +1,74 @@
+{
+  "target_scenario": "Phase V Reference Scenario Alpha",
+  "analysis": "DIAG4-F3 stability domain scan (fsr_strength x FR_A x FR_B)",
+  "grid": {
+    "fsr_strength": [
+      0.0,
+      0.1,
+      0.2
+    ],
+    "fr_a_formation_rigidity_1_to_10": [
+      3.0,
+      4.0,
+      5.0
+    ],
+    "fr_b_formation_rigidity_1_to_10": [
+      1.0,
+      2.0,
+      3.0
+    ],
+    "case_count": 27
+  },
+  "determinism_sanity_center_case": {
+    "pass": true,
+    "case": {
+      "fsr_strength": 0.1,
+      "fr_a": 4.0,
+      "fr_b": 1.0
+    },
+    "run1": {
+      "survivors_A": 13,
+      "survivors_B": 30,
+      "first_contact_tick": 99,
+      "persistent_unit_count": 7
+    },
+    "run2": {
+      "survivors_A": 13,
+      "survivors_B": 30,
+      "first_contact_tick": 99,
+      "persistent_unit_count": 7
+    }
+  },
+  "mechanism_domain": {
+    "label_counts": {
+      "persistent_isolation_absorbing": 22,
+      "reversible_or_mixed": 5
+    },
+    "persistent_isolation_absorbing_ratio": 0.8148148148148148,
+    "stability_level": "medium",
+    "by_fsr_strength": {
+      "0.0": {
+        "persistent_isolation_absorbing_ratio": 0.7777777777777778,
+        "avg_persistent_unit_count": 2.4444444444444446,
+        "avg_absorbing_ratio": 0.7981481481481482,
+        "avg_isolation_ratio": 0.6914814814814815
+      },
+      "0.1": {
+        "persistent_isolation_absorbing_ratio": 0.8888888888888888,
+        "avg_persistent_unit_count": 7.111111111111111,
+        "avg_absorbing_ratio": 0.657142857142857,
+        "avg_isolation_ratio": 0.7410555555555556
+      },
+      "0.2": {
+        "persistent_isolation_absorbing_ratio": 0.7777777777777778,
+        "avg_persistent_unit_count": 7.666666666666667,
+        "avg_absorbing_ratio": 0.6231922398589065,
+        "avg_isolation_ratio": 0.748213325919748
+      }
+    }
+  },
+  "conclusion": {
+    "mechanism_stable_domain_exists": true,
+    "interpretation": "Persistent isolation-absorbing mechanism is dominant on this local grid."
+  }
+}

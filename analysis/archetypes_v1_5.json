@@ -1,7 +1,11 @@
 {
-  "reinhard_von_lohengramm": {
-    "archetype_id": "reinhard",
-    "color_code": "FFA500",
+  "reinhard": {
+    "name": "reinhard",
+    "disp_name_EN": "Lohengramm",
+    "disp_name_ZH": "罗严克拉姆",
+    "full_name_EN": "Reinhard von Lohengramm",
+    "full_name_ZH": "莱因哈特·冯·罗严克拉姆",
+    "color_code": "FF8C00",
     "force_concentration_ratio": 9.0,
     "mobility_bias": 6.0,
     "offense_defense_weight": 9.0,
@@ -13,8 +17,12 @@
     "pursuit_threshold": 3.0,
     "retreat_threshold": 9.0
   },
-  "siegfried_kircheis": {
-    "archetype_id": "kircheis",
+  "kircheis": {
+    "name": "kircheis",
+    "disp_name_EN": "Kircheis",
+    "disp_name_ZH": "吉尔菲艾斯",
+    "full_name_EN": "Siegfried Kircheis",
+    "full_name_ZH": "齐格飞·吉尔菲艾斯",
     "color_code": "B22222",
     "force_concentration_ratio": 6.0,
     "mobility_bias": 8.0,
@@ -27,8 +35,12 @@
     "pursuit_threshold": 6.0,
     "retreat_threshold": 6.0
   },
-  "oskar_von_reuenthal": {
-    "archetype_id": "reuenthal",
+  "reuenthal": {
+    "name": "reuenthal",
+    "disp_name_EN": "Reuenthal",
+    "disp_name_ZH": "罗严塔尔",
+    "full_name_EN": "Oskar von Reuenthal",
+    "full_name_ZH": "奥斯卡·冯·罗严塔尔",
     "color_code": "0000FF",
     "force_concentration_ratio": 6.0,
     "mobility_bias": 6.0,
@@ -41,8 +53,12 @@
     "pursuit_threshold": 8.0,
     "retreat_threshold": 6.0
   },
-  "wolfgang_mittermeyer": {
-    "archetype_id": "mittermeyer",
+  "mittermeyer": {
+    "name": "mittermeyer",
+    "disp_name_EN": "Mittermeyer",
+    "disp_name_ZH": "米达麦亚",
+    "full_name_EN": "Wolfgang Mittermeyer",
+    "full_name_ZH": "沃尔夫冈·米达麦亚",
     "color_code": "008000",
     "force_concentration_ratio": 4.0,
     "mobility_bias": 10.0,
@@ -55,8 +71,12 @@
     "pursuit_threshold": 3.0,
     "retreat_threshold": 6.0
   },
-  "fritz_josef_bittenfeld": {
-    "archetype_id": "bittenfeld",
+  "bittenfeld": {
+    "name": "bittenfeld",
+    "disp_name_EN": "Bittenfeld",
+    "disp_name_ZH": "毕典菲尔特",
+    "full_name_EN": "Fritz Josef Bittenfeld",
+    "full_name_ZH": "弗利兹·约瑟夫·毕典菲尔特",
     "color_code": "000000",
     "force_concentration_ratio": 9.0,
     "mobility_bias": 6.0,
@@ -69,8 +89,12 @@
     "pursuit_threshold": 1.0,
     "retreat_threshold": 10.0
   },
-  "neidhart_muller": {
-    "archetype_id": "muller",
+  "muller": {
+    "name": "muller",
+    "disp_name_EN": "Müller",
+    "disp_name_ZH": "缪拉",
+    "full_name_EN": "Neidhart Müller",
+    "full_name_ZH": "奈特哈尔·缪拉",
     "color_code": "FF00FF",
     "force_concentration_ratio": 3.0,
     "mobility_bias": 2.0,
@@ -83,8 +107,12 @@
     "pursuit_threshold": 8.0,
     "retreat_threshold": 2.0
   },
-  "test_01": {
-    "archetype_id": "Char",
+  "grillparzer": {
+    "name": "grillparzer",
+    "disp_name_EN": "Grillparzer",
+    "disp_name_ZH": "格利鲁帕尔兹",
+    "full_name_EN": "Alfred Grillparzer",
+    "full_name_ZH": "阿弗雷德·格利鲁帕尔兹",
     "color_code": "",
     "force_concentration_ratio": 5.0,
     "mobility_bias": 5.0,
@@ -92,13 +120,17 @@
     "risk_appetite": 5.0,
     "time_preference": 5.0,
     "targeting_logic": 5.0,
-    "formation_rigidity": 5.0,
+    "formation_rigidity": 4.0,
     "perception_radius": 5.0,
     "pursuit_threshold": 5.0,
     "retreat_threshold": 5.0
   },
-  "test_02": {
-    "archetype_id": "Amuro",
+  "knappstein": {
+    "name": "knappstein",
+    "disp_name_EN": "Knappstein",
+    "disp_name_ZH": "克纳普斯坦",
+    "full_name_EN": "Bruno von Knappstein",
+    "full_name_ZH": "布鲁诺·冯·克纳普斯坦",
     "color_code": "",
     "force_concentration_ratio": 5.0,
     "mobility_bias": 5.0,
@@ -106,7 +138,7 @@
     "risk_appetite": 5.0,
     "time_preference": 5.0,
     "targeting_logic": 5.0,
-    "formation_rigidity": 5.0,
+    "formation_rigidity": 1.0,
     "perception_radius": 5.0,
     "pursuit_threshold": 5.0,
     "retreat_threshold": 5.0

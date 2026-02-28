@@ -1,0 +1,16 @@
+metric,value
+determinism_pass,True
+combat_logic_regression_pass,True
+mirror_not_worsened,True
+no_new_attractor_signal,True
+boundary_penetration_zero_like,True
+no_permanent_boundary_trap,True
+rpg_overhead_below_10pct,True
+tau,0.04991619821847638
+outward_ratio,0.5
+tangential_ratio,0.0
+suppressed_ratio,0.0
+p_return_overall,0.2360248447204969
+mirror_soft_off_mean_abs_antisym_error,0.010684456143194536
+mirror_soft_on_mean_abs_antisym_error,0.010459983625703972
+overhead_pct,8.16345719868361
