@@ -1,0 +1,153 @@
+{
+  "directive": "Governance Instruction - Phase V.2 Gate-Blocked Stabilization Plan v1.0",
+  "engine_version": "v5.0-alpha4 (workspace)",
+  "scope": "Diagnostic/Fix Only; no phase expansion",
+  "mapping_activation_audit": [
+    {
+      "archetype_parameter": "force_concentration_ratio",
+      "layer": "Movement",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path in engine_skeleton."
+    },
+    {
+      "archetype_parameter": "mobility_bias",
+      "layer": "Movement",
+      "implemented": "Y",
+      "where": "runtime/engine_skeleton.py:integrate_movement:239-243, 301-333",
+      "gate_dependency": "MB=5 bitwise vs alpha3 required",
+      "notes": "Canonical MB_eff mapping active and clipped to [-0.2,+0.2]."
+    },
+    {
+      "archetype_parameter": "offense_defense_weight",
+      "layer": "Combat",
+      "implemented": "N",
+      "where": "runtime/engine_skeleton.py:resolve_combat:1736-1737 (UnitState field only)",
+      "gate_dependency": "If activated from archetype, ODW=5 regression required",
+      "notes": "Combat reads UnitState.offense_defense_weight, but test initialization does not map archetype ODW into UnitState."
+    },
+    {
+      "archetype_parameter": "risk_appetite",
+      "layer": "Movement",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path."
+    },
+    {
+      "archetype_parameter": "time_preference",
+      "layer": "Movement",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path."
+    },
+    {
+      "archetype_parameter": "targeting_logic",
+      "layer": "Targeting",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "evaluate_target() is archetype-independent nearest-enemy centroid heading."
+    },
+    {
+      "archetype_parameter": "formation_rigidity",
+      "layer": "Movement + Cohesion-FSR",
+      "implemented": "Y",
+      "where": "runtime/engine_skeleton.py:evaluate_cohesion:71; integrate_movement:238; FSR coupling:436-437",
+      "gate_dependency": "Determinism + no pipeline reorder",
+      "notes": "Canonical FR mapping active in cohesion, movement composition, and FSR k_f."
+    },
+    {
+      "archetype_parameter": "perception_radius",
+      "layer": "Contact",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path."
+    },
+    {
+      "archetype_parameter": "pursuit_threshold",
+      "layer": "Targeting",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path."
+    },
+    {
+      "archetype_parameter": "retreat_threshold",
+      "layer": "Combat",
+      "implemented": "N",
+      "where": "-",
+      "gate_dependency": "-",
+      "notes": "No runtime read path."
+    }
+  ],
+  "metric_ownership_audit": {
+    "previous_v2_report_alignment": {
+      "status": "Not fully aligned",
+      "issues": [
+        "Mirror/Jitter/Overhead were judged per-case against a single FR5_MB5 reference, mixing behavioral variance with gate ownership.",
+        "Runtime overhead was computed as case-level delta vs FR5_MB5, which is scenario-dependent rather than ownership-stable.",
+        "Validation matrix assumption was implicit (A-variant, B-neutral) and not treated as explicit ownership contract."
+      ]
+    },
+    "aligned_ownership_now": {
+      "scenario_collection": "FR in {2,5,8}, MB in {2,5,8} on Fleet-A variant; Fleet-B fixed neutral (FR=5, MB=5); mirrored companion run for each case.",
+      "seed_strategy": "Deterministic pipeline; each case run twice for digest equality (no stochastic branch).",
+      "mirror_metric": "Macro mean_abs_antisym_error = mean(|M_ab + M_ba|) over 9 paired cases; degradation = new/old - 1.",
+      "jitter_metric": "Macro mean jitter count over same 9-case set; degradation = new/old - 1.",
+      "overhead_metric": "Macro mean per_tick_seconds over same 9-case set; overhead = new/old - 1.",
+      "consistency_with_alpha4_gate": true
+    }
+  },
+  "fix_track_changes": {
+    "applied": [
+      "MB hot-path optimization: target-axis normalization moved from per-unit to per-fleet/per-tick cache in integrate_movement()."
+    ],
+    "not_applied": [
+      "No mapping function changes.",
+      "No combat/targeting/contact/projection behavior changes.",
+      "No new tunables."
+    ],
+    "file_touched": [
+      "runtime/engine_skeleton.py"
+    ]
+  },
+  "gate_metrics": {
+    "mirror_macro_old": 0.29293209307639656,
+    "mirror_macro_new": 0.20541685844318122,
+    "mirror_degradation_ratio": -0.2987560485917513,
+    "jitter_macro_old": 5775.0,
+    "jitter_macro_new": 6312.777777777777,
+    "jitter_degradation_ratio": 0.09312169312169316,
+    "per_tick_old": 0.022172866185169872,
+    "per_tick_new": 0.021771280925927894,
+    "runtime_overhead_ratio": -0.018111562839384976
+  },
+  "gates": {
+    "determinism_pass": true,
+    "mb5_bitwise_vs_alpha3_pass": true,
+    "mirror_degradation_le_5pct_pass": true,
+    "jitter_degradation_le_10pct_pass": true,
+    "runtime_overhead_le_10pct_pass": true,
+    "no_new_attractor_proxy_pass": true
+  },
+  "retained": [
+    "Canonical MB mapping formula and clip range unchanged.",
+    "MB=0 (mobility_bias=5) legacy-equivalent path retained for bitwise regression.",
+    "Single-pass projection ordering unchanged.",
+    "CH/FSR/combat/targeting logic unchanged."
+  ],
+  "rolled_back": [
+    "None in this round."
+  ],
+  "debug_only_default_off": [
+    "runtime/engine_skeleton.py: debug_fsr_diag_enabled=False (default)",
+    "runtime/engine_skeleton.py: debug_diag4_enabled=False (default)",
+    "runtime/engine_skeleton.py: debug_diag4_rpg_enabled=False (default)",
+    "runtime/engine_skeleton.py: debug_contact_assert=False (default)",
+    "runtime/engine_skeleton.py: debug_outlier_eta/debug_outlier_persistence_ticks are diagnostics-only knobs"
+  ]
+}

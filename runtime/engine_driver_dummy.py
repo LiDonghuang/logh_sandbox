@@ -17,6 +17,7 @@ def run_dummy_ticks(
     ch_enabled: bool = True,
     fsr_enabled: bool = False,
     fsr_strength: float = 0.0,
+    boundary_enabled: bool = False,
 ):
     engine = EngineTickSkeleton(
         attack_range=attack_range,
@@ -28,6 +29,8 @@ def run_dummy_ticks(
     engine.CH_ENABLED = bool(ch_enabled)
     engine.FSR_ENABLED = bool(fsr_enabled)
     engine.fsr_strength = float(fsr_strength)
+    engine.BOUNDARY_SOFT_ENABLED = bool(boundary_enabled)
+    engine.BOUNDARY_HARD_ENABLED = bool(boundary_enabled)
     state = replace(
         initial_state,
         last_target_direction={

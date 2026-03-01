@@ -1,0 +1,31 @@
+{
+  "_profile": "Phase V Default (v5.0-alpha4)",
+  "_notes": {
+    "purpose": "Canonical default runtime settings, separate from local test_run tuning file.",
+    "governance_anchor": "Phase V default attack_range is fixed at 5.0 until targeting upgrade is authorized."
+  },
+  "fleet_a_archetype_id": "reuenthal",
+  "fleet_b_archetype_id": "mittermeyer",
+  "display_language": "EN",
+  "initial_fleet_size": 100,
+  "initial_fleet_aspect_ratio": 2.0,
+  "max_time_steps": 300,
+  "random_seed": 20260228,
+  "background_map_seed": 20260228,
+  "attack_range": 5.0,
+  "damage_per_tick": 1.0,
+  "fire_quality_alpha": 0.1,
+  "alpha_safe_max": 0.15,
+  "contact_hysteresis_h": 0.1,
+  "ch_enabled": true,
+  "fsr_enabled": true,
+  "fsr_strength": 0.1,
+  "boundary_enabled": false,
+  "min_unit_spacing": 2.0,
+  "unit_max_hit_points": 100.0,
+  "unit_speed": 1.0,
+  "arena_size": 200.0,
+  "animate": true,
+  "auto_zoom_2d": true,
+  "show_attack_target_lines": true
+}

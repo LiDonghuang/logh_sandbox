@@ -20,6 +20,7 @@ class EngineTickSkeleton:
         self.debug_last_combat_stats = {}
         self.FSR_ENABLED = False
         self.BOUNDARY_SOFT_ENABLED = True
+        self.BOUNDARY_HARD_ENABLED = False
         self.fsr_strength = 0.0
         self.fsr_lambda_delta = 0.10
         self._fsr_reference = {}
@@ -235,6 +236,27 @@ class EngineTickSkeleton:
                         separation_accumulator[unit_j][1] -= vy
 
             kappa = fleet.parameters.normalized()["formation_rigidity"]
+            mobility_raw = float(fleet.parameters.mobility_bias)
+            # Phase V2.1 canonical mapping:
+            # MB_eff = 0.2 * (mobility_bias - 5) / 5, clipped to [-0.2, +0.2].
+            mb = 0.2 * (mobility_raw - 5.0) / 5.0
+            if mb < -0.2:
+                mb = -0.2
+            elif mb > 0.2:
+                mb = 0.2
+            mb_is_zero = abs(mb) <= 1e-12
+            tx = target_direction[0]
+            ty = target_direction[1]
+            target_norm = 0.0
+            t_hat_x = 0.0
+            t_hat_y = 0.0
+            has_target_axis = False
+            if not mb_is_zero:
+                target_norm = math.sqrt((tx * tx) + (ty * ty))
+                if target_norm > 1e-12:
+                    t_hat_x = tx / target_norm
+                    t_hat_y = ty / target_norm
+                    has_target_axis = True
             for unit_id in fleet.unit_ids:
                 if unit_id not in updated_units:
                     continue
@@ -278,18 +300,35 @@ class EngineTickSkeleton:
                     if diag_enabled and (phi_left > 0.0 or phi_right > 0.0 or phi_bottom > 0.0 or phi_top > 0.0):
                         boundary_force_events_count_tick += 1
 
-                total_x = (
-                    target_direction[0]
-                    + (kappa * cohesion_dir[0])
-                    + (alpha_sep * separation_dir[0])
-                    + (alpha_sep * boundary_x)
-                )
-                total_y = (
-                    target_direction[1]
-                    + (kappa * cohesion_dir[1])
-                    + (alpha_sep * separation_dir[1])
-                    + (alpha_sep * boundary_y)
-                )
+                # Keep MB=0 on the exact legacy path for bitwise regression.
+                if mb_is_zero:
+                    total_x = (
+                        target_direction[0]
+                        + (kappa * cohesion_dir[0])
+                        + (alpha_sep * separation_dir[0])
+                        + (alpha_sep * boundary_x)
+                    )
+                    total_y = (
+                        target_direction[1]
+                        + (kappa * cohesion_dir[1])
+                        + (alpha_sep * separation_dir[1])
+                        + (alpha_sep * boundary_y)
+                    )
+                else:
+                    cohesion_x = kappa * cohesion_dir[0]
+                    cohesion_y = kappa * cohesion_dir[1]
+                    maneuver_x = target_direction[0] + (alpha_sep * separation_dir[0]) + (alpha_sep * boundary_x)
+                    maneuver_y = target_direction[1] + (alpha_sep * separation_dir[1]) + (alpha_sep * boundary_y)
+                    if has_target_axis:
+                        dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
+                        m_parallel_x = dot_mt * t_hat_x
+                        m_parallel_y = dot_mt * t_hat_y
+                        m_tangent_x = maneuver_x - m_parallel_x
+                        m_tangent_y = maneuver_y - m_parallel_y
+                        maneuver_x = ((1.0 - mb) * m_parallel_x) + ((1.0 + mb) * m_tangent_x)
+                        maneuver_y = ((1.0 - mb) * m_parallel_y) + ((1.0 + mb) * m_tangent_y)
+                    total_x = cohesion_x + maneuver_x
+                    total_y = cohesion_y + maneuver_y
                 total_norm = math.sqrt((total_x * total_x) + (total_y * total_y))
                 if total_norm > 0.0:
                     total_direction = (total_x / total_norm, total_y / total_norm)
@@ -522,26 +561,27 @@ class EngineTickSkeleton:
                 dx_proj, dy_proj = delta_position[unit_id]
                 updated_units[unit_id] = replace(unit, position=Vec2(x=base_x + dx_proj, y=base_y + dy_proj))
 
-        # Hard physical boundary: units cannot leave map domain [0, arena_size].
-        arena_min = 0.0
-        arena_max = float(state.arena_size)
-        if arena_max < arena_min:
-            arena_max = arena_min
-        for unit_id, unit in updated_units.items():
-            if unit.hit_points <= 0.0:
-                continue
-            px = unit.position.x
-            py = unit.position.y
-            if px < arena_min:
-                px = arena_min
-            elif px > arena_max:
-                px = arena_max
-            if py < arena_min:
-                py = arena_min
-            elif py > arena_max:
-                py = arena_max
-            if px != unit.position.x or py != unit.position.y:
-                updated_units[unit_id] = replace(unit, position=Vec2(x=px, y=py))
+        # Optional hard boundary: clamp units into map domain [0, arena_size].
+        if bool(getattr(self, "BOUNDARY_HARD_ENABLED", False)):
+            arena_min = 0.0
+            arena_max = float(state.arena_size)
+            if arena_max < arena_min:
+                arena_max = arena_min
+            for unit_id, unit in updated_units.items():
+                if unit.hit_points <= 0.0:
+                    continue
+                px = unit.position.x
+                py = unit.position.y
+                if px < arena_min:
+                    px = arena_min
+                elif px > arena_max:
+                    px = arena_max
+                if py < arena_min:
+                    py = arena_min
+                elif py > arena_max:
+                    py = arena_max
+                if px != unit.position.x or py != unit.position.y:
+                    updated_units[unit_id] = replace(unit, position=Vec2(x=px, y=py))
 
         if diag4_enabled or diag4_rpg_enabled:
             final_positions = {

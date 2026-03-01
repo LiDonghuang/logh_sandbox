@@ -4,6 +4,7 @@ import textwrap
 from typing import Any, Mapping, Sequence
 
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Ellipse, Rectangle
@@ -44,6 +45,9 @@ def render_test_run(
     frame_interval_ms: int,
     background_seed: int,
     viz_settings: Mapping[str, Any],
+    fleet_a_archetype_debug: Mapping[str, Any] | None = None,
+    fleet_b_archetype_debug: Mapping[str, Any] | None = None,
+    show_attack_target_lines: bool = False,
 ) -> None:
     fig_size = _cfg(viz_settings, "figure_size", [20, 8])
     width_ratios = _cfg(viz_settings, "layout_width_ratios", [100.0, 35.0, 35.0])
@@ -405,7 +409,7 @@ def render_test_run(
             "headwidth": head_base / shaft_width,
             "headlength": head_height / shaft_width,
             "headaxislength": head_height / shaft_width,
-            "pivot": "tail",
+            "pivot": "middle",
         }
 
     quiver_style = build_quiver_style(quiver_geometry)
@@ -506,6 +510,15 @@ def render_test_run(
         )
 
     quiver_all = make_quiver([], [])
+    target_line_collection = LineCollection(
+        [],
+        colors="#c40000",
+        linewidths=0.3,
+        alpha=0.8,
+        zorder=6.0,  # keep below unit arrows (zorder=10)
+    )
+    target_line_collection.set_visible(bool(show_attack_target_lines))
+    battle_ax.add_collection(target_line_collection)
     battle_legend = battle_ax.legend(
         handles=[
             Line2D([], [], marker="o", linestyle="", color=fleet_a_color, label=f"A [{fleet_a_label}]"),
@@ -561,16 +574,96 @@ def render_test_run(
             f"B - [Alive: {alive_b:>{alive_count_width}d} | Fleet Size: {curr_size_b_int:>{fleet_size_width}d} / {initial_size_b_int:>{fleet_size_width}d} ({pct_b:>5.1f}%)]"
         )
 
-    def format_debug_text(mode: str, outliers: int) -> str:
+    def format_archetype_debug_lines(prefix: str, payload: Mapping[str, Any] | None) -> list[str]:
+        if not payload:
+            return [f"{prefix}[n/a]"]
+        archetype_id = str(payload.get("id", "n/a"))
+        short_keys = ("fcr", "mb", "odw", "ra", "tp", "tl", "fr", "pr", "pt", "rt")
+
+        def format_cell(key: str, value: Any) -> str:
+            if isinstance(value, (int, float)):
+                return f"{key}:{float(value):>4.1f}"
+            return f"{key}:{' n/a':>4}"
+
+        tokens = []
+        for key in short_keys:
+            tokens.append(format_cell(key, payload.get(key)))
+        grouped_lines = [f"{prefix}[{archetype_id}]"]
+        group_size = 5
+        for idx in range(0, len(tokens), group_size):
+            row_cells = [cell.ljust(8) for cell in tokens[idx:idx + group_size]]
+            grouped_lines.append("  ".join(row_cells))
+        return grouped_lines
+
+    debug_archetype_lines = []
+    debug_archetype_lines.extend(format_archetype_debug_lines("A", fleet_a_archetype_debug))
+    debug_archetype_lines.append("")
+    debug_archetype_lines.extend(format_archetype_debug_lines("B", fleet_b_archetype_debug))
+
+    def format_runtime_diag_lines(runtime_debug: Mapping[str, Any] | None) -> list[str]:
+        if not runtime_debug:
+            return [
+                "runtime_diag: n/a",
+                "tip: debug data requires frame runtime_debug payload",
+            ]
+        fleets = runtime_debug.get("fleets", {})
+        if not isinstance(fleets, Mapping):
+            fleets = {}
+        a_diag = fleets.get("A", {})
+        b_diag = fleets.get("B", {})
+        if not isinstance(a_diag, Mapping):
+            a_diag = {}
+        if not isinstance(b_diag, Mapping):
+            b_diag = {}
+
+        return [
+            (
+                f"out_total={int(runtime_debug.get('outlier_total', 0))} "
+                f"persist={int(runtime_debug.get('persistent_outlier_total', 0))} "
+                f"maxP={int(runtime_debug.get('max_outlier_persistence', 0))}"
+            ),
+            (
+                f"A:out={int(a_diag.get('outlier_count', 0))} "
+                f"maxP={int(a_diag.get('max_outlier_persistence', 0))} "
+                f"R={float(a_diag.get('r_rms', 0.0)):.2f} "
+                f"T={float(a_diag.get('outlier_threshold', 0.0)):.2f}"
+            ),
+            (
+                f"B:out={int(b_diag.get('outlier_count', 0))} "
+                f"maxP={int(b_diag.get('max_outlier_persistence', 0))} "
+                f"R={float(b_diag.get('r_rms', 0.0)):.2f} "
+                f"T={float(b_diag.get('outlier_threshold', 0.0)):.2f}"
+            ),
+            (
+                f"contact={int(runtime_debug.get('in_contact_count', 0))} "
+                f"dmg_events={int(runtime_debug.get('damage_events_count', 0))}"
+            ),
+            (
+                f"proj(max/mean)={float(runtime_debug.get('projection_max_displacement', 0.0)):.3f}/"
+                f"{float(runtime_debug.get('projection_mean_displacement', 0.0)):.3f} "
+                f"pairs={int(runtime_debug.get('projection_pairs_count', 0))}"
+            ),
+            f"boundary_force_tick={int(runtime_debug.get('boundary_force_events_tick', 0))}",
+        ]
+
+    def format_debug_text(mode: str, radial_outliers: int, runtime_debug: Mapping[str, Any] | None) -> str:
         raw_lines = [
+            *debug_archetype_lines,
+            "",
             f"vector_display_mode: {mode}",
-            f"outliers: {outliers}",
+            f"radial_outward_count: {radial_outliers}",
+            "",
+            *format_runtime_diag_lines(runtime_debug),
+            "",
         ]
         wrapped_lines = []
         for raw in raw_lines:
+            if raw == "":
+                wrapped_lines.append("")
+                continue
             lines = textwrap.wrap(
                 raw,
-                width=26,
+                width=52,
                 break_long_words=False,
                 break_on_hyphens=False,
             )
@@ -592,17 +685,31 @@ def render_test_run(
         bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
     )
     count_text.set_zorder(30.0)
+    debug_text_box = Rectangle(
+        (0.01, 0.01),
+        0.98,
+        0.98,
+        transform=debug_ax.transAxes,
+        facecolor="#f7f7f7",
+        edgecolor="#dddddd",
+        linewidth=0.8,
+        zorder=0.2,
+    )
+    debug_ax.add_patch(debug_text_box)
     debug_text = debug_ax.text(
-        0.04,
-        0.95,
+        0.02,
+        0.985,
         "",
         transform=debug_ax.transAxes,
         va="top",
         ha="left",
         fontsize=max(8, int(round(legend_fontsize)) - 1),
         family="monospace",
+        linespacing=1.18,
+        clip_on=True,
+        zorder=0.3,
     )
-    debug_text.set_text(format_debug_text(vector_display_mode, 0))
+    debug_text.set_text(format_debug_text(vector_display_mode, 0, {}))
 
     if position_frames:
         first_tick = position_frames[0]["tick"]
@@ -627,6 +734,35 @@ def render_test_run(
         last_alive_by_fleet = {"A": {}, "B": {}}
         last_positions_for_effective = {"A": {}, "B": {}}
         death_ring_patches = []
+
+        def build_attack_target_segments(
+            frame_targets: Mapping[str, str],
+            points_a_norm,
+            points_b_norm,
+        ):
+            if not show_attack_target_lines or not frame_targets:
+                return []
+            point_map = {}
+            for unit_id, x, y, _, _, _, _ in points_a_norm:
+                point_map[unit_id] = (x, y)
+            for unit_id, x, y, _, _, _, _ in points_b_norm:
+                point_map[unit_id] = (x, y)
+
+            segments = []
+            for attacker_id in sorted(frame_targets.keys()):
+                defender_id = str(frame_targets[attacker_id])
+                attacker = point_map.get(str(attacker_id))
+                defender = point_map.get(defender_id)
+                if attacker is None or defender is None:
+                    continue
+                start_x, start_y = attacker
+                end_x, end_y = defender
+                seg_dx = end_x - start_x
+                seg_dy = end_y - start_y
+                if (seg_dx * seg_dx) + (seg_dy * seg_dy) <= 1e-12:
+                    continue
+                segments.append(((start_x, start_y), (end_x, end_y)))
+            return segments
 
         def fleet_centroid_norm(points_norm):
             if not points_norm:
@@ -992,6 +1128,14 @@ def render_test_run(
                     render_points_b.append((x, y, ox, oy, fleet_b_color))
 
             update_quiver(render_points_a, render_points_b)
+            if show_attack_target_lines:
+                frame_targets = frame.get("targets", {})
+                if not isinstance(frame_targets, Mapping):
+                    frame_targets = {}
+                target_segments = build_attack_target_segments(frame_targets, alive_points_a_norm, alive_points_b_norm)
+                target_line_collection.set_segments(target_segments)
+            else:
+                target_line_collection.set_segments([])
             draw_death_rings()
             if auto_zoom_2d:
                 if frame["tick"] == first_tick:
@@ -1040,9 +1184,12 @@ def render_test_run(
                 mode_outliers = radial_outward_a + radial_outward_b
             else:
                 mode_outliers = 0
-            debug_text.set_text(format_debug_text(vector_display_mode, mode_outliers))
+            runtime_debug = frame.get("runtime_debug", {})
+            if not isinstance(runtime_debug, Mapping):
+                runtime_debug = {}
+            debug_text.set_text(format_debug_text(vector_display_mode, mode_outliers, runtime_debug))
             count_text.set_text(format_count_text(len(alive_points_a), len(alive_points_b), curr_size_a, curr_size_b, pct_a, pct_b))
-            return (quiver_all, count_text, debug_text, *death_ring_patches)
+            return (target_line_collection, quiver_all, count_text, debug_text, *death_ring_patches)
 
         anim = FuncAnimation(
             fig,
@@ -1075,6 +1222,7 @@ def render_test_run(
         ]
         quiver_all.remove()
         quiver_all = make_quiver(final_a, final_b)
+        target_line_collection.set_segments([])
         curr_size_a = 0.0
         curr_size_b = 0.0
         if fleet_size_trajectory.get("A"):
@@ -1083,21 +1231,26 @@ def render_test_run(
             curr_size_b = float(fleet_size_trajectory["B"][-1])
         pct_a = (curr_size_a / initial_size_a * 100.0) if initial_size_a > 0.0 else 0.0
         pct_b = (curr_size_b / initial_size_b * 100.0) if initial_size_b > 0.0 else 0.0
-        debug_text.set_text(format_debug_text(vector_display_mode, 0))
+        debug_text.set_text(format_debug_text(vector_display_mode, 0, {}))
         count_text.set_text(format_count_text(len(final_a), len(final_b), curr_size_a, curr_size_b, pct_a, pct_b))
         anim = None
 
     cohesion_ax.plot(ticks, trajectory["A"], label=f"A ({fleet_a_label})", color=fleet_a_color)
     cohesion_ax.plot(ticks, trajectory["B"], label=f"B ({fleet_b_label})", color=fleet_b_color)
-    cohesion_ax.set_xlabel("Tick")
-    cohesion_ax.set_ylabel("Cohesion")
-    cohesion_ax.legend()
+    plot_label_fontsize = 9
+    plot_tick_fontsize = 8
+    plot_legend_fontsize = 8
+    cohesion_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
+    cohesion_ax.set_ylabel("Cohesion", fontsize=plot_label_fontsize)
+    cohesion_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    cohesion_ax.legend(fontsize=plot_legend_fontsize)
 
     alive_ax.plot(ticks, alive_trajectory["A"], label=f"A ({fleet_a_label})", color=fleet_a_color)
     alive_ax.plot(ticks, alive_trajectory["B"], label=f"B ({fleet_b_label})", color=fleet_b_color)
-    alive_ax.set_xlabel("Tick")
-    alive_ax.set_ylabel("Alive Units")
-    alive_ax.legend()
+    alive_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
+    alive_ax.set_ylabel("Alive Units", fontsize=plot_label_fontsize)
+    alive_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    alive_ax.legend(fontsize=plot_legend_fontsize)
 
     fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.07)
     plt.show()

@@ -62,6 +62,70 @@ def to_personality_parameters(data: dict) -> PersonalityParameters:
     )
 
 
+def to_archetype_debug_payload(params: PersonalityParameters) -> dict:
+    return {
+        "id": params.archetype_id,
+        "fcr": float(params.force_concentration_ratio),
+        "mb": float(params.mobility_bias),
+        "odw": float(params.offense_defense_weight),
+        "ra": float(params.risk_appetite),
+        "tp": float(params.time_preference),
+        "tl": float(params.targeting_logic),
+        "fr": float(params.formation_rigidity),
+        "pr": float(params.perception_radius),
+        "pt": float(params.pursuit_threshold),
+        "rt": float(params.retreat_threshold),
+    }
+
+
+def extract_runtime_debug_payload(diag_tick: dict) -> dict:
+    if not isinstance(diag_tick, dict):
+        return {}
+    outliers = diag_tick.get("outliers", {})
+    if not isinstance(outliers, dict):
+        outliers = {}
+    projection = diag_tick.get("projection", {})
+    if not isinstance(projection, dict):
+        projection = {}
+    combat = diag_tick.get("combat", {})
+    if not isinstance(combat, dict):
+        combat = {}
+    boundary_soft = diag_tick.get("boundary_soft", {})
+    if not isinstance(boundary_soft, dict):
+        boundary_soft = {}
+    persistent_ids = diag_tick.get("persistent_outlier_unit_ids", [])
+    if not isinstance(persistent_ids, list):
+        persistent_ids = []
+
+    payload = {
+        "tick": int(diag_tick.get("tick", 0)),
+        "outlier_total": 0,
+        "persistent_outlier_total": int(len(persistent_ids)),
+        "max_outlier_persistence": int(diag_tick.get("max_outlier_persistence", 0)),
+        "projection_max_displacement": float(projection.get("max_projection_displacement", 0.0)),
+        "projection_mean_displacement": float(projection.get("mean_projection_displacement", 0.0)),
+        "projection_pairs_count": int(projection.get("projection_pairs_count", 0)),
+        "in_contact_count": int(combat.get("in_contact_count", 0)),
+        "damage_events_count": int(combat.get("damage_events_count", 0)),
+        "boundary_force_events_tick": int(boundary_soft.get("boundary_force_events_count_tick", 0)),
+        "fleets": {},
+    }
+
+    for fleet_id in ("A", "B"):
+        fleet_payload = outliers.get(fleet_id, {})
+        if not isinstance(fleet_payload, dict):
+            fleet_payload = {}
+        outlier_count = int(fleet_payload.get("outlier_count", 0))
+        payload["outlier_total"] += outlier_count
+        payload["fleets"][fleet_id] = {
+            "outlier_count": outlier_count,
+            "max_outlier_persistence": int(fleet_payload.get("max_outlier_persistence", 0)),
+            "r_rms": float(fleet_payload.get("r_rms", 0.0)),
+            "outlier_threshold": float(fleet_payload.get("outlier_threshold", 0.0)),
+        }
+    return payload
+
+
 def to_plot_color(data: dict, fallback: str) -> str:
     code = str(data.get("color_code", "")).strip()
     if not code:
@@ -198,6 +262,8 @@ def run_simulation(
     ch_enabled: bool,
     fsr_enabled: bool,
     fsr_strength: float,
+    boundary_enabled: bool,
+    include_target_lines: bool,
 ):
     engine = EngineTickSkeleton(
         attack_range=attack_range,
@@ -209,6 +275,12 @@ def run_simulation(
     engine.CH_ENABLED = bool(ch_enabled)
     engine.FSR_ENABLED = bool(fsr_enabled)
     engine.fsr_strength = float(fsr_strength)
+    engine.BOUNDARY_SOFT_ENABLED = bool(boundary_enabled)
+    engine.BOUNDARY_HARD_ENABLED = bool(boundary_enabled)
+    # Visualization debug panel consumes these runtime diagnostics per frame.
+    engine.debug_fsr_diag_enabled = bool(capture_positions)
+    engine.debug_diag4_enabled = bool(capture_positions)
+    engine.debug_diag4_rpg_enabled = False
 
     state = replace(
         initial_state,
@@ -253,6 +325,7 @@ def run_simulation(
 
         if capture_positions and frame_stride > 0 and state.tick % frame_stride == 0:
             frame = {"tick": state.tick}
+            targets = {}
             for fleet_id, fleet in state.fleets.items():
                 points = []
                 for unit_id in fleet.unit_ids:
@@ -269,7 +342,16 @@ def run_simulation(
                                 unit.velocity.y,
                             )
                         )
+                        if include_target_lines and unit.engaged and unit.engaged_target_id:
+                            target_id = str(unit.engaged_target_id)
+                            if target_id in state.units and state.units[target_id].hit_points > 0.0:
+                                targets[str(unit_id)] = target_id
                 frame[fleet_id] = points
+            if include_target_lines:
+                frame["targets"] = targets
+            frame["runtime_debug"] = extract_runtime_debug_payload(
+                getattr(engine, "debug_diag_last_tick", {})
+            )
             position_frames.append(frame)
 
         any_fleet_eliminated = any(len(fleet.unit_ids) == 0 for fleet in state.fleets.values())
@@ -348,6 +430,8 @@ def main() -> None:
     ch_enabled = bool(settings.get("ch_enabled", True))
     fsr_enabled = bool(settings.get("fsr_enabled", False))
     fsr_strength = float(settings.get("fsr_strength", 0.0))
+    boundary_enabled = bool(settings.get("boundary_enabled", False))
+    show_attack_target_lines = bool(settings.get("show_attack_target_lines", False))
     random_seed = int(settings.get("random_seed", -1))
     background_map_seed = int(settings.get("background_map_seed", -1))
     effective_random_seed = resolve_effective_seed(random_seed)
@@ -368,6 +452,8 @@ def main() -> None:
         ch_enabled=ch_enabled,
         fsr_enabled=fsr_enabled,
         fsr_strength=fsr_strength,
+        boundary_enabled=boundary_enabled,
+        include_target_lines=show_attack_target_lines,
     )
     if not animate:
         position_frames = []
@@ -388,6 +474,9 @@ def main() -> None:
         frame_interval_ms=frame_interval_ms,
         background_seed=effective_background_map_seed,
         viz_settings=viz_settings,
+        fleet_a_archetype_debug=to_archetype_debug_payload(fleet_a_params),
+        fleet_b_archetype_debug=to_archetype_debug_payload(fleet_b_params),
+        show_attack_target_lines=show_attack_target_lines,
     )
 
 

@@ -5,11 +5,11 @@
     8
   ],
 
-  "_comment_layout": "layout_width_ratios: [battlefield, debug panel, right plot column]. Suggested baseline for 1920x1080 is [100, 35, 35]. layout_height_ratios: [right-top plot, right-bottom plot, right-spacer row].",
+  "_comment_layout": "layout_width_ratios: [battlefield, debug panel, right plot column]. Suggested baseline for 1920x1080 is [100, 55, 35] to keep battlefield column fixed while widening DEBUG. layout_height_ratios: [right-top plot, right-bottom plot, right-spacer row].",
   "layout_width_ratios": [
     100,
-    45,
-    45
+    55,
+    35
   ],
   "layout_height_ratios": [
     1.0,
@@ -67,8 +67,8 @@
       0.5
     ],
     "angle_deg": 135.0,
-    "inner_size_ratio": 1.2,
-    "outer_inner_ratio": 1.8,
+    "inner_size_ratio": 1.25,
+    "outer_inner_ratio": 2.0,
     "axis_ratio": 0.25,
     "outer_color": "#d7deea",
     "inner_color": "#c7d3e5",
@@ -87,7 +87,7 @@
       "#ffe38a",
       "#ff9a7a"
     ],
-    "glow_scale": 1.5,
+    "glow_scale": 1.75,
     "glow_alpha": 0.25,
     "core_alpha": 0.4
   },
@@ -110,7 +110,7 @@
     "alpha": 0.45,
     "gas_giant_ring": {
       "enabled": true,
-      "trigger_percentile": 0.6,
+      "trigger_percentile": 0.75,
       "diameter_scale_range": [
         1.5,
         3.0
