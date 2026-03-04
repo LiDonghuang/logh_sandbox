@@ -6,7 +6,10 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 
 ## Project Status
 
-- Current milestone: `v5.0-alpha1` (Contact Hysteresis alpha, engineering execution)
+- Current execution baseline: `v5.0-alpha5`
+- Current governance focus: `Phase V.4-d` (`cohesion_v3.1` connectivity calibration, shadow-only)
+- Active decision path: `cohesion_v2` (behavior path)
+- `cohesion_v3.1` remains observer-only (no behavior switch) unless future governance authorization
 - Runtime language: `Python 3.11`
 - Governance model: App thread = governance; VS Code/Codex thread = engineering execution
 
@@ -19,7 +22,7 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 - Phase II (frozen): Engine Skeleton
   - Core dataflow and layer ordering
   - Structural orthogonality constraints
-- Phase III/IV/ongoing:
+- Phase III/IV/V (ongoing):
   - Numerical runtime implementation
   - Deterministic execution and stability work
   - Controlled layer-by-layer activation and validation
@@ -47,6 +50,10 @@ Per tick:
   - controlled run harness
 - `analysis/`
   - scenario runner, settings, archetype data, visual analysis scripts
+  - report standards: `analysis/engineering_reports/_standards/`
+  - dated report packs: `analysis/engineering_reports/developments/YYYYMMDD/`
+  - exported battle reports: `analysis/exports/battle_reports/YYYYMMDD/`
+  - exported videos: `analysis/exports/videos/`
 - `canonical/`
   - frozen governance/mapping/canonical references (read-only layer)
 - `docs/`, `reports/`
@@ -58,11 +65,23 @@ Use the current settings file:
 
 - `analysis/test_run_v1_0.settings.json`
 
+This file is the local visualization/observation profile.  
+Governed experiment baselines should follow phase report settings (for example `analysis/phase_v_default.settings.json`).
+
 Run:
 
 ```powershell
 .\.venv_check\Scripts\python.exe .\analysis\test_run_v1_0.py
 ```
+
+Artifact output conventions:
+
+- Battle report markdown exports default to:
+  - `analysis/exports/battle_reports/YYYYMMDD/`
+  - filename: `<topic>_<YYYYMMDD_HHMMSS>_Battle_Report_Framework_v1.0.md`
+- Video exports default root:
+  - `analysis/exports/videos/`
+  - runtime appends timestamp to generated filename to avoid overwrite.
 
 ## Configuration Notes
 
@@ -73,6 +92,10 @@ Run:
 - Fire quality anisotropy defaults (documented freeze):
   - `fire_quality_alpha = 0.1`
   - `alpha_safe_max = 0.15` (documentation-level bound)
+- Runtime feature toggles (canonical):
+  - `contact_hysteresis_h <= 0` => CH disabled
+  - `fsr_strength <= 0` => FSR disabled
+  - Only `contact_hysteresis_h` / `fsr_strength` are used for runtime enable semantics
 
 ## Engineering Rules
 

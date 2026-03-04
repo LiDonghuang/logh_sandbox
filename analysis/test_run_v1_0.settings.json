@@ -1,52 +1,108 @@
 {
   "_comments": {
-    "fleet_a_archetype_id": "Fleet A archetype top-level key in archetypes_v1_5.json (or 'default').",
-    "fleet_b_archetype_id": "Fleet B archetype top-level key in archetypes_v1_5.json (or 'default').",
-    "display_language": "Label language for plot names: 'EN' or 'ZH'.",
-    "initial_fleet_size": "Units per fleet.",
-    "initial_fleet_aspect_ratio": "Initial formation col/row ratio. Example: 2.0 means wider than tall.",
-    "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
-    "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
-    "background_map_seed": "Background map seed (stars/planet/asteroid field). If -1, use true randomness.",
-    "attack_range": "Combat hit range (distance threshold). Phase V governance default is 5.0.",
-    "damage_per_tick": "Base attack damage per successful hit event.",
-    "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect; 0.1 is current recommended default.",
-    "alpha_safe_max": "Documented safe upper bound for fire_quality_alpha: 0.15 (governance note).",
-    "contact_hysteresis_h": "Contact hysteresis band ratio h. Compare h=0.0 vs h=0.1 for edge-contact stability observation.",
-    "ch_enabled": "Enable Contact Hysteresis gate (true/false).",
-    "fsr_enabled": "Enable Formation Scale Relaxation (FSR) movement-scale block (true/false).",
-    "fsr_strength": "FSR per-tick relaxation strength. Recommended safe range: [0.0, 0.3].",
-    "boundary_enabled": "Enable boundary mechanisms as a pair (soft + hard clamp). true=both ON, false=both OFF. Default false for DOE/general runs.",
-    "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0.",
-    "unit_max_hit_points": "Initial and max HP per unit.",
-    "unit_speed": "Per-unit movement speed.",
-    "arena_size": "Square battlefield size (0..arena_size).",
-    "animate": "Enable battlefield animation.",
-    "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
-    "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position)."
+    "fleet": {
+      "fleet_a_archetype_id": "Fleet A archetype top-level key in archetypes_v1_5.json (or 'default').",
+      "fleet_b_archetype_id": "Fleet B archetype top-level key in archetypes_v1_5.json (or 'default').",
+      "initial_fleet_size": "Units per fleet.",
+      "initial_fleet_aspect_ratio": "Initial formation col/row ratio. Example: 2.0 means wider than tall."
+    },
+    "unit": {
+      "attack_range": "Combat hit range (distance threshold). Phase V governance default is 5.0.",
+      "damage_per_tick": "Base attack damage per successful hit event.",
+      "unit_max_hit_points": "Initial and max HP per unit.",
+      "unit_speed": "Per-unit movement speed."
+    },
+    "battlefield": {
+      "arena_size": "Square battlefield size (0..arena_size).",
+      "background_map_seed": "Background map seed (stars/planet/asteroid field). If -1, use true randomness.",
+      "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0."
+    },
+    "run_control": {
+      "display_language": "Label language for plot names: 'EN' or 'ZH'.",
+      "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
+      "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
+      "animate": "Enable battlefield animation.",
+      "observer_enabled": "Observer diagnostics switch. true enables observer/shadow diagnostics and applies observer plot profile in fixed order: rho -> Cohesion(C_v3) -> C_conn -> C_scale -> C_attrition -> C Margin (slots 03/04/05/06/07/08). false keeps battle behavior unchanged and auto-hides observer-only slots (03/05/06/07).",
+      "export_battle_report": "Battle report export switch. true writes BRF markdown to analysis/exports/battle_reports/YYYYMMDD/ with theme-scoped timestamped filename."
+    },
+    "runtime": {
+      "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect; 0.1 is current recommended default.",
+      "alpha_safe_max": "Documented safe upper bound for fire_quality_alpha: 0.15 (governance note).",
+      "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
+      "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR.",
+      "boundary_enabled": "Enable boundary mechanisms as a pair (soft + hard clamp). true=both ON, false=both OFF. Default false for DOE/general runs."
+    },
+    "visualization": {
+      "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
+      "unit_direction_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
+      "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
+      "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
+      "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
+      "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
+      "print_tick_summary": "Print per-tick summary logs to console.",
+      "export_video": {
+        "enabled": "Video export switch. false keeps current interactive-only behavior.",
+        "full_plot": "true=export full figure layout; false=export Battlefield-only square video (side=height_px).",
+        "output_path": "Output video root path or file prefix. Relative paths are resolved from workspace root; runtime appends timestamp automatically.",
+        "fps": "Export FPS for encoded video. Independent from simulation tick rate.",
+        "codec": "FFmpeg codec (recommended: libx264).",
+        "bitrate_kbps": "Target bitrate in kbps for encoded video.",
+        "width_px": "Output video width in pixels. Default 1920.",
+        "height_px": "Output video height in pixels. Default 1080.",
+        "dpi": "Render DPI used during animation export. width_px/dpi and height_px/dpi define figure size during export."
+      }
+    }
   },
-  "fleet_a_archetype_id": "grillparzer",
-  "fleet_b_archetype_id": "knappstein",
-  "display_language": "EN",
-  "initial_fleet_size": 100,
-  "initial_fleet_aspect_ratio": 2.0,
-  "max_time_steps": -1,
-  "random_seed": -1,
-  "background_map_seed": 3285323193,
-  "attack_range": 5.0,
-  "damage_per_tick": 1.0,
-  "fire_quality_alpha": 0.1,
-  "alpha_safe_max": 0.15,
-  "contact_hysteresis_h": 0.1,
-  "ch_enabled": true,
-  "fsr_enabled": true,
-  "fsr_strength": 0.1,
-  "boundary_enabled": true,
-  "min_unit_spacing": 2.0,
-  "unit_max_hit_points": 100.0,
-  "unit_speed": 1.0,
-  "arena_size": 200.0,
-  "animate": true,
-  "auto_zoom_2d": true,
-  "show_attack_target_lines": true
+  "fleet": {
+    "fleet_a_archetype_id": "bittenfeld",
+    "fleet_b_archetype_id": "muller",
+    "initial_fleet_size": 100,
+    "initial_fleet_aspect_ratio": 2.0
+  },
+  "unit": {
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "unit_max_hit_points": 100.0,
+    "unit_speed": 1.0
+  },
+  "battlefield": {
+    "arena_size": 200.0,
+    "background_map_seed": -1,
+    "min_unit_spacing": 2.0
+  },
+  "run_control": {
+    "display_language": "ZH",
+    "max_time_steps": -1,
+    "random_seed": -1,
+    "animate": true,
+    "observer_enabled": true,
+    "export_battle_report": true
+  },
+  "runtime": {
+    "fire_quality_alpha": 0.1,
+    "alpha_safe_max": 0.15,
+    "contact_hysteresis_h": 0.1,
+    "fsr_strength": 0.1,
+    "boundary_enabled": true
+  },
+  "visualization": {
+    "auto_zoom_2d": true,
+    "unit_direction_mode": "composite",
+    "show_attack_target_lines": true,
+    "tick_plots_follow_battlefield_tick": false,
+    "animation_play_speed": 1.0,
+    "animation_frame_interval_ms": 100,
+    "print_tick_summary": true,
+    "export_video": {
+      "enabled": false,
+      "full_plot": true,
+      "output_path": "analysis/exports/videos",
+      "fps": 5,
+      "codec": "libx264",
+      "bitrate_kbps": 2400,
+      "width_px": 1920,
+      "height_px": 1080,
+      "dpi": 110
+    }
+  }
 }

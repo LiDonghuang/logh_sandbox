@@ -1,0 +1,11 @@
+case_id,side,theta_split,theta_env,sustain_window_ticks,first_tick_split_sustain,first_tick_env_sustain,BRF_mapped_FormationCutTick,BRF_mapped_PocketFormationTick,first_contact_tick
+FR8_MB8_PD5,A,1.715,0.583,20,126,255,126,202,107
+FR8_MB8_PD5,B,1.715,0.583,20,126,202,126,202,107
+reference_alpha_AB,A,1.715,0.583,20,125,162,125,162,106
+reference_alpha_AB,B,1.715,0.583,20,125,227,125,162,106
+FR5_MB2_PD5,A,1.715,0.583,20,126,276,126,226,107
+FR5_MB2_PD5,B,1.715,0.583,20,N/A,226,126,226,107
+FR5_MB5_PD5,A,1.715,0.583,20,125,162,125,162,106
+FR5_MB5_PD5,B,1.715,0.583,20,125,227,125,162,106
+FR5_MB8_PD5,A,1.715,0.583,20,126,255,126,202,107
+FR5_MB8_PD5,B,1.715,0.583,20,126,202,126,202,107
