@@ -18,7 +18,7 @@ required before initiating controlled withdrawal.
 
 Retreat Threshold does NOT directly modify: - Damage - HitProbability -
 Speed (base) - Risk Appetite - Offense / Defense Weight - Targeting
-Logic - Time Preference - Formation Rigidity - Pursuit Threshold
+Logic - Time Preference - Formation Rigidity - Pursuit Drive
 
 ------------------------------------------------------------------------
 
@@ -77,9 +77,9 @@ High Retreat Threshold:
 
 ------------------------------------------------------------------------
 
-# VI. Symmetry with Pursuit Threshold
+# VI. Symmetry with Pursuit Drive
 
-Retreat Threshold and Pursuit Threshold form a structural symmetry:
+Retreat Threshold and Pursuit Drive form a structural symmetry:
 
 -   Pursuit governs exploitation of enemy collapse
 -   Retreat governs response to own collapse

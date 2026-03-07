@@ -193,7 +193,7 @@ Active Parameters: - formation_rigidity - mobility_bias
 Stabilization Level: Type B complete → entering pre-Type C
 consideration.
 
-Next eligible expansions: - targeting_logic - pursuit_threshold -
+Next eligible expansions: - targeting_logic - pursuit_drive -
 perception_radius - offense_defense_weight
 
 Phase expansion currently frozen pending stress validation.
