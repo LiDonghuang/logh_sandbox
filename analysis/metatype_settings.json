@@ -1,0 +1,32 @@
+{
+  "_comments": {
+    "yang": {
+      "template": "Display/identity template for generated Yang persona.",
+      "generation": "Runtime generation settings: source archetype sampling + jitter + clamp."
+    }
+  },
+  "yang": {
+    "template": {
+      "name": "yang",
+      "disp_name_EN": "Yang",
+      "disp_name_ZH": "杨",
+      "full_name_EN": "Yang Wen-li",
+      "full_name_ZH": "杨威利",
+      "avatar": "avatar_09154",
+      "color_code": "008080"
+    },
+    "generation": {
+      "source_archetype_ids": [
+        "reinhard",
+        "kircheis",
+        "reuenthal",
+        "mittermeyer",
+        "bittenfeld",
+        "muller"
+      ],
+      "jitter": 1,
+      "param_min": 1,
+      "param_max": 9
+    }
+  }
+}
