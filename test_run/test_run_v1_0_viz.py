@@ -13,7 +13,7 @@ from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from matplotlib.patches import Circle, Ellipse, Rectangle
 
-from runtime_v0_1 import BattleState
+from runtime.runtime_v0_1 import BattleState
 
 
 plt.rcParams["font.sans-serif"] = [

@@ -41,7 +41,7 @@ Per tick:
 
 ## Repository Layout
 
-- `runtime_v0_1.py`
+- `runtime/runtime_v0_1.py`
   - Core dataclasses (`BattleState`, `FleetState`, `UnitState`, `PersonalityParameters`)
   - normalization and initialization utilities
 - `runtime/engine_skeleton.py`

@@ -24,7 +24,7 @@ It only removes remaining code-level assumptions that still behaved as if the ol
 
 ## Code Updates
 
-### 1. `runtime_v0_1.py`
+### 1. `runtime/runtime_v0_1.py`
 
 The active normalization helper now matches the canonical scale:
 

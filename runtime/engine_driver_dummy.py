@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from runtime_v0_1 import BattleState
+from runtime.runtime_v0_1 import BattleState
 from runtime.engine_skeleton import EngineTickSkeleton
 
 

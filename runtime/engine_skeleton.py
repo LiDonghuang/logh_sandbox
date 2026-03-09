@@ -1,7 +1,7 @@
 from dataclasses import replace
 import math
 
-from runtime_v0_1 import BattleState, Vec2
+from runtime.runtime_v0_1 import BattleState, Vec2
 
 
 class EngineTickSkeleton:
