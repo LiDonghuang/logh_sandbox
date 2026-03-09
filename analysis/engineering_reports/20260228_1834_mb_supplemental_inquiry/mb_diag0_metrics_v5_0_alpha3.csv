@@ -1,7 +1,0 @@
-mb,determinism_pass,mb0_regression_bitwise_pass,tangential_share_engagement,parallel_share_engagement,tangential_dominant_ratio_engagement,mirror_abs_antisym_error,mirror_within_15pct,jitter_count,jitter_within_50pct,survivors_A,survivors_B,first_contact_tick,winner,mean_radial_closure_rate,no_new_attractor_proxy
-0.0,True,True,0.20482755024990104,0.9471615054226464,0.0,0.0,True,2604,True,0,27,99,B,0.6868462700121459,True
-0.1,True,,0.22882012845976465,0.9316439135185638,0.0,0.0,True,3820,True,0,33,99,B,0.7401736281599057,True
-0.2,True,,0.2620500079836108,0.9083003715272417,0.13868813466288538,0.0,True,4973,False,0,29,100,B,0.7032336753008219,True
-
-runtime_overhead_pct,3.6504841488190776
-runtime_gate_le_10pct,True
