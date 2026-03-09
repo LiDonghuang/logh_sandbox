@@ -6,10 +6,10 @@ import random
 from typing import Dict, Iterable, Mapping, Tuple
 
 
-def _normalize_1_to_10(value: float) -> float:
-    if value < 1.0 or value > 10.0:
-        raise ValueError(f"parameter value {value} is outside canonical domain [1, 10]")
-    return (value - 1.0) / 9.0
+def _normalize_1_to_9(value: float) -> float:
+    if value < 1.0 or value > 9.0:
+        raise ValueError(f"parameter value {value} is outside canonical domain [1, 9]")
+    return (value - 1.0) / 8.0
 
 
 @dataclass(frozen=True)
@@ -23,21 +23,21 @@ class PersonalityParameters:
     targeting_logic: float
     formation_rigidity: float
     perception_radius: float
-    pursuit_threshold: float
+    pursuit_drive: float
     retreat_threshold: float
 
     def normalized(self) -> Dict[str, float]:
         return {
-            "force_concentration_ratio": _normalize_1_to_10(self.force_concentration_ratio),
-            "mobility_bias": _normalize_1_to_10(self.mobility_bias),
-            "offense_defense_weight": _normalize_1_to_10(self.offense_defense_weight),
-            "risk_appetite": _normalize_1_to_10(self.risk_appetite),
-            "time_preference": _normalize_1_to_10(self.time_preference),
-            "targeting_logic": _normalize_1_to_10(self.targeting_logic),
-            "formation_rigidity": _normalize_1_to_10(self.formation_rigidity),
-            "perception_radius": _normalize_1_to_10(self.perception_radius),
-            "pursuit_threshold": _normalize_1_to_10(self.pursuit_threshold),
-            "retreat_threshold": _normalize_1_to_10(self.retreat_threshold),
+            "force_concentration_ratio": _normalize_1_to_9(self.force_concentration_ratio),
+            "mobility_bias": _normalize_1_to_9(self.mobility_bias),
+            "offense_defense_weight": _normalize_1_to_9(self.offense_defense_weight),
+            "risk_appetite": _normalize_1_to_9(self.risk_appetite),
+            "time_preference": _normalize_1_to_9(self.time_preference),
+            "targeting_logic": _normalize_1_to_9(self.targeting_logic),
+            "formation_rigidity": _normalize_1_to_9(self.formation_rigidity),
+            "perception_radius": _normalize_1_to_9(self.perception_radius),
+            "pursuit_drive": _normalize_1_to_9(self.pursuit_drive),
+            "retreat_threshold": _normalize_1_to_9(self.retreat_threshold),
         }
 
 

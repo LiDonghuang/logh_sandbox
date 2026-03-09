@@ -21,6 +21,8 @@ class EngineTickSkeleton:
         self.FSR_ENABLED = False
         self.BOUNDARY_SOFT_ENABLED = True
         self.BOUNDARY_HARD_ENABLED = False
+        self.boundary_soft_strength = 1.0
+        self.alpha_sep = 0.6
         self.fsr_strength = 0.0
         self.fsr_lambda_delta = 0.10
         self._fsr_reference = {}
@@ -54,6 +56,18 @@ class EngineTickSkeleton:
         self._debug_diag4_rpg_outlier_entry = {}
         self._debug_diag4_rpg_return_stats = {}
         self._debug_boundary_force_events_total = 0
+        # Phase V.4-b: canonical decision source switches to cohesion_v2.
+        # "v1_debug" is retained only for baseline comparison / diagnostics.
+        self.COHESION_DECISION_SOURCE = "v2"
+        self.debug_cohesion_v1_enabled = False
+        self.debug_last_cohesion_v1 = {}
+        self.debug_last_cohesion_v2 = {}
+        self.debug_last_cohesion_v2_components = {}
+        self.debug_cohesion_v3_shadow_enabled = False
+        self.debug_last_cohesion_v3 = {}
+        self.debug_last_cohesion_v3_components = {}
+        self._debug_prev_cohesion_v1 = {}
+        self.MOVEMENT_MODEL = "v3a"
 
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
@@ -64,20 +78,379 @@ class EngineTickSkeleton:
         next_state = self.resolve_combat(next_state)
         return next_state
 
+    @staticmethod
+    def _clamp01(value: float) -> float:
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    @staticmethod
+    def _quantile_sorted(sorted_values: list[float], q: float) -> float:
+        if not sorted_values:
+            return 0.0
+        if len(sorted_values) == 1:
+            return sorted_values[0]
+        if q <= 0.0:
+            return sorted_values[0]
+        if q >= 1.0:
+            return sorted_values[-1]
+        pos = (len(sorted_values) - 1) * q
+        lo = int(math.floor(pos))
+        hi = int(math.ceil(pos))
+        if lo == hi:
+            return sorted_values[lo]
+        w = pos - lo
+        return (sorted_values[lo] * (1.0 - w)) + (sorted_values[hi] * w)
+
+    def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+        eps = 1e-12
+        fleet = state.fleets.get(fleet_id)
+        if fleet is None:
+            return 1.0, {
+                "n_alive": 0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "fragmentation": 0.0,
+                "dispersion": 0.0,
+                "outlier_mass": 0.0,
+                "elongation": 0.0,
+                "exploitability": 0.0,
+                "cohesion_v2": 1.0,
+                "lcc_ratio": 1.0,
+                "dispersion_ratio_q90_q50": 1.0,
+                "outlier_count": 0,
+                "outlier_threshold": 0.0,
+                "q50_radius": 0.0,
+                "q90_radius": 0.0,
+            }
+
+        alive_positions = []
+        for unit_id in fleet.unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or unit.hit_points <= 0.0:
+                continue
+            alive_positions.append((unit.position.x, unit.position.y))
+        n_alive = len(alive_positions)
+
+        if n_alive == 0:
+            return 0.0, {
+                "n_alive": 0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "fragmentation": 1.0,
+                "dispersion": 0.0,
+                "outlier_mass": 0.0,
+                "elongation": 0.0,
+                "exploitability": 1.0,
+                "cohesion_v2": 0.0,
+                "lcc_ratio": 0.0,
+                "dispersion_ratio_q90_q50": 1.0,
+                "outlier_count": 0,
+                "outlier_threshold": 0.0,
+                "q50_radius": 0.0,
+                "q90_radius": 0.0,
+            }
+
+        sum_x = 0.0
+        sum_y = 0.0
+        for x, y in alive_positions:
+            sum_x += x
+            sum_y += y
+        centroid_x = sum_x / n_alive
+        centroid_y = sum_y / n_alive
+
+        radii = []
+        cov_xx = 0.0
+        cov_xy = 0.0
+        cov_yy = 0.0
+        for x, y in alive_positions:
+            dx = x - centroid_x
+            dy = y - centroid_y
+            radii.append(math.sqrt((dx * dx) + (dy * dy)))
+            cov_xx += dx * dx
+            cov_xy += dx * dy
+            cov_yy += dy * dy
+        cov_xx /= n_alive
+        cov_xy /= n_alive
+        cov_yy /= n_alive
+
+        sorted_radii = sorted(radii)
+        q25 = self._quantile_sorted(sorted_radii, 0.25)
+        q50 = self._quantile_sorted(sorted_radii, 0.50)
+        q75 = self._quantile_sorted(sorted_radii, 0.75)
+        q90 = self._quantile_sorted(sorted_radii, 0.90)
+        iqr = q75 - q25
+        if iqr < 0.0:
+            iqr = 0.0
+
+        if q90 <= eps and q50 <= eps:
+            dispersion_ratio = 1.0
+            f_disp = 0.0
+        else:
+            dispersion_ratio = q90 / (q50 + eps)
+            if dispersion_ratio < 1.0:
+                dispersion_ratio = 1.0
+            # 0 at ratio=1, approaches 1 as q90/q50 grows.
+            f_disp = 1.0 - (1.0 / dispersion_ratio)
+            f_disp = self._clamp01(f_disp)
+
+        outlier_threshold = q75 + (1.5 * iqr)
+        outlier_count = 0
+        for r in radii:
+            if r > outlier_threshold:
+                outlier_count += 1
+        f_out = self._clamp01(outlier_count / n_alive)
+
+        trace = cov_xx + cov_yy
+        det = (cov_xx * cov_yy) - (cov_xy * cov_xy)
+        disc = (trace * trace) - (4.0 * det)
+        if disc < 0.0:
+            disc = 0.0
+        sqrt_disc = math.sqrt(disc)
+        lambda_1 = 0.5 * (trace + sqrt_disc)
+        lambda_2 = 0.5 * (trace - sqrt_disc)
+        if lambda_1 < eps:
+            f_elong = 0.0
+        else:
+            f_elong = 1.0 - (lambda_2 / (lambda_1 + eps))
+            f_elong = self._clamp01(f_elong)
+
+        if n_alive == 1:
+            lcc_ratio = 1.0
+        else:
+            connect_radius = float(self.separation_radius)
+            if connect_radius < eps:
+                connect_radius = eps
+            connect_radius_sq = connect_radius * connect_radius
+            visited = [False] * n_alive
+            largest_component_size = 0
+            for i in range(n_alive):
+                if visited[i]:
+                    continue
+                visited[i] = True
+                stack = [i]
+                component_size = 0
+                while stack:
+                    node = stack.pop()
+                    component_size += 1
+                    nx, ny = alive_positions[node]
+                    for j in range(n_alive):
+                        if visited[j] or j == node:
+                            continue
+                        px, py = alive_positions[j]
+                        ddx = nx - px
+                        ddy = ny - py
+                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
+                            visited[j] = True
+                            stack.append(j)
+                if component_size > largest_component_size:
+                    largest_component_size = component_size
+            lcc_ratio = largest_component_size / n_alive
+        f_frag = self._clamp01(1.0 - lcc_ratio)
+
+        exploitability = 1.0 - (
+            (1.0 - f_frag)
+            * (1.0 - f_disp)
+            * (1.0 - f_out)
+            * (1.0 - f_elong)
+        )
+        cohesion_v2 = self._clamp01(1.0 - exploitability)
+
+        return cohesion_v2, {
+            "n_alive": n_alive,
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "fragmentation": f_frag,
+            "dispersion": f_disp,
+            "outlier_mass": f_out,
+            "elongation": f_elong,
+            "exploitability": exploitability,
+            "cohesion_v2": cohesion_v2,
+            "lcc_ratio": lcc_ratio,
+            "dispersion_ratio_q90_q50": dispersion_ratio,
+            "outlier_count": outlier_count,
+            "outlier_threshold": outlier_threshold,
+            "q50_radius": q50,
+            "q90_radius": q90,
+        }
+
+    def _compute_cohesion_v3_shadow_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+        eps = 1e-12
+        rho_low = 0.35
+        rho_high = 1.15
+        penalty_k = 6.0
+
+        fleet = state.fleets.get(fleet_id)
+        if fleet is None:
+            return 1.0, {
+                "n_alive": 0,
+                "lcc": 0,
+                "c_conn": 1.0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "r": 0.0,
+                "r_ref": 0.0,
+                "rho": 0.0,
+                "c_scale": 1.0,
+                "c_v3": 1.0,
+                "rho_low": rho_low,
+                "rho_high": rho_high,
+                "k": penalty_k,
+            }
+
+        alive_positions = []
+        for unit_id in fleet.unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or unit.hit_points <= 0.0:
+                continue
+            alive_positions.append((unit.position.x, unit.position.y))
+        n_alive = len(alive_positions)
+
+        if n_alive == 0:
+            return 0.0, {
+                "n_alive": 0,
+                "lcc": 0,
+                "c_conn": 0.0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "r": 0.0,
+                "r_ref": 0.0,
+                "rho": 0.0,
+                "c_scale": 1.0,
+                "c_v3": 0.0,
+                "rho_low": rho_low,
+                "rho_high": rho_high,
+                "k": penalty_k,
+            }
+
+        sum_x = 0.0
+        sum_y = 0.0
+        for x, y in alive_positions:
+            sum_x += x
+            sum_y += y
+        centroid_x = sum_x / n_alive
+        centroid_y = sum_y / n_alive
+
+        radius_sq_sum = 0.0
+        for x, y in alive_positions:
+            dx = x - centroid_x
+            dy = y - centroid_y
+            radius_sq_sum += (dx * dx) + (dy * dy)
+        r = math.sqrt(radius_sq_sum / n_alive)
+        r_ref = float(self.separation_radius) * math.sqrt(float(n_alive))
+        if r_ref <= eps:
+            rho = 0.0
+        else:
+            rho = r / r_ref
+
+        if rho < rho_low:
+            c_scale = math.exp(-penalty_k * ((rho_low - rho) ** 2))
+        elif rho <= rho_high:
+            c_scale = 1.0
+        else:
+            c_scale = math.exp(-penalty_k * ((rho - rho_high) ** 2))
+
+        if n_alive == 1:
+            lcc = 1
+            c_conn = 1.0
+        else:
+            connect_radius = float(self.separation_radius)
+            if connect_radius < eps:
+                connect_radius = eps
+            connect_radius_sq = connect_radius * connect_radius
+            visited = [False] * n_alive
+            largest_component_size = 0
+            for i in range(n_alive):
+                if visited[i]:
+                    continue
+                visited[i] = True
+                stack = [i]
+                component_size = 0
+                while stack:
+                    node = stack.pop()
+                    component_size += 1
+                    nx, ny = alive_positions[node]
+                    for j in range(n_alive):
+                        if visited[j] or j == node:
+                            continue
+                        px, py = alive_positions[j]
+                        ddx = nx - px
+                        ddy = ny - py
+                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
+                            visited[j] = True
+                            stack.append(j)
+                if component_size > largest_component_size:
+                    largest_component_size = component_size
+            lcc = largest_component_size
+            c_conn = largest_component_size / n_alive
+
+        c_v3 = self._clamp01(c_conn * c_scale)
+        return c_v3, {
+            "n_alive": n_alive,
+            "lcc": lcc,
+            "c_conn": c_conn,
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "r": r,
+            "r_ref": r_ref,
+            "rho": rho,
+            "c_scale": c_scale,
+            "c_v3": c_v3,
+            "rho_low": rho_low,
+            "rho_high": rho_high,
+            "k": penalty_k,
+        }
+
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
-        updated_cohesion = {}
+        updated_cohesion_v1 = {}
+        updated_cohesion_v2 = {}
+        shadow_cohesion = {}
+        shadow_components = {}
+        shadow_cohesion_v3 = {}
+        shadow_components_v3 = {}
+        decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
+        keep_v1_debug = bool(getattr(self, "debug_cohesion_v1_enabled", False)) or (decision_source == "v1_debug")
+        keep_v3_shadow = bool(getattr(self, "debug_cohesion_v3_shadow_enabled", False))
+        prev_cohesion_v1 = getattr(self, "_debug_prev_cohesion_v1", None)
+        if not isinstance(prev_cohesion_v1, dict):
+            prev_cohesion_v1 = {}
         for fleet_id, fleet in state.fleets.items():
             normalized = fleet.parameters.normalized()
             kappa = normalized["formation_rigidity"]
-            old_cohesion = state.last_fleet_cohesion.get(fleet_id, 1.0)
-            new_cohesion = old_cohesion + (kappa * 0.01) - ((1.0 - kappa) * 0.005)
+            old_cohesion_v1 = float(prev_cohesion_v1.get(fleet_id, 1.0))
+            new_cohesion = old_cohesion_v1 + (kappa * 0.01) - ((1.0 - kappa) * 0.005)
             if new_cohesion < 0.0:
                 new_cohesion = 0.0
             elif new_cohesion > 1.0:
                 new_cohesion = 1.0
-            updated_cohesion[fleet_id] = new_cohesion
+            updated_cohesion_v1[fleet_id] = new_cohesion
+            cohesion_v2, v2_components = self._compute_cohesion_v2_geometry(state, fleet_id)
+            updated_cohesion_v2[fleet_id] = cohesion_v2
+            shadow_cohesion[fleet_id] = cohesion_v2
+            shadow_components[fleet_id] = v2_components
+            if keep_v3_shadow:
+                cohesion_v3, v3_components = self._compute_cohesion_v3_shadow_geometry(state, fleet_id)
+                shadow_cohesion_v3[fleet_id] = cohesion_v3
+                shadow_components_v3[fleet_id] = v3_components
 
-        return replace(state, last_fleet_cohesion=updated_cohesion)
+        self._debug_prev_cohesion_v1 = dict(updated_cohesion_v1)
+        if keep_v1_debug:
+            self.debug_last_cohesion_v1 = dict(updated_cohesion_v1)
+        else:
+            self.debug_last_cohesion_v1 = {}
+        self.debug_last_cohesion_v2 = shadow_cohesion
+        self.debug_last_cohesion_v2_components = shadow_components
+        if keep_v3_shadow:
+            self.debug_last_cohesion_v3 = dict(shadow_cohesion_v3)
+            self.debug_last_cohesion_v3_components = dict(shadow_components_v3)
+        else:
+            self.debug_last_cohesion_v3 = {}
+            self.debug_last_cohesion_v3_components = {}
+
+        # Canonical active cohesion is v2; v1 is debug-only.
+        return replace(state, last_fleet_cohesion=updated_cohesion_v2)
 
     def evaluate_target(self, state: BattleState) -> BattleState:
         last_target_direction = {}
@@ -128,7 +501,9 @@ class EngineTickSkeleton:
         r_sep_sq = r_sep * r_sep
         sep_branch_eps = 1e-14
         sep_threshold_sq = r_sep_sq - sep_branch_eps
-        alpha_sep = 0.6
+        alpha_sep = float(getattr(self, "alpha_sep", 0.6))
+        if alpha_sep < 0.0:
+            alpha_sep = 0.0
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
@@ -147,6 +522,9 @@ class EngineTickSkeleton:
             boundary_band_width = 0.0
         boundary_band_fraction = (boundary_band_width / arena_linear_size) if arena_linear_size > 0.0 else 0.0
         boundary_force_events_count_tick = 0
+        boundary_soft_strength = float(getattr(self, "boundary_soft_strength", 1.0))
+        if boundary_soft_strength < 0.0:
+            boundary_soft_strength = 0.0
 
         def _quantile(sorted_values: list[float], q: float) -> float:
             if not sorted_values:
@@ -193,6 +571,30 @@ class EngineTickSkeleton:
             if unit.hit_points > 0.0
         }
 
+        movement_model = str(getattr(self, "MOVEMENT_MODEL", "v3a")).strip().lower()
+        if movement_model not in {"v1", "v3a"}:
+            movement_model = "v3a"
+        movement_v3a_experiment = str(getattr(self, "MOVEMENT_V3A_EXPERIMENT", "base")).strip().lower()
+        # One-cycle compatibility: legacy A-line name maps to canonical probe name.
+        if movement_v3a_experiment == "exp_a_reduced_centroid":
+            movement_v3a_experiment = "exp_precontact_centroid_probe"
+        allowed_v3a_experiments = {"base", "exp_precontact_centroid_probe"}
+        if movement_v3a_experiment not in allowed_v3a_experiments:
+            movement_v3a_experiment = "base"
+        # Canonical probe knob (neutral naming): CENTROID_PROBE_SCALE.
+        # One-cycle compatibility: fallback to legacy PRECONTACT_CENTROID_PROBE_SCALE.
+        centroid_probe_scale = float(
+            getattr(
+                self,
+                "CENTROID_PROBE_SCALE",
+                getattr(self, "PRECONTACT_CENTROID_PROBE_SCALE", 1.0),
+            )
+        )
+        if centroid_probe_scale < 0.0:
+            centroid_probe_scale = 0.0
+        elif centroid_probe_scale > 1.0:
+            centroid_probe_scale = 1.0
+
         updated_units = dict(state.units)
         for fleet_id, fleet in state.fleets.items():
             target_direction = state.last_target_direction.get(fleet_id, (0.0, 0.0))
@@ -210,6 +612,119 @@ class EngineTickSkeleton:
             else:
                 centroid_x = 0.0
                 centroid_y = 0.0
+
+            enemy_alive_units = [
+                unit
+                for other_fleet_id, other_fleet in state.fleets.items()
+                if other_fleet_id != fleet_id
+                for unit_id in other_fleet.unit_ids
+                if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
+                for unit in [updated_units[unit_id]]
+            ]
+            if enemy_alive_units:
+                enemy_centroid_x = sum(unit.position.x for unit in enemy_alive_units) / len(enemy_alive_units)
+                enemy_centroid_y = sum(unit.position.y for unit in enemy_alive_units) / len(enemy_alive_units)
+            else:
+                enemy_centroid_x = centroid_x
+                enemy_centroid_y = centroid_y
+
+            radius_sq_sum = 0.0
+            for unit in alive_units:
+                dx0 = unit.position.x - centroid_x
+                dy0 = unit.position.y - centroid_y
+                radius_sq_sum += (dx0 * dx0) + (dy0 * dy0)
+            if alive_units:
+                fleet_rms_radius = math.sqrt(radius_sq_sum / len(alive_units))
+            else:
+                fleet_rms_radius = 0.0
+
+            # Fleet major-axis geometry metrics for observer diagnostics.
+            major_hat_x = 1.0
+            major_hat_y = 0.0
+            ar_ratio = 1.0
+            ar_forward_ratio = 1.0
+            if len(alive_units) >= 2:
+                n_alive_f = float(len(alive_units))
+                var_x = 0.0
+                var_y = 0.0
+                cov_xy = 0.0
+                for unit in alive_units:
+                    dxm = unit.position.x - centroid_x
+                    dym = unit.position.y - centroid_y
+                    var_x += dxm * dxm
+                    var_y += dym * dym
+                    cov_xy += dxm * dym
+                var_x /= n_alive_f
+                var_y /= n_alive_f
+                cov_xy /= n_alive_f
+                trace = var_x + var_y
+                delta_sq = ((var_x - var_y) * (var_x - var_y)) + (4.0 * cov_xy * cov_xy)
+                if delta_sq < 0.0:
+                    delta_sq = 0.0
+                delta = math.sqrt(delta_sq)
+                lam1 = max(0.0, 0.5 * (trace + delta))
+                lam2 = max(0.0, 0.5 * (trace - delta))
+                sigma1 = math.sqrt(lam1)
+                sigma2 = math.sqrt(lam2)
+                ar_ratio = sigma1 / (sigma2 + 1e-12)
+                if abs(cov_xy) > 1e-12 or abs(lam1 - var_y) > 1e-12:
+                    evx = lam1 - var_y
+                    evy = cov_xy
+                else:
+                    evx = 1.0
+                    evy = 0.0
+                ev_norm = math.sqrt((evx * evx) + (evy * evy))
+                if ev_norm > 1e-12:
+                    major_hat_x = evx / ev_norm
+                    major_hat_y = evy / ev_norm
+
+                # Forward-axis AR: anisotropy in enemy-facing frame.
+                fdx = enemy_centroid_x - centroid_x
+                fdy = enemy_centroid_y - centroid_y
+                f_norm = math.sqrt((fdx * fdx) + (fdy * fdy))
+                if f_norm > 1e-12:
+                    fx = fdx / f_norm
+                    fy = fdy / f_norm
+                    lx = -fy
+                    ly = fx
+                    forward_values = []
+                    lateral_values = []
+                    for unit in alive_units:
+                        dxm = unit.position.x - centroid_x
+                        dym = unit.position.y - centroid_y
+                        forward_values.append((dxm * fx) + (dym * fy))
+                        lateral_values.append((dxm * lx) + (dym * ly))
+                    if forward_values and lateral_values:
+                        n_ff = float(len(forward_values))
+                        mean_f = sum(forward_values) / n_ff
+                        mean_l = sum(lateral_values) / n_ff
+                        var_f = 0.0
+                        var_l = 0.0
+                        for idx in range(len(forward_values)):
+                            df = forward_values[idx] - mean_f
+                            dl = lateral_values[idx] - mean_l
+                            var_f += (df * df)
+                            var_l += (dl * dl)
+                        var_f /= n_ff
+                        var_l /= n_ff
+                        sigma_f = math.sqrt(max(0.0, var_f))
+                        sigma_l = math.sqrt(max(0.0, var_l))
+                        ar_forward_ratio = sigma_f / (sigma_l + 1e-12)
+
+            engaged_alive_count = 0
+            for unit in alive_units:
+                if bool(unit.engaged) and bool(unit.engaged_target_id):
+                    engaged_alive_count += 1
+            if alive_units:
+                engaged_fraction = engaged_alive_count / float(len(alive_units))
+            else:
+                engaged_fraction = 0.0
+            contact_gate = engaged_fraction / 0.25
+            if contact_gate < 0.0:
+                contact_gate = 0.0
+            elif contact_gate > 1.0:
+                contact_gate = 1.0
+            precontact_gate = 1.0 - contact_gate
 
             separation_accumulator = {unit_id: [0.0, 0.0] for unit_id in alive_unit_ids}
             for i in range(len(alive_unit_ids)):
@@ -236,14 +751,61 @@ class EngineTickSkeleton:
                         separation_accumulator[unit_j][1] -= vy
 
             kappa = fleet.parameters.normalized()["formation_rigidity"]
+            pd_norm = fleet.parameters.normalized().get("pursuit_drive", 0.5)
             mobility_raw = float(fleet.parameters.mobility_bias)
-            # Phase V2.1 canonical mapping:
-            # MB_eff = 0.2 * (mobility_bias - 5) / 5, clipped to [-0.2, +0.2].
-            mb = 0.2 * (mobility_raw - 5.0) / 5.0
+            # Canonical 1-9 mapping:
+            # MB_eff = 0.2 * (mobility_bias - 5) / 4, clipped to [-0.2, +0.2].
+            mb = 0.2 * (mobility_raw - 5.0) / 4.0
             if mb < -0.2:
                 mb = -0.2
             elif mb > 0.2:
                 mb = 0.2
+
+            # Phase V3 canonical PD activation:
+            # EnemyCollapseSignal = 1 - EnemyCohesion
+            # PursuitConfirmThreshold = 1 - PD_norm
+            enemy_cohesion_values = []
+            cohesion_decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
+            debug_cohesion_v1 = getattr(self, "debug_last_cohesion_v1", {})
+            if not isinstance(debug_cohesion_v1, dict):
+                debug_cohesion_v1 = {}
+            for other_fleet_id, other_fleet in state.fleets.items():
+                if other_fleet_id == fleet_id:
+                    continue
+                if len(other_fleet.unit_ids) == 0:
+                    continue
+                if cohesion_decision_source == "v1_debug":
+                    cohesion_value = float(debug_cohesion_v1.get(other_fleet_id, state.last_fleet_cohesion.get(other_fleet_id, 1.0)))
+                else:
+                    cohesion_value = float(state.last_fleet_cohesion.get(other_fleet_id, 1.0))
+                enemy_cohesion_values.append(cohesion_value)
+            if enemy_cohesion_values:
+                enemy_cohesion = sum(enemy_cohesion_values) / len(enemy_cohesion_values)
+            else:
+                enemy_cohesion = 1.0
+            enemy_collapse_signal = 1.0 - enemy_cohesion
+            pursuit_confirm_threshold = 1.0 - pd_norm
+            deep_pursuit_mode = enemy_collapse_signal > pursuit_confirm_threshold
+            if deep_pursuit_mode:
+                collapse_excess = enemy_collapse_signal - pursuit_confirm_threshold
+                collapse_span = 1.0 - pursuit_confirm_threshold
+                if collapse_span <= 1e-12:
+                    pursuit_intensity = 1.0
+                else:
+                    pursuit_intensity = collapse_excess / collapse_span
+                if pursuit_intensity < 0.0:
+                    pursuit_intensity = 0.0
+                elif pursuit_intensity > 1.0:
+                    pursuit_intensity = 1.0
+            else:
+                pursuit_intensity = 0.0
+            # DeepPursuitMode effects are movement-only:
+            # - stronger forward weighting
+            # - weaker cohesion restoration
+            # - stronger extension tendency on non-cohesion maneuver
+            forward_gain = 1.0 + (0.35 * pursuit_intensity)
+            cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
+            extension_gain = 1.0 + (0.25 * pursuit_intensity)
             mb_is_zero = abs(mb) <= 1e-12
             tx = target_direction[0]
             ty = target_direction[1]
@@ -257,6 +819,13 @@ class EngineTickSkeleton:
                     t_hat_x = tx / target_norm
                     t_hat_y = ty / target_norm
                     has_target_axis = True
+
+            # Movement 3A constants (observer-audited switch path only).
+            attract_gain_base = 0.35
+            attract_gain_max = 0.85
+            stray_threshold_ratio = 1.15
+            lateral_damping_base = 0.25
+            enemy_pull_floor = 0.15
             for unit_id in fleet.unit_ids:
                 if unit_id not in updated_units:
                     continue
@@ -278,7 +847,11 @@ class EngineTickSkeleton:
 
                 boundary_x = 0.0
                 boundary_y = 0.0
-                if bool(getattr(self, "BOUNDARY_SOFT_ENABLED", True)) and boundary_band_width > 0.0:
+                if (
+                    bool(getattr(self, "BOUNDARY_SOFT_ENABLED", True))
+                    and boundary_band_width > 0.0
+                    and boundary_soft_strength > 0.0
+                ):
                     arena_max = float(state.arena_size)
                     d_left = unit.position.x
                     d_right = arena_max - unit.position.x
@@ -295,40 +868,118 @@ class EngineTickSkeleton:
                     phi_right = _phi_wall(d_right)
                     phi_bottom = _phi_wall(d_bottom)
                     phi_top = _phi_wall(d_top)
-                    boundary_x = phi_left - phi_right
-                    boundary_y = phi_bottom - phi_top
+                    boundary_x = (phi_left - phi_right) * boundary_soft_strength
+                    boundary_y = (phi_bottom - phi_top) * boundary_soft_strength
                     if diag_enabled and (phi_left > 0.0 or phi_right > 0.0 or phi_bottom > 0.0 or phi_top > 0.0):
                         boundary_force_events_count_tick += 1
 
-                # Keep MB=0 on the exact legacy path for bitwise regression.
-                if mb_is_zero:
-                    total_x = (
-                        target_direction[0]
-                        + (kappa * cohesion_dir[0])
+                if movement_model == "v3a":
+                    enemy_vec_x = enemy_centroid_x - unit.position.x
+                    enemy_vec_y = enemy_centroid_y - unit.position.y
+                    enemy_vec_norm = math.sqrt((enemy_vec_x * enemy_vec_x) + (enemy_vec_y * enemy_vec_y))
+                    if enemy_vec_norm > 1e-12:
+                        enemy_dir_x = enemy_vec_x / enemy_vec_norm
+                        enemy_dir_y = enemy_vec_y / enemy_vec_norm
+                    else:
+                        enemy_dir_x = target_direction[0]
+                        enemy_dir_y = target_direction[1]
+
+                    if fleet_rms_radius > 1e-12:
+                        stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
+                    else:
+                        stray_ratio_raw = 0.0
+                    if stray_ratio_raw <= stray_threshold_ratio:
+                        stray_factor = 0.0
+                    else:
+                        stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
+                    if stray_factor < 0.0:
+                        stray_factor = 0.0
+                    elif stray_factor > 1.0:
+                        stray_factor = 1.0
+
+                    anti_stretch = 0.0
+
+                    attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
+                    cohesion_scale = 1.0 + (0.40 * anti_stretch)
+                    cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
+                    cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
+                    if movement_v3a_experiment == "exp_precontact_centroid_probe":
+                        # A-line causal probe: only scale centroid restoration term.
+                        cohesion_x *= centroid_probe_scale
+                        cohesion_y *= centroid_probe_scale
+                    enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
+                    attract_x = attract_gain * (
+                        (enemy_pull_gain * enemy_dir_x) + ((1.0 - enemy_pull_gain) * target_direction[0])
+                    )
+                    attract_y = attract_gain * (
+                        (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
+                    )
+                    maneuver_x = (
+                        (forward_gain * target_direction[0])
+                        + attract_x
                         + (alpha_sep * separation_dir[0])
                         + (alpha_sep * boundary_x)
                     )
-                    total_y = (
-                        target_direction[1]
-                        + (kappa * cohesion_dir[1])
+                    maneuver_y = (
+                        (forward_gain * target_direction[1])
+                        + attract_y
                         + (alpha_sep * separation_dir[1])
                         + (alpha_sep * boundary_y)
                     )
-                else:
-                    cohesion_x = kappa * cohesion_dir[0]
-                    cohesion_y = kappa * cohesion_dir[1]
-                    maneuver_x = target_direction[0] + (alpha_sep * separation_dir[0]) + (alpha_sep * boundary_x)
-                    maneuver_y = target_direction[1] + (alpha_sep * separation_dir[1]) + (alpha_sep * boundary_y)
                     if has_target_axis:
                         dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
                         m_parallel_x = dot_mt * t_hat_x
                         m_parallel_y = dot_mt * t_hat_y
                         m_tangent_x = maneuver_x - m_parallel_x
                         m_tangent_y = maneuver_y - m_parallel_y
-                        maneuver_x = ((1.0 - mb) * m_parallel_x) + ((1.0 + mb) * m_tangent_x)
-                        maneuver_y = ((1.0 - mb) * m_parallel_y) + ((1.0 + mb) * m_tangent_y)
-                    total_x = cohesion_x + maneuver_x
-                    total_y = cohesion_y + maneuver_y
+                        tangent_scale = 1.0 + mb
+                        tangent_scale -= (lateral_damping_base * stray_factor)
+                        parallel_scale = 1.0
+                        if tangent_scale < 0.05:
+                            tangent_scale = 0.05
+                        maneuver_x = ((1.0 - mb) * parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
+                        maneuver_y = ((1.0 - mb) * parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
+                    if deep_pursuit_mode:
+                        extension_gain_effective = extension_gain
+                        maneuver_x *= extension_gain_effective
+                        maneuver_y *= extension_gain_effective
+                    axial_pull_x = 0.0
+                    axial_pull_y = 0.0
+                    total_x = cohesion_x + maneuver_x + axial_pull_x
+                    total_y = cohesion_y + maneuver_y + axial_pull_y
+                else:
+                    # Keep MB=0 on the exact legacy path for bitwise regression.
+                    if mb_is_zero and not deep_pursuit_mode:
+                        total_x = (
+                            target_direction[0]
+                            + (kappa * cohesion_dir[0])
+                            + (alpha_sep * separation_dir[0])
+                            + (alpha_sep * boundary_x)
+                        )
+                        total_y = (
+                            target_direction[1]
+                            + (kappa * cohesion_dir[1])
+                            + (alpha_sep * separation_dir[1])
+                            + (alpha_sep * boundary_y)
+                        )
+                    else:
+                        cohesion_x = (kappa * cohesion_gain) * cohesion_dir[0]
+                        cohesion_y = (kappa * cohesion_gain) * cohesion_dir[1]
+                        maneuver_x = (forward_gain * target_direction[0]) + (alpha_sep * separation_dir[0]) + (alpha_sep * boundary_x)
+                        maneuver_y = (forward_gain * target_direction[1]) + (alpha_sep * separation_dir[1]) + (alpha_sep * boundary_y)
+                        if has_target_axis:
+                            dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
+                            m_parallel_x = dot_mt * t_hat_x
+                            m_parallel_y = dot_mt * t_hat_y
+                            m_tangent_x = maneuver_x - m_parallel_x
+                            m_tangent_y = maneuver_y - m_parallel_y
+                            maneuver_x = ((1.0 - mb) * m_parallel_x) + ((1.0 + mb) * m_tangent_x)
+                            maneuver_y = ((1.0 - mb) * m_parallel_y) + ((1.0 + mb) * m_tangent_y)
+                        if deep_pursuit_mode:
+                            maneuver_x *= extension_gain
+                            maneuver_y *= extension_gain
+                        total_x = cohesion_x + maneuver_x
+                        total_y = cohesion_y + maneuver_y
                 total_norm = math.sqrt((total_x * total_x) + (total_y * total_y))
                 if total_norm > 0.0:
                     total_direction = (total_x / total_norm, total_y / total_norm)
@@ -1522,6 +2173,7 @@ class EngineTickSkeleton:
                 "boundary_soft": {
                     "boundary_band_width_w": boundary_band_width,
                     "boundary_band_fraction": boundary_band_fraction,
+                    "boundary_soft_strength": boundary_soft_strength,
                     "boundary_force_events_count_tick": boundary_force_events_count_tick,
                 },
                 "outliers": outlier_stats,

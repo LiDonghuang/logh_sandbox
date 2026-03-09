@@ -8,8 +8,8 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 
 - Current execution baseline: `v5.0-alpha5`
 - Current movement baseline: `v3a` (`exp_precontact_centroid_probe`, `centroid_probe_scale = 0.5`)
-- Current runtime cohesion decision source baseline: `v2`
-- `v3_test` remains an experimental cohesion / collapse runtime candidate under semantics review
+- Current runtime cohesion decision source baseline: `v3_test @ 1.1`
+- `v2` is retained as legacy runtime cohesion / collapse reference
 - Runtime language: `Python 3.11`
 - Governance model: App thread = governance; VS Code/Codex thread = engineering execution
 
@@ -92,20 +92,26 @@ Artifact output conventions:
 
 - `test_run/test_run_v1_0.settings.json` active runtime structure:
   - `runtime.selectors`
-  - `runtime.physical`
   - `runtime.movement`
-  - top-level `event_bridge`, `collapse_shadow`, `report_inference`, `visualization`
+  - `runtime.semantics`
+  - `runtime.physical`
+  - `runtime.observer`
 - Recommended demo spacing:
-  - `min_unit_spacing = 2.0`
+  - `runtime.physical.movement_low_level.min_unit_spacing = 2.0`
 - Density stress mode:
-  - `min_unit_spacing = 1.0`
+  - `runtime.physical.movement_low_level.min_unit_spacing = 1.0`
 - Fire quality anisotropy defaults (documented freeze):
-  - `fire_quality_alpha = 0.1`
-  - `alpha_safe_max = 0.15` (documentation-level bound)
+  - `runtime.physical.fire_control.fire_quality_alpha = 0.1`
+  - `runtime.physical.fire_control.alpha_safe_max = 0.15` (documentation-level bound)
 - Runtime feature toggles (canonical):
-  - `contact_hysteresis_h <= 0` => CH disabled
-  - `fsr_strength <= 0` => FSR disabled
+  - `runtime.physical.contact_model.contact_hysteresis_h <= 0` => CH disabled
+  - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled
   - Only `contact_hysteresis_h` / `fsr_strength` are used for runtime enable semantics
+- Current runtime collapse-signal semantics baseline:
+  - `runtime.selectors.cohesion_decision_source = baseline`
+  - baseline currently resolves to `v3_test`
+  - `runtime.semantics.collapse_signal.v3_connect_radius_multiplier = 1.1`
+  - `runtime.semantics.collapse_signal.v3_r_ref_radius_multiplier = 1.0`
 - Current exposed low-level movement knob:
   - `runtime.physical.movement_low_level.alpha_sep`
 - Hard-coded movement/projection constant still retained in engine:

@@ -46,10 +46,15 @@ COHESION_DECISION_SOURCE_LABELS = {
     "v2": "v2",
     "v3_test": "v3_test",
 }
+BASELINE_COHESION_DECISION_SOURCE = "v3_test"
+BASELINE_V3_CONNECT_RADIUS_MULTIPLIER = 1.1
+BASELINE_V3_R_REF_RADIUS_MULTIPLIER = 1.0
 _MISSING = object()
 RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
     "cohesion_decision_source": ("selectors", "cohesion_decision_source"),
+    "v3_connect_radius_multiplier": ("semantics", "collapse_signal", "v3_connect_radius_multiplier"),
+    "v3_r_ref_radius_multiplier": ("semantics", "collapse_signal", "v3_r_ref_radius_multiplier"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
     "contact_hysteresis_h": ("physical", "contact_model", "contact_hysteresis_h"),
@@ -57,9 +62,32 @@ RUNTIME_SETTING_PATHS = {
     "boundary_enabled": ("physical", "boundary", "enabled"),
     "boundary_soft_strength": ("physical", "boundary", "soft_strength"),
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
+    "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
     "movement_v3a_experiment": ("movement", "v3a", "experiment"),
     "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
+}
+OBSERVER_SETTING_PATHS = {
+    "event_bridge": {
+        "theta_split": ("observer", "event_bridge", "theta_split"),
+        "theta_env": ("observer", "event_bridge", "theta_env"),
+        "sustain_ticks": ("observer", "event_bridge", "sustain_ticks"),
+    },
+    "collapse_shadow": {
+        "theta_conn_default": ("observer", "collapse_shadow", "theta_conn_default"),
+        "theta_coh_default": ("observer", "collapse_shadow", "theta_coh_default"),
+        "theta_force_default": ("observer", "collapse_shadow", "theta_force_default"),
+        "theta_attr_default": ("observer", "collapse_shadow", "theta_attr_default"),
+        "attrition_window": ("observer", "collapse_shadow", "attrition_window"),
+        "sustain_ticks": ("observer", "collapse_shadow", "sustain_ticks"),
+        "min_conditions": ("observer", "collapse_shadow", "min_conditions"),
+    },
+    "report_inference": {
+        "strategic_inflection_sustain_ticks": ("observer", "report_inference", "strategic_inflection_sustain_ticks"),
+        "tactical_swing_sustain_ticks": ("observer", "report_inference", "tactical_swing_sustain_ticks"),
+        "tactical_swing_min_amplitude": ("observer", "report_inference", "tactical_swing_min_amplitude"),
+        "tactical_swing_min_gap_ticks": ("observer", "report_inference", "tactical_swing_min_gap_ticks"),
+    },
 }
 DEFAULT_AVATAR_A = "avatar_09162"
 DEFAULT_AVATAR_B = "avatar_09195"
@@ -757,23 +785,35 @@ def get_runtime_setting(settings: dict, key: str, default):
 
 
 def get_event_bridge_setting(settings: dict, key: str, default):
-    section = settings.get("event_bridge", {})
-    if isinstance(section, dict) and key in section:
-        return section[key]
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_path = OBSERVER_SETTING_PATHS["event_bridge"].get(key)
+        if nested_path is not None:
+            nested_value = get_nested_mapping_value(runtime_section, nested_path, _MISSING)
+            if nested_value is not _MISSING:
+                return nested_value
     return default
 
 
 def get_collapse_shadow_setting(settings: dict, key: str, default):
-    section = settings.get("collapse_shadow", {})
-    if isinstance(section, dict) and key in section:
-        return section[key]
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_path = OBSERVER_SETTING_PATHS["collapse_shadow"].get(key)
+        if nested_path is not None:
+            nested_value = get_nested_mapping_value(runtime_section, nested_path, _MISSING)
+            if nested_value is not _MISSING:
+                return nested_value
     return default
 
 
 def get_report_inference_setting(settings: dict, key: str, default):
-    section = settings.get("report_inference", {})
-    if isinstance(section, dict) and key in section:
-        return section[key]
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_path = OBSERVER_SETTING_PATHS["report_inference"].get(key)
+        if nested_path is not None:
+            nested_value = get_nested_mapping_value(runtime_section, nested_path, _MISSING)
+            if nested_value is not _MISSING:
+                return nested_value
     return default
 
 
@@ -786,6 +826,8 @@ def get_unit_setting(settings: dict, key: str, default):
 
 
 def get_battlefield_setting(settings: dict, key: str, default):
+    if key == "min_unit_spacing":
+        return get_runtime_setting(settings, "min_unit_spacing", default)
     return get_section_setting(settings, "battlefield", key, default)
 
 
@@ -815,12 +857,18 @@ def test_mode_label(mode_code: int) -> str:
     return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
 
 
-def resolve_plot_profile(raw_value, test_mode: int, cohesion_decision_source_requested: str) -> tuple[str, str]:
+def resolve_plot_profile(
+    raw_value,
+    test_mode: int,
+    cohesion_decision_source_requested: str,
+    cohesion_decision_source_effective: str,
+) -> tuple[str, str]:
     requested = str(raw_value).strip().lower()
     if requested not in PLOT_PROFILE_LABELS:
         requested = "auto"
     requested_cohesion = str(cohesion_decision_source_requested).strip().lower()
-    v3_plot_permitted = int(test_mode) >= 1 and requested_cohesion == "v3_test"
+    effective_cohesion = str(cohesion_decision_source_effective).strip().lower()
+    v3_plot_permitted = effective_cohesion == "v3_test"
     if requested == "auto":
         effective = "extended" if v3_plot_permitted else "baseline"
     elif requested == "extended" and not v3_plot_permitted:
@@ -838,7 +886,7 @@ def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str
     requested = str(raw_value).strip().lower()
     if requested not in COHESION_DECISION_SOURCE_LABELS:
         requested = "baseline"
-    baseline_source = "v2"
+    baseline_source = BASELINE_COHESION_DECISION_SOURCE
     if requested == "baseline":
         effective = baseline_source
     else:
@@ -1783,7 +1831,7 @@ def main() -> None:
 
     fleet_size = int(get_fleet_setting(settings, "initial_fleet_size", 100))
     aspect_ratio = float(get_fleet_setting(settings, "initial_fleet_aspect_ratio", 2.0))
-    unit_spacing = float(get_battlefield_setting(settings, "min_unit_spacing", 1.0))
+    unit_spacing = float(get_runtime_setting(settings, "min_unit_spacing", 1.0))
     if fleet_size < 1:
         raise ValueError(f"initial_fleet_size must be >= 1, got {fleet_size}")
     if aspect_ratio <= 0.0:
@@ -1923,10 +1971,27 @@ def main() -> None:
         get_runtime_setting(settings, "cohesion_decision_source", "baseline"),
         test_mode,
     )
+    v3_connect_radius_multiplier = float(
+        get_runtime_setting(settings, "v3_connect_radius_multiplier", BASELINE_V3_CONNECT_RADIUS_MULTIPLIER)
+    )
+    if v3_connect_radius_multiplier <= 0.0:
+        v3_connect_radius_multiplier = BASELINE_V3_CONNECT_RADIUS_MULTIPLIER
+    v3_r_ref_radius_multiplier = float(
+        get_runtime_setting(settings, "v3_r_ref_radius_multiplier", BASELINE_V3_R_REF_RADIUS_MULTIPLIER)
+    )
+    if v3_r_ref_radius_multiplier <= 0.0:
+        v3_r_ref_radius_multiplier = BASELINE_V3_R_REF_RADIUS_MULTIPLIER
+    if runtime_decision_source_effective == "v3_test":
+        v3_connect_radius_multiplier_effective = v3_connect_radius_multiplier
+        v3_r_ref_radius_multiplier_effective = v3_r_ref_radius_multiplier
+    else:
+        v3_connect_radius_multiplier_effective = 1.0
+        v3_r_ref_radius_multiplier_effective = 1.0
     plot_profile_requested, plot_profile_effective = resolve_plot_profile(
         get_visualization_setting(settings, "plot_profile", "auto"),
         test_mode,
         runtime_decision_source_requested,
+        runtime_decision_source_effective,
     )
     plot_diagnostics_enabled = bool(animate) or bool(observer_enabled)
     print(f"[viz] random_seed_effective={effective_random_seed}")
@@ -1942,6 +2007,9 @@ def main() -> None:
     print(f"[mode] movement_model_requested={movement_model_requested}")
     print(f"[mode] cohesion_decision_source_requested={runtime_decision_source_requested}")
     print(f"[mode] runtime_decision_source_effective={runtime_decision_source_effective}")
+    if runtime_decision_source_effective == "v3_test":
+        print(f"[runtime] v3_connect_radius_multiplier_effective={v3_connect_radius_multiplier_effective:.3f}")
+        print(f"[runtime] v3_r_ref_radius_multiplier_effective={v3_r_ref_radius_multiplier_effective:.3f}")
     print(f"[mode] movement_model_effective={movement_model_effective}")
     print(f"[runtime] alpha_sep={alpha_sep:.3f}")
     if movement_model_effective == "v3a":
@@ -2012,6 +2080,8 @@ def main() -> None:
         plot_diagnostics_enabled=plot_diagnostics_enabled,
         movement_v3a_experiment=movement_v3a_experiment_effective,
         centroid_probe_scale=centroid_probe_scale_effective,
+        v3_connect_radius_multiplier=v3_connect_radius_multiplier_effective,
+        v3_r_ref_radius_multiplier=v3_r_ref_radius_multiplier_effective,
     )
     if not animate:
         position_frames = []
@@ -2028,7 +2098,7 @@ def main() -> None:
         "background_map_seed_effective": int(effective_background_map_seed),
         "metatype_random_seed_effective": int(effective_metatype_random_seed),
         "runtime_decision_source_effective": runtime_decision_source_effective,
-        "collapse_decision_source_effective": "legacy_v2",
+        "collapse_decision_source_effective": runtime_decision_source_effective,
         "movement_model_effective": movement_model_effective,
         "movement_v3a_experiment_effective": movement_v3a_experiment_effective if movement_model_effective == "v3a" else "N/A",
         "centroid_probe_scale_effective": (
@@ -2049,6 +2119,8 @@ def main() -> None:
         "boundary_hard_enabled": boundary_hard_enabled,
         "boundary_hard_enabled_effective": boundary_hard_enabled_effective,
         "alpha_sep": alpha_sep,
+        "v3_connect_radius_multiplier_effective": v3_connect_radius_multiplier_effective,
+        "v3_r_ref_radius_multiplier_effective": v3_r_ref_radius_multiplier_effective,
         "bridge_theta_split": bridge_theta_split,
         "bridge_theta_env": bridge_theta_env,
         "bridge_sustain_ticks": bridge_sustain_ticks,

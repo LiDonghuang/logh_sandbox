@@ -148,15 +148,15 @@ The 9-slot plotting layout is position-frozen. Slot geometry is stable; only met
 `run_control.test_mode` is the execution permission switch for slot content, but `runtime.selectors.cohesion_decision_source` controls whether v3-test cohesion plots are allowed.
 
 - `0` (`default`): baseline runtime only; plots are forced to baseline.
-- `1` (`observe`): baseline runtime + observer/event diagnostics; plots remain baseline unless `cohesion_decision_source=v3_test`, in which case v3-test diagnostic plots are shown while runtime stays baseline.
-- `2` (`test`): experimental runtime selectors permitted; plots remain baseline unless `cohesion_decision_source=v3_test`, in which case both runtime selection and v3-test diagnostic plots may activate.
+- `1` (`observe`): baseline runtime + observer/event diagnostics; plots follow the effective runtime cohesion source.
+- `2` (`test`): explicit legacy/runtime-source selection permitted; plots follow the effective runtime cohesion source.
 
 Plot-profile resolution rule:
 
 - `plot_profile=auto`:
-  - baseline if requested cohesion source is `baseline` or `v2`;
-  - extended only if requested cohesion source is `v3_test` and `test_mode>=1`.
-- `plot_profile=extended` is invalid unless requested cohesion source is `v3_test` and `test_mode>=1`; invalid requests must be remapped to baseline.
+  - baseline if effective cohesion source is `v2`;
+  - extended if effective cohesion source is `v3_test`.
+- `plot_profile=extended` is invalid unless the effective cohesion source is `v3_test`; invalid requests must be remapped to baseline.
 - `plot_profile=baseline` is always permitted.
 
 Rules:
@@ -168,7 +168,7 @@ Rules:
 Current active slot mapping:
 
 - `slot_01 + slot_02`: Alive Units
-- `slot_03`: Cohesion (`C_v2` baseline or `C_v3` when explicitly in v3-test plot mode)
+- `slot_03`: Cohesion (`C_v2` when plotting legacy `v2`; `C_v3` when plotting current `v3_test` source)
 - `slot_04`: `AR_forward`
 - `slot_05`: `WedgeRatio`
 - `slot_06`: `SplitSeparation`

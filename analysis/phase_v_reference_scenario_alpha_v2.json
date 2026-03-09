@@ -1,12 +1,12 @@
-﻿{
+{
   "reference_id": "Phase V Reference Scenario Alpha v2",
   "status": "active_baseline_snapshot_v2",
-  "created_at": "2026-03-08 02:00:00",
+  "created_at": "2026-03-09 12:00:00",
   "source_files": {
     "settings_path": "analysis/phase_v_default.settings.json",
     "archetypes_path": "archetypes/archetypes_v1_5.json",
-    "settings_sha256": "2fac4ebeedef9e458a75ade23606f0c77305ca3ddb932b0b120ceadc79e15195",
-    "archetypes_sha256": "7907b9664a7fe9c8f970e926c9d9963f33e391bf70c5738805dcbccde31d0ee3"
+    "settings_sha256": "8aaf7da5295908b8180405933bfca6972f6ccb0f31da602399a3777d0136609d",
+    "archetypes_sha256": "1d1ba599b20780757121aeeb6f3044d5dfe0e4279c6d0df5f44fa48a17131d0e"
   },
   "scenario_parameters": {
     "fleet_a_archetype_key_at_capture": "reuenthal",
@@ -19,15 +19,19 @@
     "movement_model": "v3a",
     "movement_v3a_experiment": "exp_precontact_centroid_probe",
     "centroid_probe_scale": 0.5,
+    "cohesion_decision_source": "v3_test",
+    "v3_connect_radius_multiplier": 1.1,
+    "v3_r_ref_radius_multiplier": 1.0,
     "contact_hysteresis_h": 0.1,
     "fsr_strength": 0.1,
     "boundary_enabled": false,
-    "max_time_steps": -1
+    "max_time_steps": -1,
+    "parameter_scale_domain": "1..9"
   },
   "regression_baseline": {
-    "status": "pending_recapture_after_movement_v3a_baseline_activation",
+    "status": "pending_recapture_after_collapse_source_baseline_activation",
     "required": true,
-    "rule": "Run reference scenario with this snapshot and store determinism digest + milestone samples before using as hard regression gate."
+    "rule": "Run reference scenario with this snapshot and store determinism digest + milestone samples after collapse-source baseline activation and scale-normalization alignment before using as hard regression gate."
   },
   "supersedes": "analysis/phase_v_reference_scenario_alpha.json",
   "usage_rule": "Use this v2 file as the active reference anchor for future reports and validations."

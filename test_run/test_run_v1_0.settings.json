@@ -1,4 +1,4 @@
-﻿{
+{
   "_comments": {
     "fleet": {
       "fleet_a_archetype_id": "Fleet A archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
@@ -6,85 +6,8 @@
       "initial_fleet_size": "Units per fleet.",
       "initial_fleet_aspect_ratio": "Initial formation col/row ratio. Example: 2.0 means wider than tall."
     },
-    "unit": {
-      "attack_range": "Combat hit range (distance threshold). Phase V governance default is 5.0.",
-      "damage_per_tick": "Base attack damage per successful hit event.",
-      "unit_max_hit_points": "Initial and max HP per unit.",
-      "unit_speed": "Per-unit movement speed."
-    },
-    "battlefield": {
-      "arena_size": "Square battlefield size (0..arena_size).",
-      "background_map_seed": "Background map seed (stars/planet/asteroid field). If -1, use true randomness.",
-      "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0."
-    },
-    "run_control": {
-      "display_language": "Label language for plot names: 'EN' or 'ZH'.",
-      "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
-      "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
-      "metatype_random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to random_seed. If -1, use true randomness.",
-      "animate": "Enable battlefield animation.",
-      "test_mode": "Execution permission switch. 0/default: baseline runtime only, plots forced to baseline. 1/observe: baseline runtime + observer/event/BRF; v3_test plots are allowed only if cohesion_decision_source=v3_test. 2/test: experimental runtime selectors permitted + observer/event/BRF; v3_test runtime/plots are allowed only if cohesion_decision_source=v3_test.",
-      "metatype_settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype)."
-    },
-    "runtime": {
-      "selectors": {
-        "movement_model": "Runtime movement selector: baseline | v3a | v1. baseline follows current movement baseline; legacy v1 is remapped out of standard test runs.",
-        "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v2. test_mode=0/1 remap runtime to baseline; test_mode=2 permits v3_test runtime. Plot switching to v3_test profile requires requested source=v3_test and test_mode>=1."
-      },
-      "physical": {
-        "fire_control": {
-          "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect; 0.1 is current recommended default.",
-          "alpha_safe_max": "Documented safe upper bound for fire_quality_alpha: 0.15 (governance note)."
-        },
-        "contact_model": {
-          "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
-          "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR."
-        },
-        "boundary": {
-          "enabled": "Enable boundary soft mechanism master switch. false=soft/hard both OFF. true=soft ON and hard follows hard_enabled.",
-          "soft_strength": "Boundary soft-force strength multiplier. 0.0 disables soft push while enabled=true; 1.0 keeps current baseline.",
-          "hard_enabled": "Enable hard boundary clamp only when enabled=true. true=hard clamp ON; false=soft-only boundary mode."
-        },
-        "movement_low_level": {
-          "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
-        }
-      },
-      "movement": {
-        "v3a": {
-          "experiment": "v3a selector: base | exp_precontact_centroid_probe.",
-          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe."
-        }
-      }
-    },
-    "event_bridge": {
-      "theta_split": "Tier-2 Formation Cut bridge threshold on split_separation (Channel-T condition).",
-      "theta_env": "Tier-2 Pocket Formation bridge threshold on angle_coverage (Channel-T condition).",
-      "sustain_ticks": "Sustain ticks required for Tier-2 bridge events (both cut/pocket)."
-    },
-    "collapse_shadow": {
-      "theta_conn_default": "Fallback theta_conn default for collapse_v2_shadow when quantile threshold cannot be formed.",
-      "theta_coh_default": "Fallback theta_coh default for collapse_v2_shadow when quantile threshold cannot be formed.",
-      "theta_force_default": "Fallback theta_force default for collapse_v2_shadow when quantile threshold cannot be formed.",
-      "theta_attr_default": "Fallback theta_attr default for collapse_v2_shadow when quantile threshold cannot be formed.",
-      "attrition_window": "Collapse_v2_shadow AttritionMomentum window W (ticks).",
-      "sustain_ticks": "Collapse_v2_shadow sustain S (ticks).",
-      "min_conditions": "Collapse_v2_shadow pressure condition threshold: minimum true conditions among 4 signals."
-    },
-    "report_inference": {
-      "strategic_inflection_sustain_ticks": "Sustain ticks for strategic inflection detection in BRF narrative (HP-size lead).",
-      "tactical_swing_sustain_ticks": "Sustain ticks for tactical swing clustering in BRF narrative (alive lead).",
-      "tactical_swing_min_amplitude": "Minimum absolute alive-lead amplitude for tactical swing clustering.",
-      "tactical_swing_min_gap_ticks": "Minimum tick gap used to merge nearby tactical swing crossings into one cluster."
-    },
     "visualization": {
-      "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
-      "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
-      "plot_profile": "Plot selector: auto | baseline | extended. auto follows cohesion_decision_source: baseline/v2 => baseline plots; requested v3_test with test_mode>=1 => extended v3_test plots. Explicit extended is remapped to baseline unless test_mode>=1 and cohesion_decision_source=v3_test.",
-      "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
-      "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
-      "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
-      "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
-      "print_tick_summary": "Print per-tick summary logs to console.",
+      "plot_profile": "Plot selector: auto | baseline | extended. auto follows the effective cohesion source: v3_test => v3 plots, v2 => v2 plots. Explicit extended is only valid when the effective source is v3_test.",
       "export_video": {
         "enabled": "Video export switch. false keeps current interactive-only behavior.",
         "full_plot": "true=export full figure layout; false=export Battlefield-only square video (side=height_px).",
@@ -95,7 +18,92 @@
         "width_px": "Output video width in pixels. Default 1920.",
         "height_px": "Output video height in pixels. Default 1080.",
         "dpi": "Render DPI used during animation export. width_px/dpi and height_px/dpi define figure size during export."
+      },
+      "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
+      "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
+      "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
+      "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
+      "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
+      "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
+      "print_tick_summary": "Print per-tick summary logs to console."
+    },
+    "runtime": {
+      "selectors": {
+        "movement_model": "Runtime movement selector: baseline | v3a | v1. baseline follows current movement baseline; legacy v1 is remapped out of standard test runs.",
+        "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
+      },
+      "movement": {
+        "v3a": {
+          "experiment": "v3a selector: base | exp_precontact_centroid_probe.",
+          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe."
+        }
+      },
+      "semantics": {
+        "collapse_signal": {
+          "v3_connect_radius_multiplier": "Semantic connectivity-radius multiplier for runtime source v3_test. Current baseline-confirmed working value is 1.1.",
+          "v3_r_ref_radius_multiplier": "Scale-reference multiplier for runtime source v3_test. Keep at 1.0 unless a dedicated semantics review explicitly opens this second-stage variable."
+        }
+      },
+      "physical": {
+        "boundary": {
+          "enabled": "Enable boundary soft mechanism master switch. false=soft/hard both OFF. true=soft ON and hard follows hard_enabled.",
+          "soft_strength": "Boundary soft-force strength multiplier. 0.0 disables soft push while enabled=true; 1.0 keeps current baseline.",
+          "hard_enabled": "Enable hard boundary clamp only when enabled=true. true=hard clamp ON; false=soft-only boundary mode."
+        },
+        "movement_low_level": {
+          "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0.",
+          "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
+        },
+        "fire_control": {
+          "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect; 0.1 is current recommended default.",
+          "alpha_safe_max": "Documented safe upper bound for fire_quality_alpha: 0.15 (governance note)."
+        },
+        "contact_model": {
+          "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
+          "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR."
+        }
+      },
+      "observer": {
+        "event_bridge": {
+          "theta_split": "Tier-2 Formation Cut bridge threshold on split_separation (Channel-T condition).",
+          "theta_env": "Tier-2 Pocket Formation bridge threshold on angle_coverage (Channel-T condition).",
+          "sustain_ticks": "Sustain ticks required for Tier-2 bridge events (both cut/pocket)."
+        },
+        "collapse_shadow": {
+          "theta_conn_default": "Fallback theta_conn default for collapse_v2_shadow when quantile threshold cannot be formed.",
+          "theta_coh_default": "Fallback theta_coh default for collapse_v2_shadow when quantile threshold cannot be formed.",
+          "theta_force_default": "Fallback theta_force default for collapse_v2_shadow when quantile threshold cannot be formed.",
+          "theta_attr_default": "Fallback theta_attr default for collapse_v2_shadow when quantile threshold cannot be formed.",
+          "attrition_window": "Collapse_v2_shadow AttritionMomentum window W (ticks).",
+          "sustain_ticks": "Collapse_v2_shadow sustain S (ticks).",
+          "min_conditions": "Collapse_v2_shadow pressure condition threshold: minimum true conditions among 4 signals."
+        },
+        "report_inference": {
+          "strategic_inflection_sustain_ticks": "Sustain ticks for strategic inflection detection in BRF narrative (HP-size lead).",
+          "tactical_swing_sustain_ticks": "Sustain ticks for tactical swing clustering in BRF narrative (alive lead).",
+          "tactical_swing_min_amplitude": "Minimum absolute alive-lead amplitude for tactical swing clustering.",
+          "tactical_swing_min_gap_ticks": "Minimum tick gap used to merge nearby tactical swing crossings into one cluster."
+        }
       }
+    },
+    "run_control": {
+      "display_language": "Label language for plot names: 'EN' or 'ZH'.",
+      "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
+      "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
+      "metatype_random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to random_seed. If -1, use true randomness.",
+      "animate": "Enable battlefield animation.",
+      "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted.",
+      "metatype_settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype)."
+    },
+    "battlefield": {
+      "arena_size": "Square battlefield size (0..arena_size).",
+      "background_map_seed": "Background map seed (stars/planet/asteroid field). If -1, use true randomness."
+    },
+    "unit": {
+      "attack_range": "Combat hit range (distance threshold). Phase V governance default is 5.0.",
+      "damage_per_tick": "Base attack damage per successful hit event.",
+      "unit_max_hit_points": "Initial and max HP per unit.",
+      "unit_speed": "Per-unit movement speed."
     }
   },
   "fleet": {
@@ -104,85 +112,8 @@
     "initial_fleet_size": 100,
     "initial_fleet_aspect_ratio": 2.0
   },
-  "unit": {
-    "attack_range": 5.0,
-    "damage_per_tick": 1.0,
-    "unit_max_hit_points": 100.0,
-    "unit_speed": 1.0
-  },
-  "battlefield": {
-    "arena_size": 200.0,
-    "background_map_seed": 897304369,
-    "min_unit_spacing": 2.0
-  },
-  "run_control": {
-    "display_language": "ZH",
-    "max_time_steps": -1,
-    "random_seed": -1,
-    "metatype_random_seed": -1,
-    "animate": true,
-    "test_mode": 2,
-    "metatype_settings_path": "archetypes/metatype_settings.json"
-  },
-  "runtime": {
-    "selectors": {
-      "movement_model": "baseline",
-      "cohesion_decision_source": "v3_test"
-    },
-    "physical": {
-      "fire_control": {
-        "fire_quality_alpha": 0.1,
-        "alpha_safe_max": 0.15
-      },
-      "contact_model": {
-        "contact_hysteresis_h": 0.1,
-        "fsr_strength": 0.1
-      },
-      "boundary": {
-        "enabled": true,
-        "soft_strength": 0.1,
-        "hard_enabled": false
-      },
-      "movement_low_level": {
-        "alpha_sep": 0.6
-      }
-    },
-    "movement": {
-      "v3a": {
-        "experiment": "exp_precontact_centroid_probe",
-        "centroid_probe_scale": 0.5
-      }
-    }
-  },
-  "event_bridge": {
-    "theta_split": 1.7,
-    "theta_env": 0.5,
-    "sustain_ticks": 20
-  },
-  "collapse_shadow": {
-    "theta_conn_default": 0.1,
-    "theta_coh_default": 0.98,
-    "theta_force_default": 0.95,
-    "theta_attr_default": 0.1,
-    "attrition_window": 20,
-    "sustain_ticks": 10,
-    "min_conditions": 2
-  },
-  "report_inference": {
-    "strategic_inflection_sustain_ticks": 12,
-    "tactical_swing_sustain_ticks": 8,
-    "tactical_swing_min_amplitude": 2.0,
-    "tactical_swing_min_gap_ticks": 10
-  },
   "visualization": {
-    "auto_zoom_2d": true,
-    "vector_display_mode": "composite",
     "plot_profile": "auto",
-    "show_attack_target_lines": true,
-    "tick_plots_follow_battlefield_tick": false,
-    "animation_play_speed": 1.0,
-    "animation_frame_interval_ms": 100,
-    "print_tick_summary": true,
     "export_video": {
       "enabled": false,
       "full_plot": true,
@@ -193,6 +124,91 @@
       "width_px": 1920,
       "height_px": 1080,
       "dpi": 110
+    },
+    "auto_zoom_2d": true,
+    "vector_display_mode": "composite",
+    "show_attack_target_lines": true,
+    "tick_plots_follow_battlefield_tick": false,
+    "animation_play_speed": 1.0,
+    "animation_frame_interval_ms": 100,
+    "print_tick_summary": true
+  },
+  "runtime": {
+    "selectors": {
+      "movement_model": "baseline",
+      "cohesion_decision_source": "baseline"
+    },
+    "movement": {
+      "v3a": {
+        "experiment": "exp_precontact_centroid_probe",
+        "centroid_probe_scale": 0.5
+      }
+    },
+    "semantics": {
+      "collapse_signal": {
+        "v3_connect_radius_multiplier": 1.1,
+        "v3_r_ref_radius_multiplier": 1.0
+      }
+    },
+    "physical": {
+      "boundary": {
+        "enabled": true,
+        "soft_strength": 0.1,
+        "hard_enabled": false
+      },
+      "movement_low_level": {
+        "min_unit_spacing": 2.0,
+        "alpha_sep": 0.6
+      },
+      "fire_control": {
+        "fire_quality_alpha": 0.1,
+        "alpha_safe_max": 0.15
+      },
+      "contact_model": {
+        "contact_hysteresis_h": 0.1,
+        "fsr_strength": 0.1
+      }
+    },
+    "observer": {
+      "event_bridge": {
+        "theta_split": 1.7,
+        "theta_env": 0.5,
+        "sustain_ticks": 20
+      },
+      "collapse_shadow": {
+        "theta_conn_default": 0.1,
+        "theta_coh_default": 0.98,
+        "theta_force_default": 0.95,
+        "theta_attr_default": 0.1,
+        "attrition_window": 20,
+        "sustain_ticks": 10,
+        "min_conditions": 2
+      },
+      "report_inference": {
+        "strategic_inflection_sustain_ticks": 12,
+        "tactical_swing_sustain_ticks": 8,
+        "tactical_swing_min_amplitude": 2.0,
+        "tactical_swing_min_gap_ticks": 10
+      }
     }
+  },
+  "run_control": {
+    "display_language": "ZH",
+    "max_time_steps": -1,
+    "random_seed": -1,
+    "metatype_random_seed": -1,
+    "animate": true,
+    "test_mode": 2,
+    "metatype_settings_path": "archetypes/metatype_settings.json"
+  },
+  "battlefield": {
+    "arena_size": 200.0,
+    "background_map_seed": 897304369
+  },
+  "unit": {
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "unit_max_hit_points": 100.0,
+    "unit_speed": 1.0
   }
 }
