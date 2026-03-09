@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -20,6 +20,7 @@ from runtime_v0_1 import (
     initialize_unit_orientations,
 )
 from runtime.engine_skeleton import EngineTickSkeleton
+from test_run.battle_report_builder import build_battle_report_markdown, resolve_name_with_fallback
 
 
 DEFAULT_DT = 1.0
@@ -34,6 +35,31 @@ TEST_MODE_LABELS = {
     0: "default",
     1: "observe",
     2: "test",
+}
+PLOT_PROFILE_LABELS = {
+    "auto": "auto",
+    "baseline": "baseline",
+    "extended": "extended",
+}
+COHESION_DECISION_SOURCE_LABELS = {
+    "baseline": "baseline",
+    "v2": "v2",
+    "v3_test": "v3_test",
+}
+_MISSING = object()
+RUNTIME_SETTING_PATHS = {
+    "movement_model": ("selectors", "movement_model"),
+    "cohesion_decision_source": ("selectors", "cohesion_decision_source"),
+    "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
+    "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
+    "contact_hysteresis_h": ("physical", "contact_model", "contact_hysteresis_h"),
+    "fsr_strength": ("physical", "contact_model", "fsr_strength"),
+    "boundary_enabled": ("physical", "boundary", "enabled"),
+    "boundary_soft_strength": ("physical", "boundary", "soft_strength"),
+    "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
+    "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
+    "movement_v3a_experiment": ("movement", "v3a", "experiment"),
+    "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
 }
 DEFAULT_AVATAR_A = "avatar_09162"
 DEFAULT_AVATAR_B = "avatar_09195"
@@ -65,7 +91,7 @@ PERSONALITY_PARAM_KEYS = (
     "pursuit_drive",
     "retreat_threshold",
 )
-DEFAULT_METATYPE_SETTINGS_PATH = "analysis/metatype_settings.json"
+DEFAULT_METATYPE_SETTINGS_PATH = "archetypes/metatype_settings.json"
 
 
 def load_json_file(path: Path) -> dict:
@@ -77,7 +103,7 @@ def resolve_optional_json_path(base_dir: Path, configured_path: str, default_pat
     raw = str(configured_path).strip()
     candidate = Path(raw if raw else default_path)
     if not candidate.is_absolute():
-        candidate = (base_dir.parent / candidate).resolve()
+        candidate = (PROJECT_ROOT / candidate).resolve()
     return candidate
 
 
@@ -95,6 +121,334 @@ def load_metatype_settings(base_dir: Path, settings: dict) -> dict:
 
 
 class TestModeEngineTickSkeleton(EngineTickSkeleton):
+    def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+        eps = 1e-12
+        fleet = state.fleets.get(fleet_id)
+        if fleet is None:
+            return 1.0, {
+                "n_alive": 0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "fragmentation": 0.0,
+                "dispersion": 0.0,
+                "outlier_mass": 0.0,
+                "elongation": 0.0,
+                "exploitability": 0.0,
+                "cohesion_v2": 1.0,
+                "lcc_ratio": 1.0,
+                "dispersion_ratio_q90_q50": 1.0,
+                "outlier_count": 0,
+                "outlier_threshold": 0.0,
+                "q50_radius": 0.0,
+                "q90_radius": 0.0,
+                "connect_radius_effective": 0.0,
+                "connect_radius_multiplier": 1.0,
+            }
+
+        alive_positions = []
+        for unit_id in fleet.unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or unit.hit_points <= 0.0:
+                continue
+            alive_positions.append((unit.position.x, unit.position.y))
+        n_alive = len(alive_positions)
+
+        v2_connect_multiplier = float(getattr(self, "V2_CONNECT_RADIUS_MULTIPLIER", 1.0))
+        if v2_connect_multiplier <= 0.0:
+            v2_connect_multiplier = 1.0
+
+        if n_alive == 0:
+            return 0.0, {
+                "n_alive": 0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "fragmentation": 1.0,
+                "dispersion": 0.0,
+                "outlier_mass": 0.0,
+                "elongation": 0.0,
+                "exploitability": 1.0,
+                "cohesion_v2": 0.0,
+                "lcc_ratio": 0.0,
+                "dispersion_ratio_q90_q50": 1.0,
+                "outlier_count": 0,
+                "outlier_threshold": 0.0,
+                "q50_radius": 0.0,
+                "q90_radius": 0.0,
+                "connect_radius_effective": float(self.separation_radius) * v2_connect_multiplier,
+                "connect_radius_multiplier": v2_connect_multiplier,
+            }
+
+        sum_x = 0.0
+        sum_y = 0.0
+        for x, y in alive_positions:
+            sum_x += x
+            sum_y += y
+        centroid_x = sum_x / n_alive
+        centroid_y = sum_y / n_alive
+
+        radii = []
+        cov_xx = 0.0
+        cov_xy = 0.0
+        cov_yy = 0.0
+        for x, y in alive_positions:
+            dx = x - centroid_x
+            dy = y - centroid_y
+            radii.append(math.sqrt((dx * dx) + (dy * dy)))
+            cov_xx += dx * dx
+            cov_xy += dx * dy
+            cov_yy += dy * dy
+        cov_xx /= n_alive
+        cov_xy /= n_alive
+        cov_yy /= n_alive
+
+        sorted_radii = sorted(radii)
+        q25 = self._quantile_sorted(sorted_radii, 0.25)
+        q50 = self._quantile_sorted(sorted_radii, 0.50)
+        q75 = self._quantile_sorted(sorted_radii, 0.75)
+        q90 = self._quantile_sorted(sorted_radii, 0.90)
+        iqr = q75 - q25
+        if iqr < 0.0:
+            iqr = 0.0
+
+        if q90 <= eps and q50 <= eps:
+            dispersion_ratio = 1.0
+            f_disp = 0.0
+        else:
+            dispersion_ratio = q90 / (q50 + eps)
+            if dispersion_ratio < 1.0:
+                dispersion_ratio = 1.0
+            f_disp = 1.0 - (1.0 / dispersion_ratio)
+            f_disp = self._clamp01(f_disp)
+
+        outlier_threshold = q75 + (1.5 * iqr)
+        outlier_count = 0
+        for r in radii:
+            if r > outlier_threshold:
+                outlier_count += 1
+        f_out = self._clamp01(outlier_count / n_alive)
+
+        trace = cov_xx + cov_yy
+        det = (cov_xx * cov_yy) - (cov_xy * cov_xy)
+        disc = (trace * trace) - (4.0 * det)
+        if disc < 0.0:
+            disc = 0.0
+        sqrt_disc = math.sqrt(disc)
+        lambda_1 = 0.5 * (trace + sqrt_disc)
+        lambda_2 = 0.5 * (trace - sqrt_disc)
+        if lambda_1 < eps:
+            f_elong = 0.0
+        else:
+            f_elong = 1.0 - (lambda_2 / (lambda_1 + eps))
+            f_elong = self._clamp01(f_elong)
+
+        if n_alive == 1:
+            lcc_ratio = 1.0
+            connect_radius_effective = float(self.separation_radius) * v2_connect_multiplier
+        else:
+            connect_radius = float(self.separation_radius) * v2_connect_multiplier
+            if connect_radius < eps:
+                connect_radius = eps
+            connect_radius_effective = connect_radius
+            connect_radius_sq = connect_radius * connect_radius
+            visited = [False] * n_alive
+            largest_component_size = 0
+            for i in range(n_alive):
+                if visited[i]:
+                    continue
+                visited[i] = True
+                stack = [i]
+                component_size = 0
+                while stack:
+                    node = stack.pop()
+                    component_size += 1
+                    nx, ny = alive_positions[node]
+                    for j in range(n_alive):
+                        if visited[j] or j == node:
+                            continue
+                        px, py = alive_positions[j]
+                        ddx = nx - px
+                        ddy = ny - py
+                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
+                            visited[j] = True
+                            stack.append(j)
+                if component_size > largest_component_size:
+                    largest_component_size = component_size
+            lcc_ratio = largest_component_size / n_alive
+        f_frag = self._clamp01(1.0 - lcc_ratio)
+
+        exploitability = 1.0 - (
+            (1.0 - f_frag)
+            * (1.0 - f_disp)
+            * (1.0 - f_out)
+            * (1.0 - f_elong)
+        )
+        cohesion_v2 = self._clamp01(1.0 - exploitability)
+
+        return cohesion_v2, {
+            "n_alive": n_alive,
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "fragmentation": f_frag,
+            "dispersion": f_disp,
+            "outlier_mass": f_out,
+            "elongation": f_elong,
+            "exploitability": exploitability,
+            "cohesion_v2": cohesion_v2,
+            "lcc_ratio": lcc_ratio,
+            "dispersion_ratio_q90_q50": dispersion_ratio,
+            "outlier_count": outlier_count,
+            "outlier_threshold": outlier_threshold,
+            "q50_radius": q50,
+            "q90_radius": q90,
+            "connect_radius_effective": connect_radius_effective,
+            "connect_radius_multiplier": v2_connect_multiplier,
+        }
+
+    def _compute_cohesion_v3_shadow_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+        eps = 1e-12
+        rho_low = 0.35
+        rho_high = 1.15
+        penalty_k = 6.0
+
+        fleet = state.fleets.get(fleet_id)
+        if fleet is None:
+            return 1.0, {
+                "n_alive": 0,
+                "lcc": 0,
+                "c_conn": 1.0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "r": 0.0,
+                "r_ref": 0.0,
+                "rho": 0.0,
+                "c_scale": 1.0,
+                "c_v3": 1.0,
+                "rho_low": rho_low,
+                "rho_high": rho_high,
+                "k": penalty_k,
+                "connect_radius_effective": 0.0,
+                "connect_radius_multiplier": 1.0,
+                "r_ref_multiplier": 1.0,
+            }
+
+        alive_positions = []
+        for unit_id in fleet.unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or unit.hit_points <= 0.0:
+                continue
+            alive_positions.append((unit.position.x, unit.position.y))
+        n_alive = len(alive_positions)
+
+        v3_connect_multiplier = float(getattr(self, "V3_CONNECT_RADIUS_MULTIPLIER", 1.0))
+        if v3_connect_multiplier <= 0.0:
+            v3_connect_multiplier = 1.0
+        v3_r_ref_multiplier = float(getattr(self, "V3_R_REF_RADIUS_MULTIPLIER", 1.0))
+        if v3_r_ref_multiplier <= 0.0:
+            v3_r_ref_multiplier = 1.0
+
+        if n_alive == 0:
+            return 0.0, {
+                "n_alive": 0,
+                "lcc": 0,
+                "c_conn": 0.0,
+                "centroid_x": 0.0,
+                "centroid_y": 0.0,
+                "r": 0.0,
+                "r_ref": 0.0,
+                "rho": 0.0,
+                "c_scale": 1.0,
+                "c_v3": 0.0,
+                "rho_low": rho_low,
+                "rho_high": rho_high,
+                "k": penalty_k,
+                "connect_radius_effective": float(self.separation_radius) * v3_connect_multiplier,
+                "connect_radius_multiplier": v3_connect_multiplier,
+                "r_ref_multiplier": v3_r_ref_multiplier,
+            }
+
+        sum_x = 0.0
+        sum_y = 0.0
+        for x, y in alive_positions:
+            sum_x += x
+            sum_y += y
+        centroid_x = sum_x / n_alive
+        centroid_y = sum_y / n_alive
+
+        radius_sq_sum = 0.0
+        for x, y in alive_positions:
+            dx = x - centroid_x
+            dy = y - centroid_y
+            radius_sq_sum += (dx * dx) + (dy * dy)
+        r = math.sqrt(radius_sq_sum / n_alive)
+        r_ref = float(self.separation_radius) * v3_r_ref_multiplier * math.sqrt(float(n_alive))
+        if r_ref <= eps:
+            rho = 0.0
+        else:
+            rho = r / r_ref
+
+        if rho < rho_low:
+            c_scale = math.exp(-penalty_k * ((rho_low - rho) ** 2))
+        elif rho <= rho_high:
+            c_scale = 1.0
+        else:
+            c_scale = math.exp(-penalty_k * ((rho - rho_high) ** 2))
+
+        if n_alive == 1:
+            lcc = 1
+            c_conn = 1.0
+            connect_radius_effective = float(self.separation_radius) * v3_connect_multiplier
+        else:
+            connect_radius = float(self.separation_radius) * v3_connect_multiplier
+            if connect_radius < eps:
+                connect_radius = eps
+            connect_radius_effective = connect_radius
+            connect_radius_sq = connect_radius * connect_radius
+            visited = [False] * n_alive
+            largest_component_size = 0
+            for i in range(n_alive):
+                if visited[i]:
+                    continue
+                visited[i] = True
+                stack = [i]
+                component_size = 0
+                while stack:
+                    node = stack.pop()
+                    component_size += 1
+                    nx, ny = alive_positions[node]
+                    for j in range(n_alive):
+                        if visited[j] or j == node:
+                            continue
+                        px, py = alive_positions[j]
+                        ddx = nx - px
+                        ddy = ny - py
+                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
+                            visited[j] = True
+                            stack.append(j)
+                if component_size > largest_component_size:
+                    largest_component_size = component_size
+            lcc = largest_component_size
+            c_conn = largest_component_size / n_alive
+
+        c_v3 = self._clamp01(c_conn * c_scale)
+        return c_v3, {
+            "n_alive": n_alive,
+            "lcc": lcc,
+            "c_conn": c_conn,
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "r": r,
+            "r_ref": r_ref,
+            "rho": rho,
+            "c_scale": c_scale,
+            "c_v3": c_v3,
+            "rho_low": rho_low,
+            "rho_high": rho_high,
+            "k": penalty_k,
+            "connect_radius_effective": connect_radius_effective,
+            "connect_radius_multiplier": v3_connect_multiplier,
+            "r_ref_multiplier": v3_r_ref_multiplier,
+        }
+
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
         next_state = super().evaluate_cohesion(state)
         decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
@@ -136,19 +490,7 @@ def resolve_archetype(archetypes: dict, archetype_ref: str):
     raise KeyError(archetype_ref)
 
 
-def resolve_legacy_pursuit_drive(data: dict) -> float:
-    if "pursuit_drive" in data:
-        return float(data["pursuit_drive"])
-    if "pursuit_threshold" in data:
-        return float(data["pursuit_threshold"])
-    if "PT" in data:
-        return float(data["PT"])
-    raise KeyError("pursuit_drive")
-
-
 def _personality_value_from_data(data: dict, key: str) -> float:
-    if key == "pursuit_drive":
-        return resolve_legacy_pursuit_drive(data)
     if key not in data:
         raise KeyError(key)
     return float(data[key])
@@ -293,7 +635,7 @@ def to_personality_parameters(data: dict) -> PersonalityParameters:
         targeting_logic=float(data["targeting_logic"]),
         formation_rigidity=float(data["formation_rigidity"]),
         perception_radius=float(data["perception_radius"]),
-        pursuit_drive=resolve_legacy_pursuit_drive(data),
+        pursuit_drive=float(data["pursuit_drive"]),
         retreat_threshold=float(data["retreat_threshold"]),
     )
 
@@ -383,6 +725,15 @@ def get_section_setting(settings: dict, section: str, key: str, default):
     return settings.get(key, default)
 
 
+def get_nested_mapping_value(data: dict, path: tuple[str, ...], default=_MISSING):
+    current = data
+    for part in path:
+        if not isinstance(current, dict) or part not in current:
+            return default
+        current = current[part]
+    return current
+
+
 def get_visualization_setting(settings: dict, key: str, default):
     return get_section_setting(settings, "visualization", key, default)
 
@@ -395,7 +746,35 @@ def get_visualization_section(settings: dict) -> dict:
 
 
 def get_runtime_setting(settings: dict, key: str, default):
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_path = RUNTIME_SETTING_PATHS.get(key)
+        if nested_path is not None:
+            nested_value = get_nested_mapping_value(runtime_section, nested_path, _MISSING)
+            if nested_value is not _MISSING:
+                return nested_value
     return get_section_setting(settings, "runtime", key, default)
+
+
+def get_event_bridge_setting(settings: dict, key: str, default):
+    section = settings.get("event_bridge", {})
+    if isinstance(section, dict) and key in section:
+        return section[key]
+    return default
+
+
+def get_collapse_shadow_setting(settings: dict, key: str, default):
+    section = settings.get("collapse_shadow", {})
+    if isinstance(section, dict) and key in section:
+        return section[key]
+    return default
+
+
+def get_report_inference_setting(settings: dict, key: str, default):
+    section = settings.get("report_inference", {})
+    if isinstance(section, dict) and key in section:
+        return section[key]
+    return default
 
 
 def get_fleet_setting(settings: dict, key: str, default):
@@ -436,8 +815,55 @@ def test_mode_label(mode_code: int) -> str:
     return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
 
 
-def get_seed_setting(settings: dict, key: str, default):
-    return get_section_setting(settings, "seeds", key, default)
+def resolve_plot_profile(raw_value, test_mode: int, cohesion_decision_source_requested: str) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in PLOT_PROFILE_LABELS:
+        requested = "auto"
+    requested_cohesion = str(cohesion_decision_source_requested).strip().lower()
+    v3_plot_permitted = int(test_mode) >= 1 and requested_cohesion == "v3_test"
+    if requested == "auto":
+        effective = "extended" if v3_plot_permitted else "baseline"
+    elif requested == "extended" and not v3_plot_permitted:
+        effective = "baseline"
+    else:
+        effective = requested
+    if requested == "extended" and effective != "extended":
+        print(
+            f"[mode] plot_profile={requested} requested but test_mode={test_mode} with cohesion_decision_source={requested_cohesion} only permits baseline plots; remapping to baseline"
+        )
+    return requested, effective
+
+
+def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in COHESION_DECISION_SOURCE_LABELS:
+        requested = "baseline"
+    baseline_source = "v2"
+    if requested == "baseline":
+        effective = baseline_source
+    else:
+        effective = requested
+    if int(test_mode) < 2 and effective != baseline_source:
+        print(
+            f"[mode] cohesion_decision_source={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_source}"
+        )
+        effective = baseline_source
+    return requested, effective
+
+
+def resolve_movement_model(raw_value) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in {"baseline", "v1", "v3a"}:
+        requested = "baseline"
+    baseline_model = "v3a"
+    if requested == "baseline":
+        effective = baseline_model
+    elif requested == "v1":
+        print("[mode] movement_model=v1 requested in standard test run; remapping to v3a after baseline activation")
+        effective = baseline_model
+    else:
+        effective = requested
+    return requested, effective
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -454,20 +880,6 @@ def resolve_effective_seed(seed_value: int) -> int:
     return seed_value
 
 
-def seed_word_from_int(seed_value: int, length: int = 6) -> str:
-    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    rng = random.Random(int(seed_value) & 0xFFFFFFFF)
-    return "".join(rng.choice(letters) for _ in range(max(1, length)))
-
-
-def tick_to_std_time(tick: int | None) -> str:
-    if tick is None or tick < 0:
-        return "--:--"
-    hh = tick // 60
-    mm = tick % 60
-    return f"{hh:02d}:{mm:02d}"
-
-
 def resolve_timestamped_video_output_path(raw_output_path: str, base_dir: Path) -> Path:
     candidate = Path(str(raw_output_path).strip()) if str(raw_output_path).strip() else Path(DEFAULT_VIDEO_EXPORT_DIR)
     if not candidate.is_absolute():
@@ -482,178 +894,6 @@ def resolve_timestamped_video_output_path(raw_output_path: str, base_dir: Path) 
         suffix = ".mp4"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return (target_dir / f"{base_stem}_{timestamp}{suffix}").resolve()
-
-
-def first_tick_true(values, predicate) -> int | None:
-    for idx, value in enumerate(values, start=1):
-        if predicate(value):
-            return idx
-    return None
-
-
-def to_ships_ceil(value: float) -> int:
-    v = int(value)
-    if float(v) == float(value):
-        return max(0, v)
-    if value > 0.0:
-        return max(0, v + 1)
-    return 0
-
-
-def sign_of(value: float, eps: float = 1e-9) -> int:
-    fv = float(value)
-    if fv > eps:
-        return 1
-    if fv < -eps:
-        return -1
-    return 0
-
-
-def build_sign_segments(values: list[float], start_tick: int = 1) -> list[dict]:
-    if not values:
-        return []
-    start_idx = max(0, int(start_tick) - 1)
-    if start_idx >= len(values):
-        return []
-    segments: list[dict] = []
-    cur_sign = sign_of(values[start_idx])
-    cur_start = start_idx
-    for idx in range(start_idx + 1, len(values)):
-        s = sign_of(values[idx])
-        if s != cur_sign:
-            seg_values = values[cur_start:idx]
-            segments.append(
-                {
-                    "sign": cur_sign,
-                    "start_tick": cur_start + 1,
-                    "end_tick": idx,
-                    "length": idx - cur_start,
-                    "peak_abs": max((abs(float(v)) for v in seg_values), default=0.0),
-                }
-            )
-            cur_sign = s
-            cur_start = idx
-    seg_values = values[cur_start:]
-    segments.append(
-        {
-            "sign": cur_sign,
-            "start_tick": cur_start + 1,
-            "end_tick": len(values),
-            "length": len(values) - cur_start,
-            "peak_abs": max((abs(float(v)) for v in seg_values), default=0.0),
-        }
-    )
-    return segments
-
-
-def detect_strategic_inflection(
-    diff_series: list[float],
-    *,
-    start_tick: int = 1,
-    sustain_ticks: int = STRATEGIC_INFLECTION_SUSTAIN_TICKS,
-) -> tuple[int | None, int]:
-    segments = build_sign_segments(diff_series, start_tick=start_tick)
-    baseline_sign = 0
-    for seg in segments:
-        seg_sign = int(seg["sign"])
-        if seg_sign != 0:
-            baseline_sign = seg_sign
-            break
-    if baseline_sign == 0:
-        return (None, 0)
-
-    inflection_tick: int | None = None
-    inflection_sign = 0
-    for seg in segments:
-        seg_sign = int(seg["sign"])
-        seg_len = int(seg["length"])
-        if seg_sign == 0:
-            continue
-        if seg_sign == baseline_sign:
-            continue
-        if seg_len >= int(sustain_ticks):
-            inflection_tick = int(seg["start_tick"])
-            inflection_sign = seg_sign
-            break
-    return (inflection_tick, inflection_sign)
-
-
-def detect_tactical_swing_clusters(
-    diff_series: list[float],
-    *,
-    start_tick: int = 1,
-    sustain_ticks: int = TACTICAL_SWING_SUSTAIN_TICKS,
-    min_amplitude: float = TACTICAL_SWING_MIN_AMPLITUDE,
-    min_gap_ticks: int = TACTICAL_SWING_MIN_GAP_TICKS,
-) -> dict:
-    segments = build_sign_segments(diff_series, start_tick=start_tick)
-    stable_segments = []
-    for seg in segments:
-        seg_sign = int(seg["sign"])
-        seg_len = int(seg["length"])
-        seg_amp = float(seg["peak_abs"])
-        if seg_sign == 0:
-            continue
-        if seg_len < int(sustain_ticks):
-            continue
-        if seg_amp < float(min_amplitude):
-            continue
-        stable_segments.append(seg)
-
-    swing_ticks: list[int] = []
-    last_sign = 0
-    for seg in stable_segments:
-        seg_sign = int(seg["sign"])
-        if last_sign == 0:
-            last_sign = seg_sign
-            continue
-        if seg_sign != last_sign:
-            swing_ticks.append(int(seg["start_tick"]))
-            last_sign = seg_sign
-
-    clusters: list[dict] = []
-    for tick in swing_ticks:
-        if not clusters:
-            clusters.append({"start_tick": int(tick), "end_tick": int(tick), "count": 1})
-            continue
-        last = clusters[-1]
-        if int(tick) - int(last["end_tick"]) < int(min_gap_ticks):
-            last["end_tick"] = int(tick)
-            last["count"] = int(last["count"]) + 1
-        else:
-            clusters.append({"start_tick": int(tick), "end_tick": int(tick), "count": 1})
-
-    return {
-        "stable_segments": stable_segments,
-        "swing_ticks": swing_ticks,
-        "clusters": clusters,
-        "cluster_count": len(clusters),
-        "first_tick": int(clusters[0]["start_tick"]) if clusters else None,
-        "last_tick": int(clusters[-1]["end_tick"]) if clusters else None,
-    }
-
-
-def resolve_name_with_fallback(
-    side_data: dict,
-    language: str,
-    prefer_full_name: bool,
-    fallback: str,
-) -> str:
-    if prefer_full_name:
-        key = "full_name_ZH" if language == "ZH" else "full_name_EN"
-    else:
-        key = "disp_name_ZH" if language == "ZH" else "disp_name_EN"
-    value = side_data.get(key)
-    if value:
-        return str(value)
-    if prefer_full_name:
-        alt_key = "full_name_EN"
-    else:
-        alt_key = "disp_name_EN"
-    alt = side_data.get(alt_key)
-    if alt:
-        return str(alt)
-    return fallback
 
 
 def _mean_xy(points: list[tuple[float, float]]) -> tuple[float, float]:
@@ -881,43 +1121,6 @@ def compute_bridge_metrics_per_side(state: BattleState) -> dict:
     return metrics_by_fleet
 
 
-def compute_bridge_event_ticks(bridge_telemetry: dict | None) -> dict:
-    result = {
-        "cut_per_side": {"A": None, "B": None},
-        "pocket_per_side": {"A": None, "B": None},
-        "formation_cut_tick": None,
-        "pocket_formation_tick": None,
-    }
-    if not isinstance(bridge_telemetry, dict):
-        return result
-
-    split_ticks = bridge_telemetry.get("first_tick_split_sustain", {})
-    env_ticks = bridge_telemetry.get("first_tick_env_sustain", {})
-    if not isinstance(split_ticks, dict):
-        split_ticks = {}
-    if not isinstance(env_ticks, dict):
-        env_ticks = {}
-
-    def normalize_tick(raw):
-        try:
-            tick = int(raw)
-        except (TypeError, ValueError):
-            return None
-        if tick < 1:
-            return None
-        return tick
-
-    for side in ("A", "B"):
-        result["cut_per_side"][side] = normalize_tick(split_ticks.get(side))
-        result["pocket_per_side"][side] = normalize_tick(env_ticks.get(side))
-
-    cut_candidates = [v for v in result["cut_per_side"].values() if isinstance(v, int)]
-    env_candidates = [v for v in result["pocket_per_side"].values() if isinstance(v, int)]
-    result["formation_cut_tick"] = min(cut_candidates) if cut_candidates else None
-    result["pocket_formation_tick"] = min(env_candidates) if env_candidates else None
-    return result
-
-
 def _quantile(sorted_values: list[float], q: float) -> float:
     if not sorted_values:
         return float("nan")
@@ -1140,430 +1343,6 @@ def compute_collapse_v2_shadow_telemetry(
     return out
 
 
-def build_battle_report_markdown(
-    *,
-    settings_source_path: str,
-    display_language: str,
-    random_seed_effective: int,
-    fleet_a_data: dict,
-    fleet_b_data: dict,
-    initial_fleet_sizes: dict,
-    alive_trajectory: dict,
-    fleet_size_trajectory: dict,
-    combat_telemetry: dict,
-    bridge_telemetry: dict,
-    collapse_shadow_telemetry: dict,
-    final_state: BattleState,
-    run_config_snapshot: dict,
-) -> str:
-    ticks = list(range(1, len(alive_trajectory.get("A", [])) + 1))
-    alive_a = [int(v) for v in alive_trajectory.get("A", [])]
-    alive_b = [int(v) for v in alive_trajectory.get("B", [])]
-    size_a = [float(v) for v in fleet_size_trajectory.get("A", [])]
-    size_b = [float(v) for v in fleet_size_trajectory.get("B", [])]
-    in_contact = [int(v) for v in combat_telemetry.get("in_contact_count", [])]
-    bridge_ticks = compute_bridge_event_ticks(bridge_telemetry)
-    strategic_inflection_sustain_ticks = max(
-        1,
-        int(run_config_snapshot.get("strategic_inflection_sustain_ticks", STRATEGIC_INFLECTION_SUSTAIN_TICKS)),
-    )
-    tactical_swing_sustain_ticks = max(
-        1,
-        int(run_config_snapshot.get("tactical_swing_sustain_ticks", TACTICAL_SWING_SUSTAIN_TICKS)),
-    )
-    tactical_swing_min_amplitude = max(
-        0.0,
-        float(run_config_snapshot.get("tactical_swing_min_amplitude", TACTICAL_SWING_MIN_AMPLITUDE)),
-    )
-    tactical_swing_min_gap_ticks = max(
-        0,
-        int(run_config_snapshot.get("tactical_swing_min_gap_ticks", TACTICAL_SWING_MIN_GAP_TICKS)),
-    )
-
-    has_names = bool(
-        fleet_a_data.get("disp_name_EN")
-        and fleet_b_data.get("disp_name_EN")
-        and fleet_a_data.get("full_name_EN")
-        and fleet_b_data.get("full_name_EN")
-    )
-
-    if has_names:
-        commander_a_zh = resolve_name_with_fallback(fleet_a_data, "ZH", True, "A")
-        commander_b_zh = resolve_name_with_fallback(fleet_b_data, "ZH", True, "B")
-        fleet_a_zh = resolve_name_with_fallback(fleet_a_data, "ZH", False, "A")
-        fleet_b_zh = resolve_name_with_fallback(fleet_b_data, "ZH", False, "B")
-        commander_a_en = resolve_name_with_fallback(fleet_a_data, "EN", True, "A")
-        commander_b_en = resolve_name_with_fallback(fleet_b_data, "EN", True, "B")
-        fleet_a_en = resolve_name_with_fallback(fleet_a_data, "EN", False, "A")
-        fleet_b_en = resolve_name_with_fallback(fleet_b_data, "EN", False, "B")
-    else:
-        commander_a_zh = "A"
-        commander_b_zh = "B"
-        fleet_a_zh = "A"
-        fleet_b_zh = "B"
-        commander_a_en = "A"
-        commander_b_en = "B"
-        fleet_a_en = "A"
-        fleet_b_en = "B"
-
-    first_contact_tick = first_tick_true(in_contact, lambda v: int(v) > 0)
-    first_kill_tick = first_tick_true(
-        ticks,
-        lambda i: (
-            (alive_a[i - 1] < alive_a[i - 2]) if i > 1 else (alive_a[i - 1] < int(run_config_snapshot["initial_units_per_side"]))
-        )
-        or (
-            (alive_b[i - 1] < alive_b[i - 2]) if i > 1 else (alive_b[i - 1] < int(run_config_snapshot["initial_units_per_side"]))
-        ),
-    )
-
-    size_diff = [float(a) - float(b) for a, b in zip(size_a, size_b)]
-    inflection_scan_start = first_contact_tick if first_contact_tick is not None else 1
-    inflection_tick, inflection_sign = detect_strategic_inflection(
-        size_diff,
-        start_tick=inflection_scan_start,
-        sustain_ticks=strategic_inflection_sustain_ticks,
-    )
-
-    alive_diff = [float(a) - float(b) for a, b in zip(alive_a, alive_b)]
-    tactical_scan_start = first_kill_tick if first_kill_tick is not None else (first_contact_tick if first_contact_tick is not None else 1)
-    tactical_swing_summary = detect_tactical_swing_clusters(
-        alive_diff,
-        start_tick=tactical_scan_start,
-        sustain_ticks=tactical_swing_sustain_ticks,
-        min_amplitude=tactical_swing_min_amplitude,
-        min_gap_ticks=tactical_swing_min_gap_ticks,
-    )
-
-    initial_hp_a = float(initial_fleet_sizes.get("A", 0.0))
-    initial_hp_b = float(initial_fleet_sizes.get("B", 0.0))
-    endgame_tick = first_tick_true(
-        ticks,
-        lambda i: (
-            size_a[i - 1] <= (initial_hp_a * ENDGAME_HP_RATIO_DEFAULT)
-            or size_b[i - 1] <= (initial_hp_b * ENDGAME_HP_RATIO_DEFAULT)
-        ),
-    )
-
-    end_tick = int(final_state.tick)
-    final_hp_a = float(size_a[-1]) if size_a else 0.0
-    final_hp_b = float(size_b[-1]) if size_b else 0.0
-    final_units_a = int(alive_a[-1]) if alive_a else 0
-    final_units_b = int(alive_b[-1]) if alive_b else 0
-    final_ships_a = to_ships_ceil(final_hp_a)
-    final_ships_b = to_ships_ceil(final_hp_b)
-
-    winner = "A"
-    if final_hp_b > final_hp_a:
-        winner = "B"
-    elif abs(final_hp_a - final_hp_b) <= 1e-9:
-        winner = "Draw"
-
-    if winner == "A":
-        final_outcome_zh = (
-            f"至标准时{tick_to_std_time(end_tick)} (t={end_tick})，{fleet_b_zh}舰队全灭，"
-            f"{fleet_a_zh}舰队残余{final_ships_a}艘 (A units={final_units_a})。"
-        )
-        final_outcome_en = (
-            f"By ST {tick_to_std_time(end_tick)} (t={end_tick}), {fleet_b_en} Fleet was eliminated, "
-            f"and {fleet_a_en} Fleet retained {final_ships_a} ships (A units={final_units_a})."
-        )
-    elif winner == "B":
-        final_outcome_zh = (
-            f"至标准时{tick_to_std_time(end_tick)} (t={end_tick})，{fleet_a_zh}舰队全灭，"
-            f"{fleet_b_zh}舰队残余{final_ships_b}艘 (B units={final_units_b})。"
-        )
-        final_outcome_en = (
-            f"By ST {tick_to_std_time(end_tick)} (t={end_tick}), {fleet_a_en} Fleet was eliminated, "
-            f"and {fleet_b_en} Fleet retained {final_ships_b} ships (B units={final_units_b})."
-        )
-    else:
-        final_outcome_zh = (
-            f"至标准时{tick_to_std_time(end_tick)} (t={end_tick})，战斗结束为平局，"
-            f"A残余{final_ships_a}艘 (A units={final_units_a})，"
-            f"B残余{final_ships_b}艘 (B units={final_units_b})。"
-        )
-        final_outcome_en = (
-            f"By ST {tick_to_std_time(end_tick)} (t={end_tick}), the battle ended in a draw: "
-            f"A retained {final_ships_a} ships (A units={final_units_a}), "
-            f"B retained {final_ships_b} ships (B units={final_units_b})."
-        )
-
-    events_zh = []
-    if first_contact_tick is not None:
-        events_zh.append(
-            (
-                int(first_contact_tick),
-                f"双方在标准时{tick_to_std_time(first_contact_tick)} (t={first_contact_tick}) 开始交火。",
-            )
-        )
-    if inflection_tick is not None:
-        if inflection_sign > 0:
-            side_zh = f"{fleet_a_zh}舰队"
-        else:
-            side_zh = f"{fleet_b_zh}舰队"
-
-        if first_kill_tick is not None and inflection_tick < first_kill_tick:
-            prefix_zh = "在首批建制伤亡前"
-        elif first_contact_tick is not None and (inflection_tick - first_contact_tick) <= 10:
-            prefix_zh = "在初段接触后"
-        elif first_kill_tick is not None and (inflection_tick - first_kill_tick) <= 20:
-            prefix_zh = "在早段拉扯后"
-        else:
-            prefix_zh = "在中段拉扯后"
-
-        events_zh.append(
-            (
-                int(inflection_tick),
-                (
-                    f"战线{prefix_zh}，于标准时{tick_to_std_time(inflection_tick)} (t={inflection_tick}) "
-                    f"出现优势拐点，{side_zh}逐步掌握主动。"
-                ),
-            )
-        )
-    if tactical_swing_summary.get("cluster_count", 0) > 0:
-        swing_count = int(tactical_swing_summary.get("cluster_count", 0))
-        swing_first = int(tactical_swing_summary.get("first_tick"))
-        swing_last = int(tactical_swing_summary.get("last_tick"))
-        if swing_count == 1:
-            swing_text_zh = (
-                f"{fleet_a_zh}舰队与{fleet_b_zh}舰队在标准时{tick_to_std_time(swing_first)} "
-                f"(t={swing_first}) 附近出现一次战术拉扯（Alive优势易手）。"
-            )
-        else:
-            swing_text_zh = (
-                f"{fleet_a_zh}舰队与{fleet_b_zh}舰队在标准时{tick_to_std_time(swing_first)} (t={swing_first}) "
-                f"到 {tick_to_std_time(swing_last)} (t={swing_last}) 间出现{swing_count}次战术拉扯（Alive优势多次易手）。"
-            )
-        events_zh.append((swing_first, swing_text_zh))
-    if first_kill_tick is not None:
-        events_zh.append(
-            (
-                int(first_kill_tick),
-                f"双方在标准时{tick_to_std_time(first_kill_tick)} (t={first_kill_tick}) 出现成建制伤亡。",
-            )
-        )
-    if endgame_tick is not None:
-        events_zh.append(
-            (
-                int(endgame_tick),
-                f"标准时{tick_to_std_time(endgame_tick)} (t={endgame_tick}) 后，战局进入终盘压制。",
-            )
-        )
-    events_zh.sort(key=lambda item: item[0])
-
-    events_en = []
-    if first_contact_tick is not None:
-        events_en.append(
-            (
-                int(first_contact_tick),
-                f"The fleets started exchanging fire at ST {tick_to_std_time(first_contact_tick)} (t={first_contact_tick}).",
-            )
-        )
-    if inflection_tick is not None:
-        if inflection_sign > 0:
-            side_en = f"{fleet_a_en} Fleet"
-        else:
-            side_en = f"{fleet_b_en} Fleet"
-
-        if first_kill_tick is not None and inflection_tick < first_kill_tick:
-            prefix_en = "Before the first organized losses"
-        elif first_contact_tick is not None and (inflection_tick - first_contact_tick) <= 10:
-            prefix_en = "Shortly after first contact"
-        elif first_kill_tick is not None and (inflection_tick - first_kill_tick) <= 20:
-            prefix_en = "After early-phase exchanges"
-        else:
-            prefix_en = "After a mid-line tug of war"
-
-        events_en.append(
-            (
-                int(inflection_tick),
-                (
-                    f"{prefix_en}, an advantage inflection appeared at ST "
-                    f"{tick_to_std_time(inflection_tick)} (t={inflection_tick}), and {side_en} gradually took initiative."
-                ),
-            )
-        )
-    if tactical_swing_summary.get("cluster_count", 0) > 0:
-        swing_count = int(tactical_swing_summary.get("cluster_count", 0))
-        swing_first = int(tactical_swing_summary.get("first_tick"))
-        swing_last = int(tactical_swing_summary.get("last_tick"))
-        if swing_count == 1:
-            swing_text_en = (
-                f"{fleet_a_en} Fleet and {fleet_b_en} Fleet traded local tactical initiative once near "
-                f"ST {tick_to_std_time(swing_first)} (t={swing_first}) based on alive-unit lead."
-            )
-        else:
-            swing_text_en = (
-                f"{fleet_a_en} Fleet and {fleet_b_en} Fleet traded local tactical initiative {swing_count} times "
-                f"between ST {tick_to_std_time(swing_first)} (t={swing_first}) and "
-                f"ST {tick_to_std_time(swing_last)} (t={swing_last}) based on alive-unit lead."
-            )
-        events_en.append((swing_first, swing_text_en))
-    if first_kill_tick is not None:
-        events_en.append(
-            (
-                int(first_kill_tick),
-                f"Organized losses appeared at ST {tick_to_std_time(first_kill_tick)} (t={first_kill_tick}).",
-            )
-        )
-    if endgame_tick is not None:
-        events_en.append(
-            (
-                int(endgame_tick),
-                f"After ST {tick_to_std_time(endgame_tick)} (t={endgame_tick}), the battle entered endgame suppression.",
-            )
-        )
-    events_en.sort(key=lambda item: item[0])
-
-    collapse_first_ticks = []
-    if isinstance(collapse_shadow_telemetry, dict):
-        first_tick_map = collapse_shadow_telemetry.get("first_tick_collapse_v2_shadow", {})
-        if isinstance(first_tick_map, dict):
-            raw_a = first_tick_map.get("A")
-            raw_b = first_tick_map.get("B")
-            if isinstance(raw_a, int):
-                collapse_first_ticks.append(int(raw_a))
-            if isinstance(raw_b, int):
-                collapse_first_ticks.append(int(raw_b))
-    collapse_first_tick_any = min(collapse_first_ticks) if collapse_first_ticks else None
-    collapse_before_contact = "N/A"
-    if collapse_first_tick_any is not None and first_contact_tick is not None:
-        collapse_before_contact = "Yes" if collapse_first_tick_any < first_contact_tick else "No"
-    collapse_aligned_with_cut = "N/A"
-    formation_cut_tick = bridge_ticks.get("formation_cut_tick")
-    if collapse_first_tick_any is not None and isinstance(formation_cut_tick, int):
-        collapse_aligned_with_cut = "Yes" if abs(int(collapse_first_tick_any) - int(formation_cut_tick)) <= 1 else "No"
-
-    seed_word = seed_word_from_int(random_seed_effective, length=6)
-    initial_units_per_side = int(run_config_snapshot["initial_units_per_side"])
-    initial_ships_a = to_ships_ceil(initial_hp_a)
-    initial_ships_b = to_ships_ceil(initial_hp_b)
-
-    fixed_lead_zh_lines = [
-        f"{seed_word} 星域会战",
-        f"{commander_a_zh}(A) vs {commander_b_zh}(B)",
-        f"{fleet_a_zh}舰队: {initial_ships_a}艘 (A: {initial_units_per_side} units); {fleet_b_zh}舰队: {initial_ships_b}艘 (B: {initial_units_per_side} units)",
-    ]
-    fixed_lead_en_lines = [
-        f"{seed_word} Starfield Engagement",
-        f"{commander_a_en}(A) vs {commander_b_en}(B)",
-        f"{fleet_a_en} Fleet: {initial_ships_a} ships (A: {initial_units_per_side} units); {fleet_b_en} Fleet: {initial_ships_b} ships (B: {initial_units_per_side} units)",
-    ]
-
-    narrative_zh_body = " ".join(item[1] for item in events_zh) if events_zh else "双方全程未形成有效交火。"
-    narrative_en_body = " ".join(item[1] for item in events_en) if events_en else "No effective fire exchange occurred."
-
-    tactical_narrative_zh = "\n".join(fixed_lead_zh_lines) + "\n\n" + narrative_zh_body + f" {final_outcome_zh}"
-    tactical_narrative_en = "\n".join(fixed_lead_en_lines) + "\n\n" + narrative_en_body + f" {final_outcome_en}"
-
-    param_keys = [
-        "force_concentration_ratio",
-        "mobility_bias",
-        "offense_defense_weight",
-        "risk_appetite",
-        "time_preference",
-        "targeting_logic",
-        "formation_rigidity",
-        "perception_radius",
-        "pursuit_drive",
-        "retreat_threshold",
-    ]
-
-    def format_param_value(v):
-        if isinstance(v, (int, float)):
-            return f"{float(v):.1f}"
-        return "n/a"
-
-    table_header = ["Side", "Archetype", *param_keys]
-    archetype_lines = [
-        "| " + " | ".join(table_header) + " |",
-        "| " + " | ".join(["---"] * len(table_header)) + " |",
-        "| " + " | ".join([
-            "A",
-            str(fleet_a_data.get("name", "A")),
-            *[format_param_value(fleet_a_data.get(k)) for k in param_keys],
-        ]) + " |",
-        "| " + " | ".join([
-            "B",
-            str(fleet_b_data.get("name", "B")),
-            *[format_param_value(fleet_b_data.get(k)) for k in param_keys],
-        ]) + " |",
-    ]
-
-    report_date = datetime.now().strftime("%Y-%m-%d")
-    report_lines = [
-        "# Battle Report Framework v1.0",
-        "",
-        "## 0. Run Configuration Snapshot",
-        f"- Source settings path: `{settings_source_path}`",
-        f"- test_mode: `{run_config_snapshot['test_mode']}` ({run_config_snapshot['test_mode_label']})",
-        f"- runtime_decision_source_effective: `{run_config_snapshot.get('runtime_decision_source_effective', 'v2')}`",
-        f"- collapse_decision_source_effective: `{run_config_snapshot.get('collapse_decision_source_effective', 'legacy_v2')}`",
-        f"- movement_model_effective: `{run_config_snapshot.get('movement_model_effective', 'v1')}`",
-        f"- movement_v3a_experiment_effective: `{run_config_snapshot.get('movement_v3a_experiment_effective', 'base')}`",
-        f"- centroid_probe_scale_effective: `{run_config_snapshot.get('centroid_probe_scale_effective', 'N/A')}`",
-        f"- display_language: `{display_language}`",
-        f"- attack_range: `{run_config_snapshot['attack_range']}`",
-        f"- min_unit_spacing: `{run_config_snapshot['min_unit_spacing']}`",
-        f"- arena_size: `{run_config_snapshot['arena_size']}`",
-        f"- max_time_steps_effective: `{run_config_snapshot['max_time_steps_effective']}`",
-        f"- unit_speed: `{run_config_snapshot['unit_speed']}`",
-        f"- damage_per_tick: `{run_config_snapshot['damage_per_tick']}`",
-        f"- ch_enabled / contact_hysteresis_h: `{run_config_snapshot['ch_enabled']}` / `{run_config_snapshot['contact_hysteresis_h']}`",
-        f"- fsr_enabled / fsr_strength: `{run_config_snapshot['fsr_enabled']}` / `{run_config_snapshot['fsr_strength']}`",
-        f"- boundary_enabled: `{run_config_snapshot['boundary_enabled']}`",
-        f"- boundary_hard_enabled (requested/effective): "
-        f"`{run_config_snapshot.get('boundary_hard_enabled', True)}` / "
-        f"`{run_config_snapshot.get('boundary_hard_enabled_effective', run_config_snapshot['boundary_enabled'])}`",
-        "- overrides_applied: none",
-        "",
-        "## 1. Header",
-        "- Engine Version: v5.0-alpha5",
-        (
-            "- Grid Parameters: "
-            f"A={fleet_a_data.get('name', 'A')} vs B={fleet_b_data.get('name', 'B')}, "
-            f"units_per_side={initial_units_per_side}"
-        ),
-        "- Determinism Status: Not checked in this single-run export",
-        f"- Date: {report_date}",
-        "",
-        "## 2. Operational Timeline",
-        "| Event | Tick |",
-        "| --- | --- |",
-        f"| First Contact | {first_contact_tick if first_contact_tick is not None else 'N/A'} |",
-        f"| First Kill | {first_kill_tick if first_kill_tick is not None else 'N/A'} |",
-        f"| Formation Cut | {bridge_ticks['formation_cut_tick'] if bridge_ticks['formation_cut_tick'] is not None else 'N/A'} |",
-        f"| Pocket Formation | {bridge_ticks['pocket_formation_tick'] if bridge_ticks['pocket_formation_tick'] is not None else 'N/A'} |",
-        "| Pursuit Mode | N/A |",
-        f"| Inflection | {inflection_tick if inflection_tick is not None else 'N/A'} |",
-        f"| Endgame Onset | {endgame_tick if endgame_tick is not None else 'N/A'} |",
-        f"| End | {end_tick} |",
-        "",
-        "## 3. Tactical Narrative (Auto-generated)",
-        "### 3.1 Archetypes",
-        *archetype_lines,
-        "",
-        "### 3.2 ZH Narrative",
-        tactical_narrative_zh,
-        "",
-        "### 3.3 EN Narrative",
-        tactical_narrative_en,
-        "",
-        "## 4. Structural Metrics Summary",
-        "- Mirror delta: N/A",
-        "- Jitter delta: N/A",
-        "- Runtime delta: N/A",
-        "- Cohesion behavior summary: Runtime path unchanged; this export is observer/report-layer only.",
-        "",
-        "## 5. Collapse Analysis",
-        f"- Collapse occurred before contact: {collapse_before_contact}",
-        "- Collapse preceded or aligned with pursuit mode: N/A",
-        f"- Collapse aligned with formation cut (|delta_tick|<=1): {collapse_aligned_with_cut}",
-        "",
-    ]
-    return "\n".join(report_lines)
-
 def build_initial_state(
     fleet_a_params: PersonalityParameters,
     fleet_b_params: PersonalityParameters,
@@ -1682,9 +1461,14 @@ def run_simulation(
     boundary_hard_enabled: bool,
     include_target_lines: bool,
     print_tick_summary: bool,
+    plot_diagnostics_enabled: bool,
+    boundary_soft_strength: float = 1.0,
+    alpha_sep: float = 0.6,
     movement_v3a_experiment: str = "base",
     centroid_probe_scale: float = 1.0,
-    precontact_centroid_probe_scale=None,
+    v2_connect_radius_multiplier: float = 1.0,
+    v3_connect_radius_multiplier: float = 1.0,
+    v3_r_ref_radius_multiplier: float = 1.0,
     runtime_diag_enabled: bool = False,
 ):
     engine = TestModeEngineTickSkeleton(
@@ -1693,13 +1477,12 @@ def run_simulation(
         separation_radius=separation_radius,
     )
     engine.COHESION_DECISION_SOURCE = str(runtime_decision_source).strip().lower() or "v2"
-    engine.MOVEMENT_MODEL = str(movement_model).strip().lower() or "v1"
+    engine.MOVEMENT_MODEL = str(movement_model).strip().lower() or "v3a"
     engine.MOVEMENT_V3A_EXPERIMENT = str(movement_v3a_experiment).strip().lower() or "base"
-    if precontact_centroid_probe_scale is not None:
-        centroid_probe_scale = float(precontact_centroid_probe_scale)
     engine.CENTROID_PROBE_SCALE = float(centroid_probe_scale)
-    # One-cycle compatibility for any legacy readers.
-    engine.PRECONTACT_CENTROID_PROBE_SCALE = float(centroid_probe_scale)
+    engine.V2_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v2_connect_radius_multiplier))
+    engine.V3_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v3_connect_radius_multiplier))
+    engine.V3_R_REF_RADIUS_MULTIPLIER = max(1e-12, float(v3_r_ref_radius_multiplier))
     engine.fire_quality_alpha = float(fire_quality_alpha)
     engine.contact_hysteresis_h = float(contact_hysteresis_h)
     engine.CH_ENABLED = bool(ch_enabled)
@@ -1707,13 +1490,16 @@ def run_simulation(
     engine.fsr_strength = float(fsr_strength)
     engine.BOUNDARY_SOFT_ENABLED = bool(boundary_enabled)
     engine.BOUNDARY_HARD_ENABLED = bool(boundary_enabled) and bool(boundary_hard_enabled)
-    # Observer diagnostics can be enabled without position-frame capture for batch experiments.
-    observer_active = bool(observer_enabled) and (bool(capture_positions) or bool(runtime_diag_enabled))
+    engine.boundary_soft_strength = max(0.0, float(boundary_soft_strength))
+    engine.alpha_sep = max(0.0, float(alpha_sep))
+    # Plot/runtime diagnostics can be enabled without observer/export pipeline.
+    diagnostics_enabled = bool(observer_enabled) or bool(plot_diagnostics_enabled)
+    observer_active = bool(diagnostics_enabled) and (bool(capture_positions) or bool(runtime_diag_enabled))
     # Visualization debug panel consumes these runtime diagnostics per frame.
     engine.debug_fsr_diag_enabled = observer_active
     engine.debug_diag4_enabled = observer_active
     engine.debug_diag4_rpg_enabled = False
-    engine.debug_cohesion_v3_shadow_enabled = bool(observer_enabled)
+    engine.debug_cohesion_v3_shadow_enabled = bool(diagnostics_enabled)
 
     state = replace(
         initial_state,
@@ -1781,7 +1567,7 @@ def run_simulation(
         combat_telemetry["in_contact_count"].append(int(combat_stats.get("in_contact_count", 0)))
         combat_telemetry["damage_events_count"].append(int(combat_stats.get("damage_events_count", 0)))
         runtime_debug_payload = extract_runtime_debug_payload(
-            getattr(engine, "debug_diag_last_tick", {}) if observer_enabled else {}
+            getattr(engine, "debug_diag_last_tick", {}) if diagnostics_enabled else {}
         )
         combat_telemetry["outlier_total"].append(int(runtime_debug_payload.get("outlier_total", 0)))
         combat_telemetry["persistent_outlier_total"].append(int(runtime_debug_payload.get("persistent_outlier_total", 0)))
@@ -1817,7 +1603,7 @@ def run_simulation(
             shadow_v3_components = {}
         for fleet_id in state.fleets:
             fallback_v2 = float(state.last_fleet_cohesion.get(fleet_id, 1.0))
-            if observer_enabled:
+            if diagnostics_enabled:
                 cohesion_v3 = float(shadow_v3.get(fleet_id, fallback_v2))
             else:
                 cohesion_v3 = float("nan")
@@ -1831,7 +1617,7 @@ def run_simulation(
 
         bridge_metrics = compute_bridge_metrics_per_side(state)
         for fleet_id in state.fleets:
-            if observer_enabled:
+            if diagnostics_enabled:
                 metric = bridge_metrics.get(fleet_id, {})
                 ar_value = float(metric.get("AR", float("nan")))
                 wedge_value = float(metric.get("wedge_ratio", float("nan")))
@@ -1929,7 +1715,7 @@ def run_simulation(
                 break
 
     collapse_shadow_telemetry = compute_collapse_v2_shadow_telemetry(
-        observer_enabled=observer_enabled,
+        observer_enabled=diagnostics_enabled,
         observer_telemetry=observer_telemetry,
         alive_trajectory=alive_trajectory,
         theta_conn_default=float(collapse_shadow_theta_conn_default),
@@ -1958,15 +1744,11 @@ def main() -> None:
     base_dir = Path(__file__).resolve().parent
     settings = load_json_file(base_dir / "test_run_v1_0.settings.json")
     viz_settings = load_json_file(base_dir / "test_run_v1_0.viz.settings.json")
-    archetypes = load_json_file(base_dir / "archetypes_v1_5.json")
+    archetypes = load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
     metatype_settings = load_metatype_settings(base_dir, settings)
-    random_seed = int(get_run_control_setting(settings, "random_seed", get_seed_setting(settings, "random_seed", -1)))
-    metatype_random_seed = int(
-        get_run_control_setting(settings, "metatype_random_seed", get_seed_setting(settings, "metatype_random_seed", random_seed))
-    )
-    background_map_seed = int(
-        get_battlefield_setting(settings, "background_map_seed", get_seed_setting(settings, "background_map_seed", -1))
-    )
+    random_seed = int(get_run_control_setting(settings, "random_seed", -1))
+    metatype_random_seed = int(get_run_control_setting(settings, "metatype_random_seed", random_seed))
+    background_map_seed = int(get_battlefield_setting(settings, "background_map_seed", -1))
     effective_random_seed = resolve_effective_seed(random_seed)
     effective_metatype_random_seed = resolve_effective_seed(metatype_random_seed)
     effective_background_map_seed = resolve_effective_seed(background_map_seed)
@@ -2045,23 +1827,17 @@ def main() -> None:
     fire_quality_alpha = float(get_runtime_setting(settings, "fire_quality_alpha", 0.1))
     contact_hysteresis_h = float(get_runtime_setting(settings, "contact_hysteresis_h", 0.1))
     fsr_strength = float(get_runtime_setting(settings, "fsr_strength", 0.0))
-    movement_model_raw = str(get_runtime_setting(settings, "movement_model", "v1")).strip().lower()
-    if movement_model_raw not in {"v1", "v3a"}:
-        movement_model_raw = "v1"
-    movement_model_effective = movement_model_raw
+    alpha_sep = float(get_runtime_setting(settings, "alpha_sep", 0.6))
+    if alpha_sep < 0.0:
+        alpha_sep = 0.0
+    movement_model_requested, movement_model_effective = resolve_movement_model(
+        get_runtime_setting(settings, "movement_model", "baseline")
+    )
     movement_v3a_experiment_raw = str(get_runtime_setting(settings, "movement_v3a_experiment", "base")).strip().lower()
-    if movement_v3a_experiment_raw == "exp_a_reduced_centroid":
-        movement_v3a_experiment_raw = "exp_precontact_centroid_probe"
     if movement_v3a_experiment_raw not in {"base", "exp_precontact_centroid_probe"}:
         movement_v3a_experiment_raw = "base"
     movement_v3a_experiment_effective = movement_v3a_experiment_raw
-    centroid_probe_scale = float(
-        get_runtime_setting(
-            settings,
-            "centroid_probe_scale",
-            get_runtime_setting(settings, "precontact_centroid_probe_scale", 1.0),
-        )
-    )
+    centroid_probe_scale = float(get_runtime_setting(settings, "centroid_probe_scale", 1.0))
     if centroid_probe_scale < 0.0:
         centroid_probe_scale = 0.0
     elif centroid_probe_scale > 1.0:
@@ -2070,51 +1846,51 @@ def main() -> None:
         centroid_probe_scale_effective = 1.0
     else:
         centroid_probe_scale_effective = centroid_probe_scale
-    bridge_theta_split = float(get_runtime_setting(settings, "bridge_theta_split", BRIDGE_THETA_SPLIT_DEFAULT))
-    bridge_theta_env = float(get_runtime_setting(settings, "bridge_theta_env", BRIDGE_THETA_ENV_DEFAULT))
-    bridge_sustain_ticks = max(1, int(get_runtime_setting(settings, "bridge_sustain_ticks", BRIDGE_SUSTAIN_TICKS_DEFAULT)))
+    bridge_theta_split = float(get_event_bridge_setting(settings, "theta_split", BRIDGE_THETA_SPLIT_DEFAULT))
+    bridge_theta_env = float(get_event_bridge_setting(settings, "theta_env", BRIDGE_THETA_ENV_DEFAULT))
+    bridge_sustain_ticks = max(1, int(get_event_bridge_setting(settings, "sustain_ticks", BRIDGE_SUSTAIN_TICKS_DEFAULT)))
     collapse_shadow_theta_conn_default = float(
-        get_runtime_setting(settings, "collapse_shadow_theta_conn_default", COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT)
+        get_collapse_shadow_setting(settings, "theta_conn_default", COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT)
     )
     collapse_shadow_theta_coh_default = float(
-        get_runtime_setting(settings, "collapse_shadow_theta_coh_default", COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT)
+        get_collapse_shadow_setting(settings, "theta_coh_default", COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT)
     )
     collapse_shadow_theta_force_default = float(
-        get_runtime_setting(settings, "collapse_shadow_theta_force_default", COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT)
+        get_collapse_shadow_setting(settings, "theta_force_default", COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT)
     )
     collapse_shadow_theta_attr_default = float(
-        get_runtime_setting(settings, "collapse_shadow_theta_attr_default", COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT)
+        get_collapse_shadow_setting(settings, "theta_attr_default", COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT)
     )
     collapse_shadow_attrition_window = max(
         1,
-        int(get_runtime_setting(settings, "collapse_shadow_attrition_window", COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT)),
+        int(get_collapse_shadow_setting(settings, "attrition_window", COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT)),
     )
     collapse_shadow_sustain_ticks = max(
         1,
-        int(get_runtime_setting(settings, "collapse_shadow_sustain_ticks", COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT)),
+        int(get_collapse_shadow_setting(settings, "sustain_ticks", COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT)),
     )
     collapse_shadow_min_conditions = min(
         4,
         max(
             1,
-            int(get_runtime_setting(settings, "collapse_shadow_min_conditions", COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT)),
+            int(get_collapse_shadow_setting(settings, "min_conditions", COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT)),
         ),
     )
     strategic_inflection_sustain_ticks = max(
         1,
-        int(get_runtime_setting(settings, "strategic_inflection_sustain_ticks", STRATEGIC_INFLECTION_SUSTAIN_TICKS)),
+        int(get_report_inference_setting(settings, "strategic_inflection_sustain_ticks", STRATEGIC_INFLECTION_SUSTAIN_TICKS)),
     )
     tactical_swing_sustain_ticks = max(
         1,
-        int(get_runtime_setting(settings, "tactical_swing_sustain_ticks", TACTICAL_SWING_SUSTAIN_TICKS)),
+        int(get_report_inference_setting(settings, "tactical_swing_sustain_ticks", TACTICAL_SWING_SUSTAIN_TICKS)),
     )
     tactical_swing_min_amplitude = max(
         0.0,
-        float(get_runtime_setting(settings, "tactical_swing_min_amplitude", TACTICAL_SWING_MIN_AMPLITUDE)),
+        float(get_report_inference_setting(settings, "tactical_swing_min_amplitude", TACTICAL_SWING_MIN_AMPLITUDE)),
     )
     tactical_swing_min_gap_ticks = max(
         0,
-        int(get_runtime_setting(settings, "tactical_swing_min_gap_ticks", TACTICAL_SWING_MIN_GAP_TICKS)),
+        int(get_report_inference_setting(settings, "tactical_swing_min_gap_ticks", TACTICAL_SWING_MIN_GAP_TICKS)),
     )
     # Canonical runtime toggle rule (strength-only):
     # - contact_hysteresis_h <= 0 => CH disabled
@@ -2123,6 +1899,9 @@ def main() -> None:
     fsr_enabled = fsr_strength > 0.0
     boundary_enabled = bool(get_runtime_setting(settings, "boundary_enabled", False))
     boundary_hard_enabled = bool(get_runtime_setting(settings, "boundary_hard_enabled", True))
+    boundary_soft_strength = float(get_runtime_setting(settings, "boundary_soft_strength", 1.0))
+    if boundary_soft_strength < 0.0:
+        boundary_soft_strength = 0.0
     boundary_hard_enabled_effective = bool(boundary_enabled) and bool(boundary_hard_enabled)
     unit_direction_mode = str(
         get_visualization_setting(
@@ -2140,7 +1919,16 @@ def main() -> None:
     test_mode_name = test_mode_label(test_mode)
     observer_enabled = test_mode >= 1
     export_battle_report = test_mode >= 1
-    runtime_decision_source_effective = "v3_test" if test_mode == 2 else "v2"
+    runtime_decision_source_requested, runtime_decision_source_effective = resolve_runtime_decision_source(
+        get_runtime_setting(settings, "cohesion_decision_source", "baseline"),
+        test_mode,
+    )
+    plot_profile_requested, plot_profile_effective = resolve_plot_profile(
+        get_visualization_setting(settings, "plot_profile", "auto"),
+        test_mode,
+        runtime_decision_source_requested,
+    )
+    plot_diagnostics_enabled = bool(animate) or bool(observer_enabled)
     print(f"[viz] random_seed_effective={effective_random_seed}")
     print(f"[mode] metatype_random_seed_effective={effective_metatype_random_seed}")
     print(f"[viz] background_map_seed_effective={effective_background_map_seed}")
@@ -2149,18 +1937,25 @@ def main() -> None:
         f"base_interval_ms={base_frame_interval_ms}, frame_interval_ms={frame_interval_ms}"
     )
     print(f"[mode] test_mode={test_mode} ({test_mode_name})")
+    print(f"[mode] plot_profile_requested={plot_profile_requested}")
+    print(f"[mode] plot_profile_effective={plot_profile_effective}")
+    print(f"[mode] movement_model_requested={movement_model_requested}")
+    print(f"[mode] cohesion_decision_source_requested={runtime_decision_source_requested}")
     print(f"[mode] runtime_decision_source_effective={runtime_decision_source_effective}")
     print(f"[mode] movement_model_effective={movement_model_effective}")
+    print(f"[runtime] alpha_sep={alpha_sep:.3f}")
     if movement_model_effective == "v3a":
         print(f"[mode] movement_v3a_experiment_effective={movement_v3a_experiment_effective}")
         print(f"[mode] centroid_probe_scale_effective={centroid_probe_scale_effective:.3f}")
     print(f"[viz] vector_display_mode={unit_direction_mode}")
     print(
         f"[runtime] boundary soft={boundary_enabled} "
+        f"strength={boundary_soft_strength:.3f} "
         f"hard_requested={boundary_hard_enabled} hard_effective={boundary_hard_enabled_effective}"
     )
     print(f"[viz] avatars A={fleet_a_avatar} B={fleet_b_avatar}")
     print(f"[observer] enabled={observer_enabled}")
+    print(f"[plot] diagnostics_enabled={plot_diagnostics_enabled}")
     print(f"[report] enabled={export_battle_report}")
     export_video_cfg = visualization_section.get("export_video", {})
     if not isinstance(export_video_cfg, dict):
@@ -2210,8 +2005,11 @@ def main() -> None:
         fsr_strength=fsr_strength,
         boundary_enabled=boundary_enabled,
         boundary_hard_enabled=boundary_hard_enabled,
+        alpha_sep=alpha_sep,
+        boundary_soft_strength=boundary_soft_strength,
         include_target_lines=capture_target_directions,
         print_tick_summary=print_tick_summary,
+        plot_diagnostics_enabled=plot_diagnostics_enabled,
         movement_v3a_experiment=movement_v3a_experiment_effective,
         centroid_probe_scale=centroid_probe_scale_effective,
     )
@@ -2226,16 +2024,14 @@ def main() -> None:
         "metatype_settings_path": str(
             get_run_control_setting(settings, "metatype_settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
         ),
+        "random_seed_effective": int(effective_random_seed),
+        "background_map_seed_effective": int(effective_background_map_seed),
         "metatype_random_seed_effective": int(effective_metatype_random_seed),
         "runtime_decision_source_effective": runtime_decision_source_effective,
         "collapse_decision_source_effective": "legacy_v2",
         "movement_model_effective": movement_model_effective,
         "movement_v3a_experiment_effective": movement_v3a_experiment_effective if movement_model_effective == "v3a" else "N/A",
         "centroid_probe_scale_effective": (
-            centroid_probe_scale_effective if movement_model_effective == "v3a" else "N/A"
-        ),
-        # One-cycle compatibility snapshot alias.
-        "precontact_centroid_probe_scale_effective": (
             centroid_probe_scale_effective if movement_model_effective == "v3a" else "N/A"
         ),
         "attack_range": attack_range,
@@ -2249,8 +2045,10 @@ def main() -> None:
         "fsr_enabled": fsr_enabled,
         "fsr_strength": fsr_strength,
         "boundary_enabled": boundary_enabled,
+        "boundary_soft_strength": boundary_soft_strength,
         "boundary_hard_enabled": boundary_hard_enabled,
         "boundary_hard_enabled_effective": boundary_hard_enabled_effective,
+        "alpha_sep": alpha_sep,
         "bridge_theta_split": bridge_theta_split,
         "bridge_theta_env": bridge_theta_env,
         "bridge_sustain_ticks": bridge_sustain_ticks,
@@ -2271,7 +2069,7 @@ def main() -> None:
         report_markdown = build_battle_report_markdown(
             settings_source_path=str((base_dir / "test_run_v1_0.settings.json").as_posix()),
             display_language=display_language,
-            random_seed_effective=effective_background_map_seed,
+            random_seed_effective=effective_random_seed,
             fleet_a_data=fleet_a_data,
             fleet_b_data=fleet_b_data,
             initial_fleet_sizes=initial_fleet_sizes,
@@ -2296,7 +2094,7 @@ def main() -> None:
         return
 
     try:
-        from test_run_v1_0_viz import render_test_run
+        from test_run.test_run_v1_0_viz import render_test_run
     except ModuleNotFoundError as exc:
         print(f"[viz] skipped: {exc}")
         return
@@ -2327,6 +2125,7 @@ def main() -> None:
         show_attack_target_lines=show_attack_target_lines,
         observer_telemetry=observer_telemetry,
         observer_enabled=observer_enabled,
+        plot_profile=plot_profile_effective,
         export_video_cfg=export_video_cfg,
         boundary_enabled=boundary_enabled,
         boundary_hard_enabled=boundary_hard_enabled,

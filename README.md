@@ -7,9 +7,9 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 ## Project Status
 
 - Current execution baseline: `v5.0-alpha5`
-- Current governance focus: `Phase V.4-d` (`cohesion_v3.1` connectivity calibration, shadow-only)
-- Active decision path: `cohesion_v2` (behavior path)
-- `cohesion_v3.1` remains observer-only (no behavior switch) unless future governance authorization
+- Current movement baseline: `v3a` (`exp_precontact_centroid_probe`, `centroid_probe_scale = 0.5`)
+- Current runtime cohesion decision source baseline: `v2`
+- `v3_test` remains an experimental cohesion / collapse runtime candidate under semantics review
 - Runtime language: `Python 3.11`
 - Governance model: App thread = governance; VS Code/Codex thread = engineering execution
 
@@ -25,7 +25,7 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 - Phase III/IV/V (ongoing):
   - Numerical runtime implementation
   - Deterministic execution and stability work
-  - Controlled layer-by-layer activation and validation
+  - Controlled layer-by-layer activation, validation, and bounded baseline replacement
 
 ## Core Runtime Flow
 
@@ -48,8 +48,13 @@ Per tick:
   - deterministic tick execution and layer implementations
 - `runtime/engine_driver_dummy.py`
   - controlled run harness
+- `test_run/`
+  - local scenario runner, visualization entrypoints, run settings, BRF builder
+  - `test_run/battle_report_builder.py`
+    - BRF markdown assembly and tactical narrative helpers
+- `archetypes/`
+  - runtime archetype data and metatype generation settings
 - `analysis/`
-  - scenario runner, settings, archetype data, visual analysis scripts
   - report standards: `analysis/engineering_reports/_standards/`
   - dated report packs: `analysis/engineering_reports/developments/YYYYMMDD/`
   - exported battle reports: `analysis/exports/battle_reports/YYYYMMDD/`
@@ -63,7 +68,7 @@ Per tick:
 
 Use the current settings file:
 
-- `analysis/test_run_v1_0.settings.json`
+- `test_run/test_run_v1_0.settings.json`
 
 This file is the local visualization/observation profile.  
 Governed experiment baselines should follow phase report settings (for example `analysis/phase_v_default.settings.json`).
@@ -71,7 +76,7 @@ Governed experiment baselines should follow phase report settings (for example `
 Run:
 
 ```powershell
-.\.venv_check\Scripts\python.exe .\analysis\test_run_v1_0.py
+.\.venv_check\Scripts\python.exe .\test_run\test_run_v1_0.py
 ```
 
 Artifact output conventions:
@@ -85,6 +90,11 @@ Artifact output conventions:
 
 ## Configuration Notes
 
+- `test_run/test_run_v1_0.settings.json` active runtime structure:
+  - `runtime.selectors`
+  - `runtime.physical`
+  - `runtime.movement`
+  - top-level `event_bridge`, `collapse_shadow`, `report_inference`, `visualization`
 - Recommended demo spacing:
   - `min_unit_spacing = 2.0`
 - Density stress mode:
@@ -96,6 +106,10 @@ Artifact output conventions:
   - `contact_hysteresis_h <= 0` => CH disabled
   - `fsr_strength <= 0` => FSR disabled
   - Only `contact_hysteresis_h` / `fsr_strength` are used for runtime enable semantics
+- Current exposed low-level movement knob:
+  - `runtime.physical.movement_low_level.alpha_sep`
+- Hard-coded movement/projection constant still retained in engine:
+  - penetration correction split factor = `0.5`
 
 ## Engineering Rules
 

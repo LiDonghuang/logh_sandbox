@@ -13,7 +13,7 @@
       "full_name_EN": "Yang Wen-li",
       "full_name_ZH": "杨威利",
       "avatar": "avatar_09154",
-      "color_code": "008080"
+      "color_code": "9400D3"
     },
     "generation": {
       "source_archetype_ids": [
@@ -24,7 +24,7 @@
         "bittenfeld",
         "muller"
       ],
-      "jitter": 1,
+      "jitter": 2,
       "param_min": 1,
       "param_max": 9
     }

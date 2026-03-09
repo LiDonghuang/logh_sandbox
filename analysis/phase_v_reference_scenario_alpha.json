@@ -1,51 +1,16 @@
-{
+﻿{
   "reference_id": "Phase V Reference Scenario Alpha",
+  "status": "historical_snapshot_v1",
   "created_at": "2026-02-28 23:45:29",
   "source_files": {
-    "settings_path": "analysis/test_run_v1_0.settings.json",
-    "archetypes_path": "analysis/archetypes_v1_5.json",
+    "settings_path": "test_run/test_run_v1_0.settings.json",
+    "archetypes_path": "archetypes/archetypes_v1_5.json",
     "settings_sha256": "e4c97dd3725a62b334a5c37bc834d289e2a65e1224c1a7fd97a5518a49c3c90c",
     "archetypes_sha256": "f6df3ea44275ffbcf846ae3f33c547474421c5f5bef46ce5289a61fdd9247993"
   },
   "scenario_parameters": {
     "fleet_a_archetype_key_at_capture": "grillparzer",
     "fleet_b_archetype_key_at_capture": "knappstein",
-    "fleet_a_archetype_parameters": {
-      "name": "grillparzer",
-      "disp_name_EN": "Grillparzer",
-      "disp_name_ZH": "格利鲁帕尔兹",
-      "full_name_EN": "Alfred Grillparzer",
-      "full_name_ZH": "阿弗雷德·格利鲁帕尔兹",
-      "color_code": "",
-      "force_concentration_ratio": 5.0,
-      "mobility_bias": 5.0,
-      "offense_defense_weight": 5.0,
-      "risk_appetite": 5.0,
-      "time_preference": 5.0,
-      "targeting_logic": 5.0,
-      "formation_rigidity": 4.0,
-      "perception_radius": 5.0,
-      "pursuit_threshold": 5.0,
-      "retreat_threshold": 5.0
-    },
-    "fleet_b_archetype_parameters": {
-      "name": "knappstein",
-      "disp_name_EN": "Knappstein",
-      "disp_name_ZH": "克纳普斯坦",
-      "full_name_EN": "Bruno von Knappstein",
-      "full_name_ZH": "布鲁诺·冯·克纳普斯坦",
-      "color_code": "",
-      "force_concentration_ratio": 5.0,
-      "mobility_bias": 5.0,
-      "offense_defense_weight": 5.0,
-      "risk_appetite": 5.0,
-      "time_preference": 5.0,
-      "targeting_logic": 5.0,
-      "formation_rigidity": 1.0,
-      "perception_radius": 5.0,
-      "pursuit_threshold": 5.0,
-      "retreat_threshold": 5.0
-    },
     "fleet_a_formation_rigidity_1_to_10": 4.0,
     "fleet_b_formation_rigidity_1_to_10": 1.0,
     "fleet_a_formation_rigidity_norm": 0.3333333333333333,
@@ -64,72 +29,12 @@
     "final_tick": 300,
     "survivors_A": 36,
     "survivors_B": 52,
-    "first_contact_tick": 110,
-    "milestone_samples": [
-      {
-        "tick": 10,
-        "R_rms_A": 8.49943217880268,
-        "LEW_A": 25.067738093387852,
-        "alive_A": 100,
-        "R_rms_B": 9.801029908260102,
-        "LEW_B": 30.026662539537103,
-        "alive_B": 100
-      },
-      {
-        "tick": 30,
-        "R_rms_A": 8.019896781574984,
-        "LEW_A": 19.561368929038103,
-        "alive_A": 100,
-        "R_rms_B": 9.91403451940321,
-        "LEW_B": 29.16997792372702,
-        "alive_B": 100
-      },
-      {
-        "tick": 60,
-        "R_rms_A": 8.3678958309868,
-        "LEW_A": 14.09945055471374,
-        "alive_A": 100,
-        "R_rms_B": 9.796422942836463,
-        "LEW_B": 28.275525928936553,
-        "alive_B": 100
-      },
-      {
-        "tick": 100,
-        "R_rms_A": 9.086317949261451,
-        "LEW_A": 9.050501818194473,
-        "alive_A": 100,
-        "R_rms_B": 9.777145808213989,
-        "LEW_B": 26.3965511513869,
-        "alive_B": 100
-      },
-      {
-        "tick": 160,
-        "R_rms_A": 7.379627776857655,
-        "LEW_A": 12.542457353150944,
-        "alive_A": 87,
-        "R_rms_B": 9.928849908215089,
-        "LEW_B": 29.01956105569551,
-        "alive_B": 94
-      },
-      {
-        "tick": 220,
-        "R_rms_A": 6.423984685788415,
-        "LEW_A": 14.97082159773678,
-        "alive_A": 66,
-        "R_rms_B": 9.588173820886992,
-        "LEW_B": 27.369226727555823,
-        "alive_B": 78
-      },
-      {
-        "tick": 280,
-        "R_rms_A": 5.4289566210100455,
-        "LEW_A": 11.836308099412978,
-        "alive_A": 42,
-        "R_rms_B": 9.226243450850774,
-        "LEW_B": 9.039172940242468,
-        "alive_B": 59
-      }
-    ]
+    "first_contact_tick": 110
   },
-  "usage_rule": "All future structural/runtime adjustments must run this scenario and compare digest + milestone metrics before acceptance. Archetype parameter snapshots above are authoritative for this reference."
+  "superseded_by": "analysis/phase_v_reference_scenario_alpha_v2.json",
+  "notes": {
+    "repair": "Rewritten as valid JSON on 2026-03-05 due legacy encoding corruption in prior file body.",
+    "usage": "Archived historical baseline only; retained at this original path because older report links reference this exact file.",
+    "archive_policy": "archive_in_place"
+  }
 }

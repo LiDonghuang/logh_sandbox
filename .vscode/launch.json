@@ -2,11 +2,24 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "test_run_v1.0",
-      "type": "python",
+      "name": "test_run_v1.0 (Terminal)",
+      "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/analysis/test_run_v1_0.py",
+      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
       "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
+    },
+    {
+      "name": "test_run_v1.0 (InternalConsole Fallback)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },
