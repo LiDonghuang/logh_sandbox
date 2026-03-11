@@ -48,6 +48,9 @@ The following layers are read-only:
 No modification allowed.
 No reinterpretation allowed.
 
+AGENTS must not duplicate detailed governance doctrine, reporting standards, or template-operational rules.
+Those belong in the authoritative canonical / governance / `_standards` documents.
+
 ---
 
 ## R-04 - No Silent Refactor
@@ -151,6 +154,21 @@ Codex must:
 - Never force-push or amend unless explicitly requested
 
 If remote push fails, Codex must report exact failure and stop.
+
+---
+
+## R-10 - VS Code Path Presentation
+
+Codex must:
+
+- Prefer plain text local paths in chat (workspace-relative), wrapped in backticks
+- Avoid markdown hyperlinks for local files unless explicitly requested by human
+- When line references are needed, use `path:line` plain text format
+- For report packs, provide one folder path first, then a flat filename list
+
+Reason:
+
+- Ensure paths are directly usable in VS Code without browser redirection issues
 
 ---
 

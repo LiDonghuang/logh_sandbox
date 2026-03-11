@@ -27,7 +27,7 @@ Status: Frozen / Authoritative
 6.  Targeting Logic（目标选择逻辑）\
 7.  Formation Rigidity（阵型刚性）\
 8.  Perception Radius（认知范围）\
-9.  Pursuit Threshold（追击阈值）\
+9.  Pursuit Drive（追击驱动力）\
 10. Retreat Threshold（撤退阈值）
 
 数值区间：1--10
@@ -56,7 +56,7 @@ Status: Frozen / Authoritative
   Targeting Logic             主团优先   锁定敌方核心结构
   Formation Rigidity          高         阵型集中且稳定
   Perception Radius           中         关注主战场
-  Pursuit Threshold           低         决战后强力追击
+  Pursuit Drive           高         决战后强力追击
   Retreat Threshold           高         极少主动撤退
 
 ## 历史结构映射：
@@ -82,7 +82,7 @@ Status: Frozen / Authoritative
   Targeting Logic             弱侧优先   攻击连通薄弱点
   Formation Rigidity          中低       允许结构变形
   Perception Radius           中高       关注整体耦合
-  Pursuit Threshold           中         条件追击
+  Pursuit Drive           中         条件追击
   Retreat Threshold           中         保留结构弹性
 
 ------------------------------------------------------------------------
@@ -106,7 +106,7 @@ Status: Frozen / Authoritative
   Targeting Logic             密度优先   平衡打击
   Formation Rigidity          中高       维持稳定
   Perception Radius           高         全局结构感知
-  Pursuit Threshold           高         谨慎追击
+  Pursuit Drive           低         谨慎追击
   Retreat Threshold           中         保持弹性
 
 ------------------------------------------------------------------------
@@ -130,7 +130,7 @@ Status: Frozen / Authoritative
   Targeting Logic             节奏优先   打乱反馈链
   Formation Rigidity          低         高度弹性
   Perception Radius           中         关注局部突破
-  Pursuit Threshold           低         追击形成连锁
+  Pursuit Drive           高         追击形成连锁
   Retreat Threshold           中         保持机动撤退
 
 ------------------------------------------------------------------------
@@ -154,7 +154,7 @@ Status: Frozen / Authoritative
   Targeting Logic             正面突破   冲击主线
   Formation Rigidity          高         结构硬化
   Perception Radius           中低       聚焦冲击方向
-  Pursuit Threshold           极低       深追
+  Pursuit Drive           极高       深追
   Retreat Threshold           极高       几乎不撤退
 
 ------------------------------------------------------------------------
@@ -179,7 +179,7 @@ Status: Frozen / Authoritative
   Targeting Logic             反击优先   打击失衡点
   Formation Rigidity          高         结构锁定
   Perception Radius           高         全局态势感知
-  Pursuit Threshold           高         控制追击
+  Pursuit Drive           低         控制追击
   Retreat Threshold           低         主动后撤换时间
 
 ============================================================
@@ -337,7 +337,7 @@ Status: Frozen / Authoritative
 ## 20. 漠北远征\
 指挥：霍去病\
 时间：前119年\
-结构核查：高速骑兵、追击阈值高。\
+结构核查：高速骑兵、追击驱动力低。\
 匹配：米达麦亚型。
 
 ## 21. 定襄之战\

@@ -709,6 +709,11 @@ class EngineTickSkeleton:
                         sigma_f = math.sqrt(max(0.0, var_f))
                         sigma_l = math.sqrt(max(0.0, var_l))
                         ar_forward_ratio = sigma_f / (sigma_l + 1e-12)
+                    lateral_span_ref = max((abs(value) for value in lateral_values), default=0.0)
+                else:
+                    lateral_span_ref = 0.0
+            else:
+                lateral_span_ref = 0.0
 
             engaged_alive_count = 0
             for unit in alive_units:
@@ -806,13 +811,17 @@ class EngineTickSkeleton:
             cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
             extension_gain = 1.0 + (0.25 * pursuit_intensity)
             mb_is_zero = abs(mb) <= 1e-12
+            odw_posture_bias_fleet_enabled = bool(getattr(self, "ODW_POSTURE_BIAS_ENABLED", False))
+            odw_posture_bias_k_fleet = max(0.0, float(getattr(self, "ODW_POSTURE_BIAS_K", 0.0)))
+            odw_posture_bias_clip_delta_fleet = max(0.0, float(getattr(self, "ODW_POSTURE_BIAS_CLIP_DELTA", 0.2)))
+            odw_posture_bias_active = odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
             tx = target_direction[0]
             ty = target_direction[1]
             target_norm = 0.0
             t_hat_x = 0.0
             t_hat_y = 0.0
             has_target_axis = False
-            if not mb_is_zero:
+            if (not mb_is_zero) or odw_posture_bias_active:
                 target_norm = math.sqrt((tx * tx) + (ty * ty))
                 if target_norm > 1e-12:
                     t_hat_x = tx / target_norm
@@ -931,13 +940,41 @@ class EngineTickSkeleton:
                         m_parallel_y = dot_mt * t_hat_y
                         m_tangent_x = maneuver_x - m_parallel_x
                         m_tangent_y = maneuver_y - m_parallel_y
+                        if odw_posture_bias_active:
+                            odw_raw = float(fleet.parameters.offense_defense_weight)
+                            odw_centered = (odw_raw - 5.0) / 4.0
+                            if odw_centered < -1.0:
+                                odw_centered = -1.0
+                            elif odw_centered > 1.0:
+                                odw_centered = 1.0
+                            if lateral_span_ref > 1e-12:
+                                lateral_offset = ((unit.position.x - centroid_x) * (-t_hat_y)) + (
+                                    (unit.position.y - centroid_y) * t_hat_x
+                                )
+                                lateral_norm = abs(lateral_offset) / lateral_span_ref
+                                if lateral_norm > 1.0:
+                                    lateral_norm = 1.0
+                            else:
+                                lateral_norm = 0.0
+                            # ODW redistributes forward pressure across the fleet width:
+                            # center-heavy for offensive posture, wing-heavy for defensive posture.
+                            width_profile = 1.0 - (2.0 * lateral_norm)
+                            odw_parallel_scale = 1.0 + (odw_posture_bias_k_fleet * odw_centered * width_profile)
+                            odw_parallel_scale_min = max(0.0, 1.0 - odw_posture_bias_clip_delta_fleet)
+                            odw_parallel_scale_max = 1.0 + odw_posture_bias_clip_delta_fleet
+                            if odw_parallel_scale < odw_parallel_scale_min:
+                                odw_parallel_scale = odw_parallel_scale_min
+                            elif odw_parallel_scale > odw_parallel_scale_max:
+                                odw_parallel_scale = odw_parallel_scale_max
+                        else:
+                            odw_parallel_scale = 1.0
                         tangent_scale = 1.0 + mb
                         tangent_scale -= (lateral_damping_base * stray_factor)
                         parallel_scale = 1.0
                         if tangent_scale < 0.05:
                             tangent_scale = 0.05
-                        maneuver_x = ((1.0 - mb) * parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
-                        maneuver_y = ((1.0 - mb) * parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
+                        maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
+                        maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
                     if deep_pursuit_mode:
                         extension_gain_effective = extension_gain
                         maneuver_x *= extension_gain_effective
