@@ -14,7 +14,6 @@ class EngineTickSkeleton:
         self.attack_range = float(attack_range)
         self.damage_per_tick = float(damage_per_tick)
         self.separation_radius = float(separation_radius)
-        self.last_damage_clamp_triggered = False
         self.debug_contact_assert = False
         self.debug_contact_sample_ticks = 50
         self.debug_last_combat_stats = {}
@@ -2194,7 +2193,6 @@ class EngineTickSkeleton:
     def resolve_combat(self, state: BattleState) -> BattleState:
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
-        odw_alpha = 0.6
         geom_gamma = 0.3
         CH_ENABLED = bool(getattr(self, "CH_ENABLED", True))
         h_raw = float(getattr(self, "contact_hysteresis_h", 0.10))
@@ -2249,7 +2247,6 @@ class EngineTickSkeleton:
 
         alive_units = {unit_id: unit for unit_id, unit in state.units.items() if snapshot_alive[unit_id]}
         incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
-        self.last_damage_clamp_triggered = False
         total_hp_before = sum(snapshot_hp[uid] for uid in alive_units)
         in_contact_count = 0
         damage_events_count = 0
@@ -2385,12 +2382,6 @@ class EngineTickSkeleton:
             p_target = participation_by_fleet.get(target.fleet_id, 0.0)
             coupling = 1.0 + (geom_gamma * (p_attacker - p_target))
 
-            bias_attacker = odw_alpha * (attacker.offense_defense_weight - 0.5)
-            bias_target = odw_alpha * (target.offense_defense_weight - 0.5)
-            damage_scale = 1.0 + bias_attacker - bias_target
-            if damage_scale < 0.0:
-                damage_scale = 0.0
-                self.last_damage_clamp_triggered = True
             q = 1.0
             if fire_quality_alpha > 0.0:
                 attacker_pos = snapshot_positions[attacker_id]
@@ -2422,7 +2413,7 @@ class EngineTickSkeleton:
                 if q < 0.0:
                     q = 0.0
 
-            event_damage = self.damage_per_tick * damage_scale * coupling * q
+            event_damage = self.damage_per_tick * coupling * q
             incoming_damage[target_id] += event_damage
             damage_events_count += 1
             if sample_contact_debug is None:
