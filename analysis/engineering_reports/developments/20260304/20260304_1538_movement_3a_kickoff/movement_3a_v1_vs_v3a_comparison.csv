@@ -1,0 +1,5 @@
+case_id,FR,MB,PD,movement_model,final_tick,first_contact_tick,first_kill_tick,formation_cut_tick,pocket_formation_tick,final_alive_A,final_alive_B,final_fleet_size_A_hp,final_fleet_size_B_hp,runtime_digest
+FR8_MB8_PD5,8,8,5,v1,458,107,117,126,202,14,0,1259.052731,0.0,db28cc1969a3c50239b42b1e551c5b74a2cc092f62db656a6ffbc5933c1129da
+FR8_MB8_PD5,8,8,5,v3a,582,107,116,126,240,4,0,307.314961,0.0,59e0c3f9d26a2dd71ee7e4328048abfe22bc0ed6502b6b217d9dc063d1a7bbc8
+reference_alpha_AB,4,5,5,v1,580,106,115,125,162,0,3,0.0,282.173297,968cb91ffda41679a09337985fa95204834847b56463c19a0bf08033c67b9b6d
+reference_alpha_AB,4,5,5,v3a,455,107,116,126,225,0,17,0.0,1470.618703,72a1a747e6db78ea38a69709e390ef16b5898aa3926fbfe6767458752ba12fd9

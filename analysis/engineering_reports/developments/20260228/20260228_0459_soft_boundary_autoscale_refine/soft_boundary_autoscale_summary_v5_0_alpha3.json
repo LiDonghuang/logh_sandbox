@@ -1,0 +1,128 @@
+{
+  "directive": "Soft Boundary Auto-Scaling Refinement (No New Tunables)",
+  "engine_version": "v5.0-alpha3",
+  "formula": {
+    "band_width": "w = min(separation_radius, 0.05 * L)",
+    "L_definition": "arena_size (square map)",
+    "strength": "unchanged; derived from existing movement scale (alpha_sep)",
+    "new_tunables_added": false
+  },
+  "gates": {
+    "determinism_pass": true,
+    "combat_regression_pass": true,
+    "mirror_not_worsened": true,
+    "no_new_attractor_signal": true,
+    "boundary_penetration_zero_like": true,
+    "no_permanent_boundary_trap": true,
+    "rpg_overhead_below_10pct": true
+  },
+  "required_diagnostic_readouts": {
+    "boundary_band_width_w": 2.0,
+    "boundary_band_fraction": 0.01,
+    "boundary_force_events_count_tick": 0,
+    "boundary_force_events_count_total": 22
+  },
+  "small_arena_sensitivity_check": {
+    "arena_size": 100.0,
+    "before_old_width_formula": {
+      "width_w": 2.0,
+      "note": "old width formula w=separation_radius",
+      "survivors_A": 8,
+      "survivors_B": 16,
+      "first_contact_tick": 38,
+      "mean_boundary_band_fraction": 0.02,
+      "boundary_force_events_count_total": 1641
+    },
+    "after_autoscaled_width_formula": {
+      "width_w": 2.0,
+      "survivors_A": 8,
+      "survivors_B": 16,
+      "first_contact_tick": 38,
+      "mean_boundary_band_fraction": 0.019999999999999865,
+      "boundary_force_events_count_total": 1641
+    },
+    "equivalence_note": "For this scenario, w_old == w_new (2.0), so dynamic outcome remains effectively unchanged at arena=100."
+  },
+  "large_arena_non_regression_check": {
+    "arena_size": 200.0,
+    "current_soft_on": {
+      "survivors_A": 13,
+      "survivors_B": 30,
+      "first_contact_tick": 100,
+      "boundary_band_fraction_mean": 0.009999999999999933,
+      "boundary_force_events_count_total": 22
+    },
+    "prior_soft_on_0430": {
+      "survivors_A": 13,
+      "survivors_B": 30,
+      "first_contact_tick": 100
+    },
+    "delta": {
+      "survivors_A_delta": 0,
+      "survivors_B_delta": 0,
+      "first_contact_tick_delta": 0
+    }
+  },
+  "diag4_rpg_zero_band_readout": {
+    "tau": 0.04991619821847638,
+    "outward_ratio": 0.5,
+    "tangential_ratio": 0.0,
+    "suppressed_ratio": 0.0,
+    "p_return_by_class": {
+      "inward_intent": {
+        "success_events": 114,
+        "fail_events": 369,
+        "evaluated_events": 483,
+        "p_return": 0.2360248447204969
+      },
+      "outward_bias": {
+        "success_events": 185,
+        "fail_events": 290,
+        "evaluated_events": 475,
+        "p_return": 0.3894736842105263
+      },
+      "tangential_neutral": {
+        "success_events": 18,
+        "fail_events": 25,
+        "evaluated_events": 43,
+        "p_return": 0.4186046511627907
+      },
+      "suppressed_inward": {
+        "success_events": 7,
+        "fail_events": 9,
+        "evaluated_events": 16,
+        "p_return": 0.4375
+      }
+    }
+  },
+  "debug_overhead": {
+    "diag_on_seconds_mean": 6.829316000027272,
+    "diag_off_seconds_mean": 6.369778133346699,
+    "overhead_ratio": 1.072143465134967,
+    "overhead_pct": 7.2143465134967055,
+    "diag_on_seconds_samples": [
+      6.707512399996631,
+      6.852116500027478,
+      6.928319100057706
+    ],
+    "diag_off_seconds_samples": [
+      6.470573600032367,
+      6.18649049999658,
+      6.4522703000111505
+    ],
+    "measurement_method": "pure engine step benchmark (no per-tick external metric collection)"
+  },
+  "mirror_metric": {
+    "source": "reused from 20260228_0430 because behavior branch is unchanged for large arena baseline (w remains separation_radius).",
+    "soft_off": {
+      "grid_size": "11x11",
+      "mean_abs_antisym_error": 0.010684456143194536,
+      "max_abs_antisym_error": 0.03305785123966942
+    },
+    "soft_on": {
+      "grid_size": "11x11",
+      "mean_abs_antisym_error": 0.010459983625703972,
+      "max_abs_antisym_error": 0.03333333333333333
+    }
+  }
+}

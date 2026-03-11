@@ -1,0 +1,4 @@
+case_id,attack_range,density_ratio_attack_over_spacing,first_contact_tick,survivors_A,survivors_B,persistent_unit_count,absorbing_ratio,reversible_ratio,isolation_ratio,blockage_ratio,cum_delta_move_norm,cum_delta_fsr_norm,cum_delta_projection_norm,mechanism_label
+F2_L,24.0,12.0,102,16,28,9,0.6666666666666666,0.3333333333333333,0.7486666666666667,0.0755,63.000000000000014,7.320011385051966,4.667394906906257,persistent_isolation_absorbing
+F2_M,30.0,15.0,99,13,30,7,0.8571428571428571,0.14285714285714285,0.719,0.0745,49.00000000000002,4.5691673838419264,4.293723521758795,persistent_isolation_absorbing
+F2_H,36.0,18.0,96,12,28,8,0.625,0.375,0.7231666666666666,0.07266666666666667,56.00000000000011,6.3829862679743155,6.747721889342176,persistent_isolation_absorbing

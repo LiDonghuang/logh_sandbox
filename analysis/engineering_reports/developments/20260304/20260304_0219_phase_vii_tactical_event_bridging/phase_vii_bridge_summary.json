@@ -1,0 +1,224 @@
+{
+  "directive": "Phase VII Tactical Event Bridging (Geometry -> BEL -> BRF)",
+  "engine_version": "v5.0-alpha5",
+  "scope": "Observer/Event layer only; runtime behavior unchanged",
+  "bridge_parameters": {
+    "theta_split": 1.715,
+    "theta_env": 0.583,
+    "sustain_ticks": 20,
+    "tick_semantics": {
+      "t0": "snapshot_only",
+      "events_use_t_ge_1": true
+    }
+  },
+  "fixed_runtime_settings": {
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "fire_quality_alpha": 0.1,
+    "contact_hysteresis_h": 0.1,
+    "fsr_strength": 0.1,
+    "boundary_enabled": false,
+    "units_per_side": 100,
+    "arena_size": 200.0,
+    "min_unit_spacing": 2.0,
+    "unit_speed": 1.0,
+    "unit_max_hit_points": 100.0,
+    "initial_fleet_aspect_ratio": 2.0,
+    "steps": 300
+  },
+  "cases": [
+    {
+      "case_id": "FR8_MB8_PD5",
+      "parameters": {
+        "FR": 8.0,
+        "MB": 8.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "per_side": {
+        "A": {
+          "first_tick_split_sustain": 83,
+          "first_tick_env_sustain": 255
+        },
+        "B": {
+          "first_tick_split_sustain": 75,
+          "first_tick_env_sustain": 202
+        }
+      },
+      "BRF_mapped": {
+        "FormationCutTick": 75,
+        "PocketFormationTick": 202
+      }
+    },
+    {
+      "case_id": "reference_alpha_AB",
+      "parameters": {
+        "FR": 4.0,
+        "MB": 5.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 106,
+      "per_side": {
+        "A": {
+          "first_tick_split_sustain": 85,
+          "first_tick_env_sustain": 162
+        },
+        "B": {
+          "first_tick_split_sustain": 102,
+          "first_tick_env_sustain": 227
+        }
+      },
+      "BRF_mapped": {
+        "FormationCutTick": 85,
+        "PocketFormationTick": 162
+      }
+    },
+    {
+      "case_id": "FR5_MB2_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 2.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "per_side": {
+        "A": {
+          "first_tick_split_sustain": 75,
+          "first_tick_env_sustain": 276
+        },
+        "B": {
+          "first_tick_split_sustain": 83,
+          "first_tick_env_sustain": 226
+        }
+      },
+      "BRF_mapped": {
+        "FormationCutTick": 75,
+        "PocketFormationTick": 226
+      }
+    },
+    {
+      "case_id": "FR5_MB5_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 5.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 106,
+      "per_side": {
+        "A": {
+          "first_tick_split_sustain": 85,
+          "first_tick_env_sustain": 162
+        },
+        "B": {
+          "first_tick_split_sustain": 102,
+          "first_tick_env_sustain": 227
+        }
+      },
+      "BRF_mapped": {
+        "FormationCutTick": 85,
+        "PocketFormationTick": 162
+      }
+    },
+    {
+      "case_id": "FR5_MB8_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 8.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "per_side": {
+        "A": {
+          "first_tick_split_sustain": 83,
+          "first_tick_env_sustain": 255
+        },
+        "B": {
+          "first_tick_split_sustain": 75,
+          "first_tick_env_sustain": 202
+        }
+      },
+      "BRF_mapped": {
+        "FormationCutTick": 75,
+        "PocketFormationTick": 202
+      }
+    }
+  ],
+  "determinism_spot_check": {
+    "case_id": "FR8_MB8_PD5",
+    "digest_run1": "94b9fafb9423f3c3ed8be38dd1c2c85b2c04261b87f352f595912046e82eede7",
+    "digest_run2": "94b9fafb9423f3c3ed8be38dd1c2c85b2c04261b87f352f595912046e82eede7",
+    "pass": true
+  },
+  "pre_contact_event_occurrences": [
+    {
+      "case_id": "FR8_MB8_PD5",
+      "side": "A",
+      "event": "FormationCut",
+      "tick": 83,
+      "first_contact_tick": 107
+    },
+    {
+      "case_id": "FR8_MB8_PD5",
+      "side": "B",
+      "event": "FormationCut",
+      "tick": 75,
+      "first_contact_tick": 107
+    },
+    {
+      "case_id": "reference_alpha_AB",
+      "side": "A",
+      "event": "FormationCut",
+      "tick": 85,
+      "first_contact_tick": 106
+    },
+    {
+      "case_id": "reference_alpha_AB",
+      "side": "B",
+      "event": "FormationCut",
+      "tick": 102,
+      "first_contact_tick": 106
+    },
+    {
+      "case_id": "FR5_MB2_PD5",
+      "side": "A",
+      "event": "FormationCut",
+      "tick": 75,
+      "first_contact_tick": 107
+    },
+    {
+      "case_id": "FR5_MB2_PD5",
+      "side": "B",
+      "event": "FormationCut",
+      "tick": 83,
+      "first_contact_tick": 107
+    },
+    {
+      "case_id": "FR5_MB5_PD5",
+      "side": "A",
+      "event": "FormationCut",
+      "tick": 85,
+      "first_contact_tick": 106
+    },
+    {
+      "case_id": "FR5_MB5_PD5",
+      "side": "B",
+      "event": "FormationCut",
+      "tick": 102,
+      "first_contact_tick": 106
+    },
+    {
+      "case_id": "FR5_MB8_PD5",
+      "side": "A",
+      "event": "FormationCut",
+      "tick": 83,
+      "first_contact_tick": 107
+    },
+    {
+      "case_id": "FR5_MB8_PD5",
+      "side": "B",
+      "event": "FormationCut",
+      "tick": 75,
+      "first_contact_tick": 107
+    }
+  ]
+}

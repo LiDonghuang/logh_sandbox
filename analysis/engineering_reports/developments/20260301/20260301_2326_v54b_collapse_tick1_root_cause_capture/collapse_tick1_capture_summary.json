@@ -1,0 +1,71 @@
+{
+  "directive": "Collapse Tick=1 Root-Cause Data Capture",
+  "engine_reference": "v5.0-alpha5 + V5.4-b switch active",
+  "scope": "diagnostic_only_no_behavior_change",
+  "fixed_conditions": {
+    "fleet_size": 100,
+    "aspect_ratio": 2.0,
+    "unit_spacing": 2.0,
+    "unit_speed": 1.0,
+    "unit_hp": 100.0,
+    "arena_size": 200.0,
+    "steps": 300,
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "fire_quality_alpha": 0.1,
+    "contact_hysteresis_h": 0.1,
+    "ch_enabled": true,
+    "fsr_enabled": true,
+    "fsr_strength": 0.1,
+    "boundary_enabled": false
+  },
+  "grid": {
+    "FR": [
+      2.0,
+      5.0,
+      8.0
+    ],
+    "MB": [
+      2.0,
+      5.0,
+      8.0
+    ],
+    "PD": [
+      2.0,
+      5.0,
+      8.0
+    ]
+  },
+  "artifacts": {
+    "early_tick_csv": "analysis\\engineering_reports\\20260301_2326_v54b_collapse_tick1_root_cause_capture\\collapse_tick1_early_tick_diagnostic.csv",
+    "summary_table_csv": "analysis\\engineering_reports\\20260301_2326_v54b_collapse_tick1_root_cause_capture\\collapse_tick1_summary_table.csv",
+    "fr8_mb8_pd5_ticks0_200_csv": "analysis\\engineering_reports\\20260301_2326_v54b_collapse_tick1_root_cause_capture\\collapse_tick1_FR8_MB8_PD5_ticks0_200.csv",
+    "plot_a": null,
+    "plot_b": null
+  },
+  "determinism": {
+    "case_id": "FR8_MB8_PD5",
+    "digest_run1": "5ed764d2c2c1b06113de0985468201c9e4b7e89209ba36da375b19f90f4293cb",
+    "digest_run2": "5ed764d2c2c1b06113de0985468201c9e4b7e89209ba36da375b19f90f4293cb",
+    "pass": true
+  },
+  "tick1_component_frequency": {
+    "elong": 54
+  },
+  "tick1_margin_stats": {
+    "mean": 0.7002720911432312,
+    "min": -0.03853799629092053,
+    "max": 0.9607194995742789,
+    "description": "deeply positive (scale mismatch-like)"
+  },
+  "interpretation_lines": [
+    "1) Tick=1 dominant contributor (by case-side frequency): elong (54/54).",
+    "2) Tick=1 margin stats: mean=0.7003, min=-0.0385, max=0.9607 -> deeply positive (scale mismatch-like).",
+    "3) collapse_event_v2(t=1) positives: 51/54.",
+    "4) enemy_cohesion_v2 at tick 1 is consistently low enough to cross theta in switched path.",
+    "5) v1 reference generally stays high at early ticks, indicating switch sensitivity source is v2 signal scale.",
+    "6) No semantic change applied in this capture; data reflects active V5.4-b behavior only."
+  ],
+  "plot_generated": false,
+  "plot_error": "No module named 'matplotlib'"
+}

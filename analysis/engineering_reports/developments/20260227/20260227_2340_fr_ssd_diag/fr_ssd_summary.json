@@ -1,0 +1,165 @@
+{
+  "directive": "Phase V.1 FR Scale Sanity Diagnostic (FR-SSD)",
+  "seed": 20260227,
+  "assumptions": [
+    "Seed fixed to 20260227 for all runs; runtime path is deterministic in current engine.",
+    "Experiments A/B run with FSR disabled (fsr_strength=0.0) to isolate FR wiring/monotonicity; Experiment C is dedicated to FSR interaction.",
+    "Snapshots are delivered as frame IDs + frame digests (directive allows snapshots or frame IDs)."
+  ],
+  "governance_constraints": {
+    "diagnostic_only": true,
+    "behavior_modification": false,
+    "determinism_required": true
+  },
+  "determinism_check": {
+    "run": "A1",
+    "repeat_run": "A1_rep",
+    "digest_1": "41da49af0fa8c94a07627e0c608177cd230b06b7fc3bdfb8459ae8dba50d1483",
+    "digest_2": "41da49af0fa8c94a07627e0c608177cd230b06b7fc3bdfb8459ae8dba50d1483",
+    "determinism_pass": true
+  },
+  "experiment_results": {
+    "A_swap_test": {
+      "runs": [
+        "A1",
+        "A2"
+      ],
+      "ticks": [
+        10,
+        30,
+        60
+      ],
+      "swap_observed": true,
+      "details": {
+        "R_rms": {
+          "swapped_error": 0.3697796109748914,
+          "direct_error": 14.298996097930281,
+          "swap_observed": true
+        },
+        "width_metric": {
+          "swapped_error": 4.5727221379899134,
+          "direct_error": 55.50407837509706,
+          "swap_observed": true
+        }
+      },
+      "frame_ids": {
+        "A1": [
+          "A1_t10",
+          "A1_t30",
+          "A1_t60"
+        ],
+        "A2": [
+          "A2_t10",
+          "A2_t30",
+          "A2_t60"
+        ]
+      }
+    },
+    "B_monotonicity_test": {
+      "runs": [
+        "B0",
+        "B1",
+        "B2"
+      ],
+      "ticks": [
+        10,
+        30,
+        60
+      ],
+      "monotonic_direction_correct": true,
+      "details": {
+        "R_rms": {
+          "by_tick": {
+            "10": {
+              "fr0": 9.9285415538859,
+              "fr05": 7.4018307126930925,
+              "fr1": 5.778366625700591,
+              "nonincreasing": true
+            },
+            "30": {
+              "fr0": 10.273471370882069,
+              "fr05": 6.219501396912953,
+              "fr1": 4.966015190512249,
+              "nonincreasing": true
+            },
+            "60": {
+              "fr0": 10.28283836545229,
+              "fr05": 6.500169412873733,
+              "fr1": 5.237599883819998,
+              "nonincreasing": true
+            }
+          },
+          "direction_correct": true
+        },
+        "neighbor_distance_within_sep": {
+          "by_tick": {
+            "10": {
+              "fr0": 1.9458595298179329,
+              "fr05": 1.692254657779404,
+              "fr1": 1.4914204367532138,
+              "nonincreasing": true
+            },
+            "30": {
+              "fr0": 1.9999999999999993,
+              "fr05": 1.6434719009211878,
+              "fr1": 1.4362469150520676,
+              "nonincreasing": true
+            },
+            "60": {
+              "fr0": 1.9999999999999982,
+              "fr05": 1.6346117812276977,
+              "fr1": 1.460834436093792,
+              "nonincreasing": true
+            }
+          },
+          "direction_correct": true
+        }
+      },
+      "frame_ids": {
+        "B1": [
+          "B1_t10",
+          "B1_t30",
+          "B1_t60"
+        ]
+      }
+    },
+    "C_fsr_interaction_test": {
+      "runs": [
+        "C0",
+        "C1",
+        "C2"
+      ],
+      "ticks": [
+        30,
+        60,
+        100
+      ],
+      "interaction": {
+        "mean_rigidity_gain_c1": -0.010281888910225337,
+        "mean_rigidity_gain_c2": -0.04771672590019357,
+        "interaction_class": "None",
+        "first_contact_tick": {
+          "C0": 103,
+          "C1": 91,
+          "C2": 90
+        }
+      },
+      "frame_ids": {
+        "C1": [
+          "C1_t30",
+          "C1_t60",
+          "C1_t100"
+        ]
+      }
+    }
+  },
+  "conclusions": {
+    "swap_behavior_observed": "Yes",
+    "fr_monotonic_direction_correct": "Yes",
+    "fsr_interaction_amplifies_or_compresses_fr_scale": "None"
+  },
+  "artifacts": {
+    "metrics_csv": "fr_ssd_metrics.csv",
+    "report_md": "fr_ssd_report_v1_0.md"
+  }
+}

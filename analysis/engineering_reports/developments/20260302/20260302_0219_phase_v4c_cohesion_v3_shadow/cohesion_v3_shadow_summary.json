@@ -1,0 +1,35 @@
+{
+  "engine_version": "v5.0-alpha5+v4c-shadow",
+  "report_dir": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow",
+  "cohesion_v3_constants": {
+    "rho_low": 0.35,
+    "rho_high": 1.15,
+    "k": 6.0,
+    "scale_reference": "R_ref = min_unit_spacing * sqrt(N)"
+  },
+  "determinism_check": {
+    "case": "FR8_MB8_PD5",
+    "digest_run_1": "ffabdb0a73eb2df982f5d7a90308c2ea154e941e9668d9102ed9cb4a0bb098aa",
+    "digest_run_2": "ffabdb0a73eb2df982f5d7a90308c2ea154e941e9668d9102ed9cb4a0bb098aa",
+    "pass": true
+  },
+  "tick01_stats": {
+    "rows": 54,
+    "mean_C_v3_t0": 0.18499999999999994,
+    "min_C_v3_t0": 0.04,
+    "max_C_v3_t0": 0.33,
+    "collapse_event_v2_t1_positive": 51,
+    "dominant_cause_counts": {
+      "conn-drop": 0,
+      "scale-penalty": 0,
+      "none": 54
+    }
+  },
+  "outputs": {
+    "early_ticks_csv": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow\\cohesion_v3_shadow_early_ticks_3x3x3.csv",
+    "fr8_full_csv": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow\\cohesion_v3_shadow_FR8_MB8_PD5_ticks0_200.csv",
+    "reference_full_csv": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow\\cohesion_v3_shadow_reference_alpha_AB_ticks0_200.csv",
+    "tick01_summary_csv": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow\\cohesion_v3_shadow_tick01_summary.csv",
+    "proposal_md": "analysis\\engineering_reports\\20260302_0219_phase_v4c_cohesion_v3_shadow\\Cohesion_v3_Proposal_v1.0.md"
+  }
+}

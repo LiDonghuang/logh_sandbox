@@ -1,0 +1,48 @@
+﻿{
+  "target_scenario": "Phase V Reference Scenario Alpha",
+  "analysis": "DIAG4-F4 boundary differential around DIAG4-F3 reversible pockets",
+  "case_count": 16,
+  "groups": [
+    "M1",
+    "M2",
+    "M3",
+    "M4",
+    "M5"
+  ],
+  "label_counts": {
+    "persistent_isolation_absorbing": 9,
+    "reversible_or_mixed": 7
+  },
+  "base_mixed_count": 5,
+  "boundary_flip_count": 8,
+  "determinism_check": {
+    "case": {
+      "fsr_strength": 0.1,
+      "fr_a": 3.0,
+      "fr_b": 2.0
+    },
+    "pass": true,
+    "run1_digest": "2cb0865dc4695ba7399e22c3363bee5393b66315dbcd6198f2a86f49293fa2e9",
+    "run2_digest": "2cb0865dc4695ba7399e22c3363bee5393b66315dbcd6198f2a86f49293fa2e9",
+    "run1_survivors_A": 20,
+    "run1_survivors_B": 22,
+    "run2_survivors_A": 20,
+    "run2_survivors_B": 22,
+    "run1_first_contact_tick": 99,
+    "run2_first_contact_tick": 99
+  },
+  "debug_overhead_sample_alpha": {
+    "diag_on_seconds": 6.942134800017811,
+    "diag_off_seconds": 6.174501599976793,
+    "overhead_ratio": 1.124323103267785,
+    "overhead_pct": 12.432310326778495
+  },
+  "mechanism_hypothesis": {
+    "type": "mixed_boundary_between_absorbing_isolation_and_reversible_return",
+    "falsifiable_chain": [
+      "Lower absorbing_ratio in mixed pockets correlates with higher OUTLIER->SHELL return frequency.",
+      "Mixed pockets do not show blockage dominance; isolation_ratio remains > blockage_ratio in most cases.",
+      "Local FR perturbation (+/-0.5) can flip label, indicating a narrow topology-transition boundary rather than a global mode switch."
+    ]
+  }
+}

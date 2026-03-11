@@ -1,0 +1,11 @@
+case_id,side,first_contact_tick,cut_tick_geom,cut_tick_tactical,pocket_tick_geom,pocket_tick_tactical,cut_precontact_geom,pocket_precontact_geom,pct_ticks_split_cond_true,pct_ticks_env_cond_true,BRF_mapped_FormationCutTick_T,BRF_mapped_PocketFormationTick_T
+FR8_MB8_PD5,A,107,83,126,255,255,true,false,22.67,35.67,126,202
+FR8_MB8_PD5,B,107,75,126,202,202,true,false,29.67,39.33,126,202
+reference_alpha_AB,A,106,85,125,162,162,true,false,30.67,40.00,125,162
+reference_alpha_AB,B,106,102,125,227,227,true,false,20.33,35.67,125,162
+FR5_MB2_PD5,A,107,75,126,276,276,true,false,29.33,29.33,126,226
+FR5_MB2_PD5,B,107,83,N/A,226,226,true,false,28.33,38.33,126,226
+FR5_MB5_PD5,A,106,85,125,162,162,true,false,30.67,40.00,125,162
+FR5_MB5_PD5,B,106,102,125,227,227,true,false,20.33,35.67,125,162
+FR5_MB8_PD5,A,107,83,126,255,255,true,false,22.67,35.67,126,202
+FR5_MB8_PD5,B,107,75,126,202,202,true,false,29.67,39.33,126,202

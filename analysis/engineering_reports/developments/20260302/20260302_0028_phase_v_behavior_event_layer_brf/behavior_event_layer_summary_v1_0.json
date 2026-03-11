@@ -1,0 +1,110 @@
+{
+  "directive": "Phase V Behavior Event Layer & Battle Report Framework",
+  "engine_version": "v5.0-alpha5 + V5.4-b",
+  "observer_only": true,
+  "output_dir": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf",
+  "assumptions": [
+    "A/B scenario referenced by Governance interpreted as Phase V Reference Scenario Alpha.",
+    "BEL constants are fixed diagnostic constants (epsilon/Delta/K/X) for this report."
+  ],
+  "determinism": {
+    "case": "FR8_MB8_PD5",
+    "digest_run1": "16eb5da45a63088d2f3c990fa4c8c7624d6dac343f5fcef4b7919b3e37af642c",
+    "digest_run2": "16eb5da45a63088d2f3c990fa4c8c7624d6dac343f5fcef4b7919b3e37af642c",
+    "pass": true
+  },
+  "artifacts": {
+    "behavior_events_matrix": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf\\behavior_events_matrix_v5_0_alpha5.csv",
+    "timeline_fr8_mb8_pd5": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf\\behavior_timeline_case_FR8_MB8_PD5.csv",
+    "timeline_reference_alpha": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf\\behavior_timeline_case_reference_alpha_AB.csv",
+    "battle_report_framework": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf\\Battle_Report_Framework_v1.0.md",
+    "behavior_event_layer_spec": "analysis\\engineering_reports\\20260302_0028_phase_v_behavior_event_layer_brf\\Behavior_Event_Layer_Spec_v1.0.md"
+  },
+  "representative_case_fr8_mb8_pd5": {
+    "FirstContactTick": 99,
+    "FirstKillTick": 116,
+    "PursuitModeOnsetTick": 1,
+    "CollapseEventTick_v2": 1,
+    "CollapseEventTick_vuln_shadow": null,
+    "InflectionTick": null,
+    "EndgameOnsetTick": null,
+    "EndTick": 300,
+    "Winner": "A",
+    "FinalAliveA": 29,
+    "FinalAliveB": 22,
+    "FinalFleetSizeA_hp": 2567.3218252601755,
+    "FinalFleetSizeB_hp": 1940.43118077926,
+    "FinalFleetSizeA_ships_ceil": 2568,
+    "FinalFleetSizeB_ships_ceil": 1941,
+    "FormationCutTick": 1,
+    "PocketStartTick": 188
+  },
+  "bel_constants": {
+    "formation_cut_epsilon": 0.2,
+    "formation_cut_window_ticks": 10,
+    "pocket_min_secondary_units": 3,
+    "pocket_persistence_ticks": 20,
+    "deep_penetration_ratio_x": 0.1,
+    "deep_penetration_ticks_k": 10,
+    "inflection_rolling_window_ticks": 20
+  },
+  "execution_config": {
+    "settings_path": "analysis/test_run_v1_0.settings.json",
+    "key_parameters": {
+      "attack_range": {
+        "settings_value": 5.0,
+        "effective_value": 5.0
+      },
+      "min_unit_spacing": {
+        "settings_value": 2.0,
+        "effective_value": 2.0
+      },
+      "arena_size": {
+        "settings_value": 200.0,
+        "effective_value": 200.0
+      },
+      "max_time_steps_effective": {
+        "settings_value": -1,
+        "effective_value": 300
+      },
+      "unit_speed": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "damage_per_tick": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "ch_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "contact_hysteresis_h": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "fsr_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "fsr_strength": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "boundary_enabled": {
+        "settings_value": true,
+        "effective_value": false
+      }
+    },
+    "overrides_applied": [
+      {
+        "field": "max_time_steps_effective",
+        "reason": "BEL matrix harness fixed to 300 ticks for comparability when settings max_time_steps <= 0."
+      },
+      {
+        "field": "boundary_enabled",
+        "reason": "Governance baseline for this phase run set boundary disabled in BEL harness."
+      }
+    ]
+  }
+}

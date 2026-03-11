@@ -1,0 +1,13 @@
+case,single_sided_alpha5,single_sided_alpha4,newly_introduced_in_alpha5,alpha5_pocket_count,alpha4_pocket_count,alpha5_p90,alpha4_p90
+FR2_MB2_PD2,False,False,False,43,43,73.60000000000005,73.60000000000005
+FR2_MB2_PD5,False,False,False,43,43,73.60000000000005,73.60000000000005
+FR2_MB2_PD8,False,False,False,43,43,73.60000000000005,73.60000000000005
+FR2_MB8_PD2,False,False,False,35,35,77.6,77.6
+FR2_MB8_PD5,False,False,False,35,35,77.6,77.6
+FR2_MB8_PD8,False,False,False,35,35,77.6,77.6
+FR8_MB2_PD2,False,False,False,58,58,89.9,89.9
+FR8_MB2_PD5,False,False,False,58,58,89.9,89.9
+FR8_MB2_PD8,False,False,False,58,58,89.9,89.9
+FR8_MB8_PD2,True,True,False,25,25,180.8,180.8
+FR8_MB8_PD5,True,True,False,25,25,180.8,180.8
+FR8_MB8_PD8,True,True,False,25,25,180.8,180.8

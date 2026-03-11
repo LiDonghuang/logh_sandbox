@@ -1,0 +1,207 @@
+{
+  "directive": "Phase VII-2 Dual-Channel Tactical Event Export (Geom vs Contact-Gated)",
+  "engine_version": "v5.0-alpha5",
+  "scope": "observer_event_report_only",
+  "tick_semantics": {
+    "t0": "snapshot_only",
+    "events_use_t_ge_1": true
+  },
+  "channels": {
+    "G": "geometry_only",
+    "T": "contact_gated"
+  },
+  "thresholds": {
+    "theta_split": 1.715,
+    "theta_env": 0.583,
+    "sustain_ticks": 20
+  },
+  "run_settings_digest": "abb107d2ce58582cbbc3d23ba0eb784ffa408b33f715c8357629b040a7c5c5c7",
+  "determinism_spot_check": {
+    "case_id": "FR8_MB8_PD5",
+    "digest_run1": "2d048ddd55be21c648ee3e328ac4030b80d0ca07be026eb687a6e89275116a24",
+    "digest_run2": "2d048ddd55be21c648ee3e328ac4030b80d0ca07be026eb687a6e89275116a24",
+    "pass": true
+  },
+  "cases": [
+    {
+      "case_id": "FR8_MB8_PD5",
+      "parameters": {
+        "FR": 8.0,
+        "MB": 8.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "sides": {
+        "A": {
+          "cut_tick_geom": 83,
+          "cut_tick_tactical": 126,
+          "pocket_tick_geom": 255,
+          "pocket_tick_tactical": 255,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 22.666666666666668,
+          "pct_ticks_env_cond_true": 35.666666666666664
+        },
+        "B": {
+          "cut_tick_geom": 75,
+          "cut_tick_tactical": 126,
+          "pocket_tick_geom": 202,
+          "pocket_tick_tactical": 202,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 29.666666666666668,
+          "pct_ticks_env_cond_true": 39.333333333333336
+        }
+      },
+      "brf_mapped_tactical": {
+        "FormationCutTick": 126,
+        "PocketFormationTick": 202
+      }
+    },
+    {
+      "case_id": "reference_alpha_AB",
+      "parameters": {
+        "FR": 4.0,
+        "MB": 5.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 106,
+      "sides": {
+        "A": {
+          "cut_tick_geom": 85,
+          "cut_tick_tactical": 125,
+          "pocket_tick_geom": 162,
+          "pocket_tick_tactical": 162,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 30.666666666666668,
+          "pct_ticks_env_cond_true": 40.0
+        },
+        "B": {
+          "cut_tick_geom": 102,
+          "cut_tick_tactical": 125,
+          "pocket_tick_geom": 227,
+          "pocket_tick_tactical": 227,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 20.333333333333332,
+          "pct_ticks_env_cond_true": 35.666666666666664
+        }
+      },
+      "brf_mapped_tactical": {
+        "FormationCutTick": 125,
+        "PocketFormationTick": 162
+      }
+    },
+    {
+      "case_id": "FR5_MB2_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 2.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "sides": {
+        "A": {
+          "cut_tick_geom": 75,
+          "cut_tick_tactical": 126,
+          "pocket_tick_geom": 276,
+          "pocket_tick_tactical": 276,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 29.333333333333332,
+          "pct_ticks_env_cond_true": 29.333333333333332
+        },
+        "B": {
+          "cut_tick_geom": 83,
+          "cut_tick_tactical": null,
+          "pocket_tick_geom": 226,
+          "pocket_tick_tactical": 226,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 28.333333333333332,
+          "pct_ticks_env_cond_true": 38.333333333333336
+        }
+      },
+      "brf_mapped_tactical": {
+        "FormationCutTick": 126,
+        "PocketFormationTick": 226
+      }
+    },
+    {
+      "case_id": "FR5_MB5_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 5.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 106,
+      "sides": {
+        "A": {
+          "cut_tick_geom": 85,
+          "cut_tick_tactical": 125,
+          "pocket_tick_geom": 162,
+          "pocket_tick_tactical": 162,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 30.666666666666668,
+          "pct_ticks_env_cond_true": 40.0
+        },
+        "B": {
+          "cut_tick_geom": 102,
+          "cut_tick_tactical": 125,
+          "pocket_tick_geom": 227,
+          "pocket_tick_tactical": 227,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 20.333333333333332,
+          "pct_ticks_env_cond_true": 35.666666666666664
+        }
+      },
+      "brf_mapped_tactical": {
+        "FormationCutTick": 125,
+        "PocketFormationTick": 162
+      }
+    },
+    {
+      "case_id": "FR5_MB8_PD5",
+      "parameters": {
+        "FR": 5.0,
+        "MB": 8.0,
+        "PD": 5.0
+      },
+      "first_contact_tick": 107,
+      "sides": {
+        "A": {
+          "cut_tick_geom": 83,
+          "cut_tick_tactical": 126,
+          "pocket_tick_geom": 255,
+          "pocket_tick_tactical": 255,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 22.666666666666668,
+          "pct_ticks_env_cond_true": 35.666666666666664
+        },
+        "B": {
+          "cut_tick_geom": 75,
+          "cut_tick_tactical": 126,
+          "pocket_tick_geom": 202,
+          "pocket_tick_tactical": 202,
+          "cut_precontact_geom": true,
+          "pocket_precontact_geom": false,
+          "pct_ticks_split_cond_true": 29.666666666666668,
+          "pct_ticks_env_cond_true": 39.333333333333336
+        }
+      },
+      "brf_mapped_tactical": {
+        "FormationCutTick": 126,
+        "PocketFormationTick": 202
+      }
+    }
+  ],
+  "brf_mapping_rule": {
+    "uses_channel_t_only": true,
+    "formation_cut_field": "earliest-side tactical cut tick",
+    "pocket_formation_field": "earliest-side tactical pocket tick"
+  }
+}

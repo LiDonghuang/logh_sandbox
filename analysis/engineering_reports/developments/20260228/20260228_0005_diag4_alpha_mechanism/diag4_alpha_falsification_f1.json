@@ -1,0 +1,52 @@
+{
+  "target": "Phase V Reference Scenario Alpha",
+  "falsification": "DIAG4-F1 (vary fsr_strength only)",
+  "rows": [
+    {
+      "fsr_strength": 0.0,
+      "first_contact_tick": 102,
+      "survivors_A": 17,
+      "survivors_B": 28,
+      "persistent_unit_count": 1,
+      "absorbing_ratio": 1.0,
+      "reversible_ratio": 0.0,
+      "isolation_ratio": 0.7405,
+      "blockage_ratio": 0.08883333333333333,
+      "cum_delta_move_norm": 6.999999999999991,
+      "cum_delta_fsr_norm": 0.0,
+      "cum_delta_projection_norm": 0.0
+    },
+    {
+      "fsr_strength": 0.1,
+      "first_contact_tick": 99,
+      "survivors_A": 13,
+      "survivors_B": 30,
+      "persistent_unit_count": 7,
+      "absorbing_ratio": 0.8571428571428571,
+      "reversible_ratio": 0.14285714285714285,
+      "isolation_ratio": 0.719,
+      "blockage_ratio": 0.0745,
+      "cum_delta_move_norm": 49.00000000000002,
+      "cum_delta_fsr_norm": 4.5691673838419264,
+      "cum_delta_projection_norm": 4.293723521758795
+    },
+    {
+      "fsr_strength": 0.2,
+      "first_contact_tick": 99,
+      "survivors_A": 13,
+      "survivors_B": 29,
+      "persistent_unit_count": 5,
+      "absorbing_ratio": 0.6,
+      "reversible_ratio": 0.4,
+      "isolation_ratio": 0.7178333333333333,
+      "blockage_ratio": 0.06666666666666667,
+      "cum_delta_move_norm": 35.00000000000001,
+      "cum_delta_fsr_norm": 3.3051611900207654,
+      "cum_delta_projection_norm": 0.3328718803516596
+    }
+  ],
+  "interpretation": {
+    "persistent_mechanism_stability": "sensitive",
+    "note": "If isolation+absorbing remains high across fsr strengths, mechanism is not FSR-only artifact."
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "status": "VOID",
+  "voided_at": "2026-03-05",
+  "void_reason": "FR/FCR mapping error in upstream DOE interpretation lineage (FR must map to formation_rigidity).",
+  "phase": "Phase VIII-C Movement 3A Decision Gate",
+  "source": "analysis/engineering_reports/developments/20260304/phase_viiiB_movement_3a_doe_validation/phase_viiiB_doe_run_table.csv",
+  "generated_at": "2026-03-05 01:16:37",
+  "overall_by_model": {
+    "v1": {
+      "n_runs": 270,
+      "win_rate_A_pct": 46.666666666666664,
+      "mean_end_tick": 300.0,
+      "median_end_tick": 300.0,
+      "cut_exists_rate_pct": 92.22222222222223,
+      "pocket_exists_rate_pct": 100.0,
+      "pocket_no_cut_rate_pct": 7.777777777777778,
+      "mean_first_contact_tick": 105.22222222222223,
+      "mean_first_kill_tick": 105.22222222222223,
+      "mean_cut_tick": 163.4578313253012,
+      "mean_pocket_tick": 180.6888888888889,
+      "mean_delta_pocket_minus_cut": 17.06024096385542,
+      "precontact_geom_cut_any_rate_pct": 76.66666666666667
+    },
+    "v3a": {
+      "n_runs": 270,
+      "win_rate_A_pct": 44.44444444444444,
+      "mean_end_tick": 300.0,
+      "median_end_tick": 300.0,
+      "cut_exists_rate_pct": 85.55555555555556,
+      "pocket_exists_rate_pct": 100.0,
+      "pocket_no_cut_rate_pct": 14.444444444444445,
+      "mean_first_contact_tick": 106.26666666666667,
+      "mean_first_kill_tick": 106.26666666666667,
+      "mean_cut_tick": 134.16883116883116,
+      "mean_pocket_tick": 180.05555555555554,
+      "mean_delta_pocket_minus_cut": 43.33766233766234,
+      "precontact_geom_cut_any_rate_pct": 96.66666666666667
+    }
+  },
+  "duration_censoring": {
+    "observed_max_end_tick": 300.0,
+    "runs_at_observed_max_end_tick": 540,
+    "total_runs": 540,
+    "rate_pct": 100.0
+  },
+  "decision": {
+    "recommended_default_movement_model": "v1",
+    "mode_policy": {
+      "test_mode_0_1": "movement_model=v1",
+      "test_mode_2": "movement_model selectable (v1 or v3a) for experimental runs"
+    },
+    "rationale": [
+      "All runs are duration-censored at end_tick=300; duration metrics cannot support default switch.",
+      "v3a increases precontact geometry-cut prevalence and PocketNoCut rate at MB=5/8.",
+      "v3a effects are mixed by MB/opponent and do not dominate v1 on core tactical consistency metrics."
+    ],
+    "next_step": "Proceed to Task 3 (high-FR stray-unit correction) under test_mode=2, then rerun focused validation."
+  }
+}

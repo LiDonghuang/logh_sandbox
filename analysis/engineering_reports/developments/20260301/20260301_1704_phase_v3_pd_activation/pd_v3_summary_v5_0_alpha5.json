@@ -1,0 +1,1117 @@
+{
+  "directive": "Governance Structural Directive - Phase V.3 Pursuit Drive (PD) Canonical Activation",
+  "engine_version": "v5.0-alpha5 (workspace)",
+  "scope": "Movement decision layer upgrade (PD activation); combat/targeting/projection/FSR/contact unchanged",
+  "fixed_conditions": {
+    "fleet": 100,
+    "aspect": 2.0,
+    "spacing": 2.0,
+    "speed": 1.0,
+    "hp": 100.0,
+    "arena": 200.0,
+    "steps": 300,
+    "attack_range": 5.0,
+    "damage": 1.0,
+    "alpha": 0.1,
+    "h": 0.1,
+    "ch": true,
+    "fsr": true,
+    "fsr_s": 0.1,
+    "boundary": false
+  },
+  "matrix": {
+    "FR": [
+      2.0,
+      8.0
+    ],
+    "MB": [
+      2.0,
+      8.0
+    ],
+    "PD": [
+      2.0,
+      5.0,
+      8.0
+    ]
+  },
+  "metric_definitions": {
+    "mirror": "mirror_abs_antisym_error = |M_ab + M_ba| where M=(survivors_A-survivors_B)/(survivors_A+survivors_B)",
+    "jitter": "Per-tick count of alive-on-both-snapshots units whose target id changes (None<->target and target->target counted).",
+    "pocket_lifetime": "OUTLIER streak length; OUTLIER if r > max(R_p90 + min_unit_spacing, 1.8*R_rms).",
+    "reintegration_rate": "reintegrated_outlier_streaks / started_outlier_streaks"
+  },
+  "macro_metrics": {
+    "mirror_macro_all_12": 0.1831437698499873,
+    "jitter_macro_all_12": 5420.0,
+    "per_tick_macro_all_12": 0.021294670138934935,
+    "mirror_macro_pd5_slice": 0.18314376984998731,
+    "jitter_macro_pd5_slice": 5420.0,
+    "per_tick_macro_pd5_slice": 0.021539698083361144,
+    "alpha4_baseline_subset_macro": {
+      "mirror": 0.14932437367243115,
+      "jitter": 6028.25,
+      "per_tick": 0.029408687583345455
+    }
+  },
+  "gates": {
+    "determinism_pass": true,
+    "pd5_neutral_regression_pass": true,
+    "mirror_degradation_ratio_vs_alpha4_subset": 0.22648275928312178,
+    "mirror_degradation_le_5pct_pass": false,
+    "jitter_degradation_ratio_vs_alpha4_subset": -0.10089992949861071,
+    "jitter_degradation_le_10pct_pass": true,
+    "runtime_overhead_ratio_vs_alpha4_subset": -0.2675736371330161,
+    "runtime_overhead_le_10pct_pass": true,
+    "no_new_attractor_proxy_pass": true,
+    "no_stable_geometric_locking_pass": true,
+    "no_single_sided_pocket_permanence_pass": false
+  },
+  "pd5_neutral_regression_details": {
+    "FR2_MB2": {
+      "neutral_collapse_regime": false,
+      "legacy_survivors_A": 37,
+      "legacy_survivors_B": 31,
+      "legacy_first_contact_tick": 107,
+      "legacy_digest": "76bbd37be756c065969a97cc956a085b307ed76c2a83ac4a6516fafc059a56d4",
+      "current_survivors_A": 49,
+      "current_survivors_B": 26,
+      "current_first_contact_tick": 107,
+      "current_digest": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+      "survivor_match": false,
+      "first_contact_delta": 0,
+      "first_contact_match_abs_le_2": true,
+      "neutral_regression_pass": true
+    },
+    "FR2_MB8": {
+      "neutral_collapse_regime": false,
+      "legacy_survivors_A": 25,
+      "legacy_survivors_B": 30,
+      "legacy_first_contact_tick": 108,
+      "legacy_digest": "2441b8266c50b4e8b55f0746f54c0998a007d4118fed73d91ae67cff7f25b052",
+      "current_survivors_A": 28,
+      "current_survivors_B": 33,
+      "current_first_contact_tick": 108,
+      "current_digest": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+      "survivor_match": false,
+      "first_contact_delta": 0,
+      "first_contact_match_abs_le_2": true,
+      "neutral_regression_pass": true
+    },
+    "FR8_MB2": {
+      "neutral_collapse_regime": true,
+      "legacy_survivors_A": 15,
+      "legacy_survivors_B": 34,
+      "legacy_first_contact_tick": 99,
+      "legacy_digest": "925ab9077c1a9ef17e81849ddf4dd4887a091a05cc0afe8e43d0cf559477c588",
+      "current_survivors_A": 15,
+      "current_survivors_B": 34,
+      "current_first_contact_tick": 99,
+      "current_digest": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+      "survivor_match": true,
+      "first_contact_delta": 0,
+      "first_contact_match_abs_le_2": true,
+      "neutral_regression_pass": true
+    },
+    "FR8_MB8": {
+      "neutral_collapse_regime": true,
+      "legacy_survivors_A": 25,
+      "legacy_survivors_B": 32,
+      "legacy_first_contact_tick": 99,
+      "legacy_digest": "a6bd4aa1438979eadc330e79b5cfe444bd8ef35a9b5d65f7f3f896564c142637",
+      "current_survivors_A": 25,
+      "current_survivors_B": 32,
+      "current_first_contact_tick": 99,
+      "current_digest": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+      "survivor_match": true,
+      "first_contact_delta": 0,
+      "first_contact_match_abs_le_2": true,
+      "neutral_regression_pass": true
+    }
+  },
+  "cases": [
+    {
+      "case": "FR2_MB2_PD2",
+      "fr": 2.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 2.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "digest_run2": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "survivors_A": 49,
+        "survivors_B": 26,
+        "first_contact_tick": 107,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 3712,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 5.95648620009888,
+        "per_tick_seconds": 0.0198549540003296,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.7913141504492434,
+        "reintegration_rate": 1.0,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": 0.30666666666666664,
+        "M_ba": -0.2564102564102564,
+        "mirror_abs_antisym_error": 0.050256410256410255,
+        "survivors_A": 29,
+        "survivors_B": 49,
+        "digest": "c3220d7de06c1ddd0350f3a2a00d516d2b400cf2cface44bb3902babb0aeb248"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 43,
+          "mean": 18.86046511627907,
+          "p50": 7.0,
+          "p90": 73.60000000000005,
+          "max": 85,
+          "persistent_ge_20_count": 10,
+          "hist": {
+            "1_5": 17,
+            "6_10": 9,
+            "11_20": 7,
+            "21_40": 3,
+            "41_plus": 7
+          }
+        },
+        "fleet_A": {
+          "count": 10,
+          "mean": 15.1,
+          "p50": 6.5,
+          "p90": 36.399999999999984,
+          "max": 76,
+          "persistent_ge_20_count": 2,
+          "hist": {
+            "1_5": 4,
+            "6_10": 3,
+            "11_20": 1,
+            "21_40": 1,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 33,
+          "mean": 20.0,
+          "p50": 8.0,
+          "p90": 76.00000000000001,
+          "max": 85,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 13,
+            "6_10": 6,
+            "11_20": 6,
+            "21_40": 2,
+            "41_plus": 6
+          }
+        }
+      }
+    },
+    {
+      "case": "FR2_MB2_PD5",
+      "fr": 2.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 5.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "digest_run2": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "survivors_A": 49,
+        "survivors_B": 26,
+        "first_contact_tick": 107,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 3712,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.033888999954797,
+        "per_tick_seconds": 0.020112963333182656,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.7913141504492434,
+        "reintegration_rate": 1.0,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": 0.30666666666666664,
+        "M_ba": -0.2564102564102564,
+        "mirror_abs_antisym_error": 0.050256410256410255,
+        "survivors_A": 29,
+        "survivors_B": 49,
+        "digest": "c3220d7de06c1ddd0350f3a2a00d516d2b400cf2cface44bb3902babb0aeb248"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 43,
+          "mean": 18.86046511627907,
+          "p50": 7.0,
+          "p90": 73.60000000000005,
+          "max": 85,
+          "persistent_ge_20_count": 10,
+          "hist": {
+            "1_5": 17,
+            "6_10": 9,
+            "11_20": 7,
+            "21_40": 3,
+            "41_plus": 7
+          }
+        },
+        "fleet_A": {
+          "count": 10,
+          "mean": 15.1,
+          "p50": 6.5,
+          "p90": 36.399999999999984,
+          "max": 76,
+          "persistent_ge_20_count": 2,
+          "hist": {
+            "1_5": 4,
+            "6_10": 3,
+            "11_20": 1,
+            "21_40": 1,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 33,
+          "mean": 20.0,
+          "p50": 8.0,
+          "p90": 76.00000000000001,
+          "max": 85,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 13,
+            "6_10": 6,
+            "11_20": 6,
+            "21_40": 2,
+            "41_plus": 6
+          }
+        }
+      }
+    },
+    {
+      "case": "FR2_MB2_PD8",
+      "fr": 2.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 8.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "digest_run2": "581306f5322ed31ea1d03402153153ac2d092eabb5850a7f03c9ee00a0edc131",
+        "survivors_A": 49,
+        "survivors_B": 26,
+        "first_contact_tick": 107,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 3712,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.471383700030856,
+        "per_tick_seconds": 0.021571279000102854,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.7913141504492434,
+        "reintegration_rate": 1.0,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": 0.30666666666666664,
+        "M_ba": -0.2564102564102564,
+        "mirror_abs_antisym_error": 0.050256410256410255,
+        "survivors_A": 29,
+        "survivors_B": 49,
+        "digest": "c3220d7de06c1ddd0350f3a2a00d516d2b400cf2cface44bb3902babb0aeb248"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 43,
+          "mean": 18.86046511627907,
+          "p50": 7.0,
+          "p90": 73.60000000000005,
+          "max": 85,
+          "persistent_ge_20_count": 10,
+          "hist": {
+            "1_5": 17,
+            "6_10": 9,
+            "11_20": 7,
+            "21_40": 3,
+            "41_plus": 7
+          }
+        },
+        "fleet_A": {
+          "count": 10,
+          "mean": 15.1,
+          "p50": 6.5,
+          "p90": 36.399999999999984,
+          "max": 76,
+          "persistent_ge_20_count": 2,
+          "hist": {
+            "1_5": 4,
+            "6_10": 3,
+            "11_20": 1,
+            "21_40": 1,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 33,
+          "mean": 20.0,
+          "p50": 8.0,
+          "p90": 76.00000000000001,
+          "max": 85,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 13,
+            "6_10": 6,
+            "11_20": 6,
+            "21_40": 2,
+            "41_plus": 6
+          }
+        }
+      }
+    },
+    {
+      "case": "FR2_MB8_PD2",
+      "fr": 2.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 2.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "digest_run2": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "survivors_A": 28,
+        "survivors_B": 33,
+        "first_contact_tick": 108,
+        "alive_crossing": true,
+        "alive_crossing_tick": 184,
+        "jitter_count": 4625,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.4306065000128,
+        "per_tick_seconds": 0.021435355000042667,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.794554575964266,
+        "reintegration_rate": 0.9142857142857143,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.08196721311475409,
+        "M_ba": -0.05263157894736842,
+        "mirror_abs_antisym_error": 0.1345987920621225,
+        "survivors_A": 27,
+        "survivors_B": 30,
+        "digest": "77e5973e65624cbfd6fde989b80c9f836adb6c789d0691996f8d6defba837b6d"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 35,
+          "mean": 23.771428571428572,
+          "p50": 5.0,
+          "p90": 77.6,
+          "max": 88,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 18,
+            "6_10": 2,
+            "11_20": 3,
+            "21_40": 3,
+            "41_plus": 9
+          }
+        },
+        "fleet_A": {
+          "count": 11,
+          "mean": 13.818181818181818,
+          "p50": 3.0,
+          "p90": 35.0,
+          "max": 45,
+          "persistent_ge_20_count": 4,
+          "hist": {
+            "1_5": 6,
+            "6_10": 0,
+            "11_20": 1,
+            "21_40": 3,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 24,
+          "mean": 28.333333333333332,
+          "p50": 5.5,
+          "p90": 78.0,
+          "max": 88,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 12,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 8
+          }
+        }
+      }
+    },
+    {
+      "case": "FR2_MB8_PD5",
+      "fr": 2.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 5.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "digest_run2": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "survivors_A": 28,
+        "survivors_B": 33,
+        "first_contact_tick": 108,
+        "alive_crossing": true,
+        "alive_crossing_tick": 184,
+        "jitter_count": 4625,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.460936999996193,
+        "per_tick_seconds": 0.021536456666653978,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.794554575964266,
+        "reintegration_rate": 0.9142857142857143,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.08196721311475409,
+        "M_ba": -0.05263157894736842,
+        "mirror_abs_antisym_error": 0.1345987920621225,
+        "survivors_A": 27,
+        "survivors_B": 30,
+        "digest": "77e5973e65624cbfd6fde989b80c9f836adb6c789d0691996f8d6defba837b6d"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 35,
+          "mean": 23.771428571428572,
+          "p50": 5.0,
+          "p90": 77.6,
+          "max": 88,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 18,
+            "6_10": 2,
+            "11_20": 3,
+            "21_40": 3,
+            "41_plus": 9
+          }
+        },
+        "fleet_A": {
+          "count": 11,
+          "mean": 13.818181818181818,
+          "p50": 3.0,
+          "p90": 35.0,
+          "max": 45,
+          "persistent_ge_20_count": 4,
+          "hist": {
+            "1_5": 6,
+            "6_10": 0,
+            "11_20": 1,
+            "21_40": 3,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 24,
+          "mean": 28.333333333333332,
+          "p50": 5.5,
+          "p90": 78.0,
+          "max": 88,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 12,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 8
+          }
+        }
+      }
+    },
+    {
+      "case": "FR2_MB8_PD8",
+      "fr": 2.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 8.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "digest_run2": "fa8419e1aba7df04eb11451bab99d2a20b1289dbef1779c4a368ba0d9e9f9a7e",
+        "survivors_A": 28,
+        "survivors_B": 33,
+        "first_contact_tick": 108,
+        "alive_crossing": true,
+        "alive_crossing_tick": 184,
+        "jitter_count": 4625,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.3463570000603795,
+        "per_tick_seconds": 0.021154523333534597,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 1.0,
+        "neutral_collapse_regime": false,
+        "mean_radial_closure_rate": 0.794554575964266,
+        "reintegration_rate": 0.9142857142857143,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.08196721311475409,
+        "M_ba": -0.05263157894736842,
+        "mirror_abs_antisym_error": 0.1345987920621225,
+        "survivors_A": 27,
+        "survivors_B": 30,
+        "digest": "77e5973e65624cbfd6fde989b80c9f836adb6c789d0691996f8d6defba837b6d"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 35,
+          "mean": 23.771428571428572,
+          "p50": 5.0,
+          "p90": 77.6,
+          "max": 88,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 18,
+            "6_10": 2,
+            "11_20": 3,
+            "21_40": 3,
+            "41_plus": 9
+          }
+        },
+        "fleet_A": {
+          "count": 11,
+          "mean": 13.818181818181818,
+          "p50": 3.0,
+          "p90": 35.0,
+          "max": 45,
+          "persistent_ge_20_count": 4,
+          "hist": {
+            "1_5": 6,
+            "6_10": 0,
+            "11_20": 1,
+            "21_40": 3,
+            "41_plus": 1
+          }
+        },
+        "fleet_B": {
+          "count": 24,
+          "mean": 28.333333333333332,
+          "p50": 5.5,
+          "p90": 78.0,
+          "max": 88,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 12,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 8
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB2_PD2",
+      "fr": 8.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 2.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "digest_run2": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "survivors_A": 15,
+        "survivors_B": 34,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6681,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.221205799956806,
+        "per_tick_seconds": 0.02073735266652269,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.8090188421937212,
+        "reintegration_rate": 0.9827586206896551,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.3877551020408163,
+        "M_ba": 0.11538461538461539,
+        "mirror_abs_antisym_error": 0.2723704866562009,
+        "survivors_A": 29,
+        "survivors_B": 23,
+        "digest": "debe25dfdc83f3a936dbc01bb8bd5bee3b6d8802827da2f9058206425fc2064c"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 58,
+          "mean": 28.03448275862069,
+          "p50": 6.0,
+          "p90": 89.9,
+          "max": 172,
+          "persistent_ge_20_count": 17,
+          "hist": {
+            "1_5": 26,
+            "6_10": 7,
+            "11_20": 8,
+            "21_40": 3,
+            "41_plus": 14
+          }
+        },
+        "fleet_A": {
+          "count": 47,
+          "mean": 19.04255319148936,
+          "p50": 5.0,
+          "p90": 87.19999999999999,
+          "max": 97,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 24,
+            "6_10": 6,
+            "11_20": 8,
+            "21_40": 2,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 11,
+          "mean": 66.45454545454545,
+          "p50": 56.0,
+          "p90": 165.0,
+          "max": 172,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 0,
+            "21_40": 1,
+            "41_plus": 7
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB2_PD5",
+      "fr": 8.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 5.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "digest_run2": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "survivors_A": 15,
+        "survivors_B": 34,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6681,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.472601899993606,
+        "per_tick_seconds": 0.021575339666645352,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.8090188421937212,
+        "reintegration_rate": 0.9827586206896551,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.3877551020408163,
+        "M_ba": 0.11538461538461539,
+        "mirror_abs_antisym_error": 0.2723704866562009,
+        "survivors_A": 29,
+        "survivors_B": 23,
+        "digest": "debe25dfdc83f3a936dbc01bb8bd5bee3b6d8802827da2f9058206425fc2064c"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 58,
+          "mean": 28.03448275862069,
+          "p50": 6.0,
+          "p90": 89.9,
+          "max": 172,
+          "persistent_ge_20_count": 17,
+          "hist": {
+            "1_5": 26,
+            "6_10": 7,
+            "11_20": 8,
+            "21_40": 3,
+            "41_plus": 14
+          }
+        },
+        "fleet_A": {
+          "count": 47,
+          "mean": 19.04255319148936,
+          "p50": 5.0,
+          "p90": 87.19999999999999,
+          "max": 97,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 24,
+            "6_10": 6,
+            "11_20": 8,
+            "21_40": 2,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 11,
+          "mean": 66.45454545454545,
+          "p50": 56.0,
+          "p90": 165.0,
+          "max": 172,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 0,
+            "21_40": 1,
+            "41_plus": 7
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB2_PD8",
+      "fr": 8.0,
+      "mobility_bias": 2.0,
+      "pursuit_drive": 8.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "digest_run2": "14031a8e2ca7410c1108d7a6a5f96a8dd5c586a16db5dd58cdcc3eabd137b290",
+        "survivors_A": 15,
+        "survivors_B": 34,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6681,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.180881200009026,
+        "per_tick_seconds": 0.02060293733336342,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.8090188421937212,
+        "reintegration_rate": 0.9827586206896551,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": false
+      },
+      "mirror": {
+        "M_ab": -0.3877551020408163,
+        "M_ba": 0.11538461538461539,
+        "mirror_abs_antisym_error": 0.2723704866562009,
+        "survivors_A": 29,
+        "survivors_B": 23,
+        "digest": "debe25dfdc83f3a936dbc01bb8bd5bee3b6d8802827da2f9058206425fc2064c"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 58,
+          "mean": 28.03448275862069,
+          "p50": 6.0,
+          "p90": 89.9,
+          "max": 172,
+          "persistent_ge_20_count": 17,
+          "hist": {
+            "1_5": 26,
+            "6_10": 7,
+            "11_20": 8,
+            "21_40": 3,
+            "41_plus": 14
+          }
+        },
+        "fleet_A": {
+          "count": 47,
+          "mean": 19.04255319148936,
+          "p50": 5.0,
+          "p90": 87.19999999999999,
+          "max": 97,
+          "persistent_ge_20_count": 9,
+          "hist": {
+            "1_5": 24,
+            "6_10": 6,
+            "11_20": 8,
+            "21_40": 2,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 11,
+          "mean": 66.45454545454545,
+          "p50": 56.0,
+          "p90": 165.0,
+          "max": 172,
+          "persistent_ge_20_count": 8,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 0,
+            "21_40": 1,
+            "41_plus": 7
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB8_PD2",
+      "fr": 8.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 2.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "digest_run2": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "survivors_A": 25,
+        "survivors_B": 32,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6662,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.624982499983162,
+        "per_tick_seconds": 0.02208327499994387,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.7991480971595359,
+        "reintegration_rate": 0.96,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": true
+      },
+      "mirror": {
+        "M_ab": -0.12280701754385964,
+        "M_ba": -0.15254237288135594,
+        "mirror_abs_antisym_error": 0.27534939042521556,
+        "survivors_A": 25,
+        "survivors_B": 34,
+        "digest": "6b90235877de833b70ce9ce6e6db9e46b1b52caa4bac38b9f5ef705fa5719b66"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 25,
+          "mean": 66.2,
+          "p50": 54.0,
+          "p90": 180.8,
+          "max": 219,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 8,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 13
+          }
+        },
+        "fleet_A": {
+          "count": 15,
+          "mean": 48.8,
+          "p50": 15.0,
+          "p90": 97.0,
+          "max": 182,
+          "persistent_ge_20_count": 7,
+          "hist": {
+            "1_5": 6,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 10,
+          "mean": 92.3,
+          "p50": 80.0,
+          "p90": 195.6,
+          "max": 219,
+          "persistent_ge_20_count": 6,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 6
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB8_PD5",
+      "fr": 8.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 5.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "digest_run2": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "survivors_A": 25,
+        "survivors_B": 32,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6662,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.880209800088778,
+        "per_tick_seconds": 0.022934032666962593,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.7991480971595359,
+        "reintegration_rate": 0.96,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": true
+      },
+      "mirror": {
+        "M_ab": -0.12280701754385964,
+        "M_ba": -0.15254237288135594,
+        "mirror_abs_antisym_error": 0.27534939042521556,
+        "survivors_A": 25,
+        "survivors_B": 34,
+        "digest": "6b90235877de833b70ce9ce6e6db9e46b1b52caa4bac38b9f5ef705fa5719b66"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 25,
+          "mean": 66.2,
+          "p50": 54.0,
+          "p90": 180.8,
+          "max": 219,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 8,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 13
+          }
+        },
+        "fleet_A": {
+          "count": 15,
+          "mean": 48.8,
+          "p50": 15.0,
+          "p90": 97.0,
+          "max": 182,
+          "persistent_ge_20_count": 7,
+          "hist": {
+            "1_5": 6,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 10,
+          "mean": 92.3,
+          "p50": 80.0,
+          "p90": 195.6,
+          "max": 219,
+          "persistent_ge_20_count": 6,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 6
+          }
+        }
+      }
+    },
+    {
+      "case": "FR8_MB8_PD8",
+      "fr": 8.0,
+      "mobility_bias": 8.0,
+      "pursuit_drive": 8.0,
+      "primary": {
+        "determinism_pass": true,
+        "digest_run1": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "digest_run2": "ca9cffd06b51a4ff167ccc12f9f5a507bf9377fb29d526a1e4be479b0e9f1afd",
+        "survivors_A": 25,
+        "survivors_B": 32,
+        "first_contact_tick": 99,
+        "alive_crossing": false,
+        "alive_crossing_tick": null,
+        "jitter_count": 6662,
+        "no_new_attractor_proxy": true,
+        "elapsed_seconds": 6.581271899980493,
+        "per_tick_seconds": 0.021937572999934978,
+        "max_enemy_collapse_signal_A": 0.0,
+        "max_enemy_collapse_signal_B": 0.0,
+        "neutral_collapse_regime": true,
+        "mean_radial_closure_rate": 0.7991480971595359,
+        "reintegration_rate": 0.96,
+        "stable_locking_proxy": false,
+        "single_sided_pocket_permanence": true
+      },
+      "mirror": {
+        "M_ab": -0.12280701754385964,
+        "M_ba": -0.15254237288135594,
+        "mirror_abs_antisym_error": 0.27534939042521556,
+        "survivors_A": 25,
+        "survivors_B": 34,
+        "digest": "6b90235877de833b70ce9ce6e6db9e46b1b52caa4bac38b9f5ef705fa5719b66"
+      },
+      "outlier_lifetime_distribution": {
+        "combined": {
+          "count": 25,
+          "mean": 66.2,
+          "p50": 54.0,
+          "p90": 180.8,
+          "max": 219,
+          "persistent_ge_20_count": 13,
+          "hist": {
+            "1_5": 8,
+            "6_10": 2,
+            "11_20": 2,
+            "21_40": 0,
+            "41_plus": 13
+          }
+        },
+        "fleet_A": {
+          "count": 15,
+          "mean": 48.8,
+          "p50": 15.0,
+          "p90": 97.0,
+          "max": 182,
+          "persistent_ge_20_count": 7,
+          "hist": {
+            "1_5": 6,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 7
+          }
+        },
+        "fleet_B": {
+          "count": 10,
+          "mean": 92.3,
+          "p50": 80.0,
+          "p90": 195.6,
+          "max": 219,
+          "persistent_ge_20_count": 6,
+          "hist": {
+            "1_5": 2,
+            "6_10": 1,
+            "11_20": 1,
+            "21_40": 0,
+            "41_plus": 6
+          }
+        }
+      }
+    }
+  ]
+}

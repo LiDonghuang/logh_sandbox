@@ -1,0 +1,82 @@
+{
+  "target_scenario": "Phase V Reference Scenario Alpha",
+  "analysis": "DIAG4-RPG metric alignment per canonical Return_Probability_Geometry_Spec_v1.0",
+  "canonical_binding": {
+    "radial_direction": "d_hat=(C_f-x_i)/||C_f-x_i|| (inward)",
+    "inward_motion_definition": "v_tilde_r_i > 0",
+    "r_shell": "R_rms",
+    "epsilon": 1e-12,
+    "delta": 0.2
+  },
+  "gates": {
+    "determinism_pass": true,
+    "fsr_zero_regression_pass": true,
+    "no_new_attractor_signal": true
+  },
+  "main_run": {
+    "final_tick": 300,
+    "survivors_A": 13,
+    "survivors_B": 30,
+    "first_contact_tick": 99,
+    "digest": "731640ee49ff65dd531c66481b2f31fc7d6d17700af792dbad7067bde4f190d5"
+  },
+  "required_metrics": {
+    "separated_cases": {
+      "projection_suppression_candidate_count": 0,
+      "movement_outward_bias_count": 7,
+      "inward_free_and_effective_count": 11,
+      "rpg_outlier_count": 18
+    },
+    "kappa_distribution": {
+      "count": 18,
+      "mean": 1.339392748680232,
+      "min": 0.6216617638993114,
+      "p10": 0.9999999999706284,
+      "p50": 0.9999999999990243,
+      "p90": 1.2384458119113455,
+      "max": 6.899978641096292
+    },
+    "g_distribution": {
+      "count": 18,
+      "mean": 0.8324091598565874,
+      "min": 0.23730091245499363,
+      "p10": 0.33447938008674005,
+      "p50": 0.6852098200356732,
+      "p90": 1.5180556026603935,
+      "max": 1.6886804526917087
+    },
+    "g_zero_like_ratio": 0.0,
+    "no_inward_neighbor_ratio": 0.0,
+    "p_return": {
+      "window": 20,
+      "overall": {
+        "success_events": 323,
+        "fail_events": 710,
+        "evaluated_events": 1033,
+        "p_return": 0.31268151016456924
+      },
+      "by_fleet": {
+        "A": {
+          "window": 20,
+          "success_events": 191,
+          "fail_events": 315,
+          "evaluated_events": 506,
+          "p_return": 0.3774703557312253
+        },
+        "B": {
+          "window": 20,
+          "success_events": 132,
+          "fail_events": 395,
+          "evaluated_events": 527,
+          "p_return": 0.2504743833017078
+        }
+      }
+    }
+  },
+  "debug_overhead_sample": {
+    "diag_on_seconds": 7.67996870004572,
+    "diag_off_seconds": 6.456928099971265,
+    "overhead_ratio": 1.1894152422232946,
+    "overhead_pct": 18.941524222329463
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "directive": "Phase V.x Formation Snapshot Layer & BRF Integration (observer-only)",
+  "engine_version": "v5.0-alpha5",
+  "observer_only": true,
+  "output_dir": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive",
+  "execution_config": {
+    "settings_path": "analysis/phase_v_default.settings.json",
+    "key_parameters": {
+      "attack_range": {
+        "settings_value": 5.0,
+        "effective_value": 5.0
+      },
+      "min_unit_spacing": {
+        "settings_value": 2.0,
+        "effective_value": 2.0
+      },
+      "arena_size": {
+        "settings_value": 200.0,
+        "effective_value": 200.0
+      },
+      "max_time_steps_effective": {
+        "settings_value": 300,
+        "effective_value": 300
+      },
+      "unit_speed": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "damage_per_tick": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "ch_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "contact_hysteresis_h": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "fsr_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "fsr_strength": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "boundary_enabled": {
+        "settings_value": false,
+        "effective_value": false
+      }
+    },
+    "overrides_applied": [
+      {
+        "name": "scenario_FR_MB_PD",
+        "cases": [
+          "reference_alpha_AB(FR4,MB5,PD5)",
+          "FR8_MB8_PD5(FR8,MB8,PD5)"
+        ]
+      }
+    ]
+  },
+  "determinism": {
+    "reference_digest_run1": "eab5381e3bd67510088b0d346d55da2db2dac8fec772923a4bf4c9e88f0b4ae8",
+    "reference_digest_run2": "eab5381e3bd67510088b0d346d55da2db2dac8fec772923a4bf4c9e88f0b4ae8",
+    "fr8_digest_run1": "c03054ac778122809a5c2cbc27bf2745a44102c8ec3cb87dea72882825d29cf3",
+    "fr8_digest_run2": "c03054ac778122809a5c2cbc27bf2745a44102c8ec3cb87dea72882825d29cf3",
+    "pass": true
+  },
+  "events_snapshot": {
+    "reference_alpha_AB": {
+      "first_split_tick": {
+        "A": 0,
+        "B": 0
+      },
+      "first_envelopment_tick": {
+        "A": 120,
+        "B": 120
+      },
+      "first_line_formation_tick": {
+        "A": null,
+        "B": null
+      },
+      "first_contact_tick": 109,
+      "first_kill_tick": 117,
+      "first_collapse_tick_v2": {
+        "A": 1,
+        "B": 1
+      }
+    },
+    "FR8_MB8_PD5": {
+      "first_split_tick": {
+        "A": 0,
+        "B": 0
+      },
+      "first_envelopment_tick": {
+        "A": 160,
+        "B": 160
+      },
+      "first_line_formation_tick": {
+        "A": null,
+        "B": null
+      },
+      "first_contact_tick": 99,
+      "first_kill_tick": 116,
+      "first_collapse_tick_v2": {
+        "A": 1,
+        "B": 1
+      }
+    }
+  },
+  "artifacts": {
+    "timeline_reference": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive/formation_snapshot_timeline_reference_alpha_AB.csv",
+    "timeline_fr8": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive/formation_snapshot_timeline_FR8_MB8_PD5.csv",
+    "spec": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive/Formation_Snapshot_Layer_Spec_v1.0.md",
+    "governance_submit": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive/formation_snapshot_governance_submit.md",
+    "battle_report_framework": "E:/logh_sandbox/analysis/engineering_reports/20260303_2237_phase_vx_formation_snapshot_layer_archive/formation_snapshot_summary_Battle_Report_Framework_v1.0.md"
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "directive": "Phase V.4-f Collapse v2 Shadow (2-of-4 + 10-tick sustain)",
+  "engine_version": "v5.0-alpha5",
+  "observer_only": true,
+  "output_dir": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive",
+  "execution_config": {
+    "settings_path": "analysis/phase_v_default.settings.json",
+    "key_parameters": {
+      "attack_range": {
+        "settings_value": 5.0,
+        "effective_value": 5.0
+      },
+      "min_unit_spacing": {
+        "settings_value": 2.0,
+        "effective_value": 2.0
+      },
+      "arena_size": {
+        "settings_value": 200.0,
+        "effective_value": 200.0
+      },
+      "max_time_steps_effective": {
+        "settings_value": 300,
+        "effective_value": 300
+      },
+      "unit_speed": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "damage_per_tick": {
+        "settings_value": 1.0,
+        "effective_value": 1.0
+      },
+      "ch_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "contact_hysteresis_h": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "fsr_enabled": {
+        "settings_value": true,
+        "effective_value": true
+      },
+      "fsr_strength": {
+        "settings_value": 0.1,
+        "effective_value": 0.1
+      },
+      "boundary_enabled": {
+        "settings_value": false,
+        "effective_value": false
+      }
+    },
+    "overrides_applied": []
+  },
+  "determinism": {
+    "case": "FR8_MB8_PD5 observer timeline",
+    "digest_run1": "b477dd2879964b04bb726f08689e0006409d850814fa450f1bb93154288a6a72",
+    "digest_run2": "b477dd2879964b04bb726f08689e0006409d850814fa450f1bb93154288a6a72",
+    "pass": true
+  },
+  "representative_case_fr8_mb8_pd5": {
+    "FirstContactTick": 99,
+    "FirstKillTick": 116,
+    "PursuitModeOnsetTick": 1,
+    "CollapseEventTick_v2": 1,
+    "CollapseEventTick_v2_shadow_A": null,
+    "CollapseEventTick_v2_shadow_B": 137,
+    "FormationCutTick": 1,
+    "PocketStartTick": 188,
+    "EndTick": 300,
+    "Winner": "A",
+    "FinalAliveA": 29,
+    "FinalAliveB": 22,
+    "FinalFleetSizeA_hp": 2567.3218252601755,
+    "FinalFleetSizeB_hp": 1940.43118077926,
+    "FinalFleetSizeA_ships_ceil": 2568,
+    "FinalFleetSizeB_ships_ceil": 1941
+  },
+  "artifacts": {
+    "timeline_fr8_mb8_pd5": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive\\collapse_v2_shadow_timeline_FR8_MB8_PD5.csv",
+    "timeline_reference_alpha": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive\\collapse_v2_shadow_timeline_reference_alpha_AB.csv",
+    "events_matrix": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive\\collapse_v2_shadow_events_matrix_3x3x3.csv",
+    "governance_submit": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive\\collapse_v2_shadow_governance_submit.md",
+    "battle_report_framework": "analysis\\engineering_reports\\20260303_0118_phase_v4f_collapse_v2_shadow_archive\\collapse_v2_shadow_summary_Battle_Report_Framework_v1.0.md"
+  }
+}
