@@ -2,9 +2,11 @@ import json
 import math
 import random
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -20,7 +22,11 @@ from runtime.runtime_v0_1 import (
     initialize_unit_orientations,
 )
 from runtime.engine_skeleton import EngineTickSkeleton
-from test_run.battle_report_builder import build_battle_report_markdown, resolve_name_with_fallback
+from test_run.battle_report_builder import (
+    build_battle_report_markdown,
+    compute_bridge_event_ticks,
+    resolve_name_with_fallback,
+)
 
 
 DEFAULT_DT = 1.0
@@ -66,6 +72,9 @@ RUNTIME_SETTING_PATHS = {
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
     "movement_v3a_experiment": ("movement", "v3a", "experiment"),
     "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
+    "odw_posture_bias_enabled": ("movement", "v3a", "odw_posture_bias_enabled"),
+    "odw_posture_bias_k": ("movement", "v3a", "odw_posture_bias_k"),
+    "odw_posture_bias_clip_delta": ("movement", "v3a", "odw_posture_bias_clip_delta"),
 }
 OBSERVER_SETTING_PATHS = {
     "event_bridge": {
@@ -928,20 +937,23 @@ def resolve_effective_seed(seed_value: int) -> int:
     return seed_value
 
 
-def resolve_timestamped_video_output_path(raw_output_path: str, base_dir: Path) -> Path:
+def resolve_timestamped_video_output_path(
+    raw_output_path: str,
+    base_dir: Path,
+    *,
+    export_stem: str | None = None,
+) -> Path:
     candidate = Path(str(raw_output_path).strip()) if str(raw_output_path).strip() else Path(DEFAULT_VIDEO_EXPORT_DIR)
     if not candidate.is_absolute():
         candidate = (base_dir.parent / candidate).resolve()
     if candidate.suffix:
         target_dir = candidate.parent
-        base_stem = candidate.stem or DEFAULT_VIDEO_EXPORT_TOPIC
         suffix = candidate.suffix
     else:
         target_dir = candidate
-        base_stem = DEFAULT_VIDEO_EXPORT_TOPIC
         suffix = ".mp4"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return (target_dir / f"{base_stem}_{timestamp}{suffix}").resolve()
+    final_stem = str(export_stem).strip() if export_stem else DEFAULT_VIDEO_EXPORT_TOPIC
+    return (target_dir / f"{final_stem}{suffix}").resolve()
 
 
 def _mean_xy(points: list[tuple[float, float]]) -> tuple[float, float]:
@@ -1107,6 +1119,8 @@ def compute_formation_snapshot_metrics(
             occupied_bins.add(idx)
         result["angle_coverage"] = float(len(occupied_bins)) / float(angle_bins)
 
+    forward_values: list[float] | None = None
+    lateral_values: list[float] | None = None
     if enemy_points:
         ex, ey = _mean_xy(enemy_points)
         fx = ex - cx
@@ -1117,8 +1131,8 @@ def compute_formation_snapshot_metrics(
             fy /= f_norm
             lx = -fy
             ly = fx
-            forward_values: list[float] = []
-            lateral_values: list[float] = []
+            forward_values = []
+            lateral_values = []
             for x, y in side_points:
                 dx = float(x) - cx
                 dy = float(y) - cy
@@ -1129,14 +1143,14 @@ def compute_formation_snapshot_metrics(
             result["AR_forward"] = sigma_forward / (sigma_lateral + BRIDGE_EPSILON)
             result["major_axis_alignment"] = abs((ux * fx) + (uy * fy))
 
-    n_units = len(u_values)
-    if n_units > 0:
+    n_units = len(side_points)
+    if n_units > 0 and forward_values is not None and lateral_values is not None:
         group_size = max(1, int(math.ceil(0.3 * float(n_units))))
-        sorted_indices = sorted(range(n_units), key=lambda i: u_values[i])
+        sorted_indices = sorted(range(n_units), key=lambda i: forward_values[i])
         rear_indices = sorted_indices[:group_size]
         front_indices = sorted_indices[-group_size:]
-        v_rear = [v_values[i] for i in rear_indices]
-        v_front = [v_values[i] for i in front_indices]
+        v_rear = [lateral_values[i] for i in rear_indices]
+        v_front = [lateral_values[i] for i in front_indices]
         width_front = _std_population(v_front)
         width_back = _std_population(v_rear)
         result["wedge_ratio"] = width_front / (width_back + BRIDGE_EPSILON)
@@ -1514,6 +1528,9 @@ def run_simulation(
     alpha_sep: float = 0.6,
     movement_v3a_experiment: str = "base",
     centroid_probe_scale: float = 1.0,
+    odw_posture_bias_enabled: bool = False,
+    odw_posture_bias_k: float = 0.3,
+    odw_posture_bias_clip_delta: float = 0.2,
     v2_connect_radius_multiplier: float = 1.0,
     v3_connect_radius_multiplier: float = 1.0,
     v3_r_ref_radius_multiplier: float = 1.0,
@@ -1528,6 +1545,9 @@ def run_simulation(
     engine.MOVEMENT_MODEL = str(movement_model).strip().lower() or "v3a"
     engine.MOVEMENT_V3A_EXPERIMENT = str(movement_v3a_experiment).strip().lower() or "base"
     engine.CENTROID_PROBE_SCALE = float(centroid_probe_scale)
+    engine.ODW_POSTURE_BIAS_ENABLED = bool(odw_posture_bias_enabled)
+    engine.ODW_POSTURE_BIAS_K = max(0.0, float(odw_posture_bias_k))
+    engine.ODW_POSTURE_BIAS_CLIP_DELTA = max(0.0, float(odw_posture_bias_clip_delta))
     engine.V2_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v2_connect_radius_multiplier))
     engine.V3_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v3_connect_radius_multiplier))
     engine.V3_R_REF_RADIUS_MULTIPLIER = max(1e-12, float(v3_r_ref_radius_multiplier))
@@ -1569,6 +1589,15 @@ def run_simulation(
         "c_conn": {fleet_id: [] for fleet_id in state.fleets},
         "c_scale": {fleet_id: [] for fleet_id in state.fleets},
         "rho": {fleet_id: [] for fleet_id in state.fleets},
+        "centroid_x": {fleet_id: [] for fleet_id in state.fleets},
+        "centroid_y": {fleet_id: [] for fleet_id in state.fleets},
+        "net_axis_push": {"net": []},
+        "net_axis_push_interval_ticks": 10,
+        "center_wing_advance_gap": {fleet_id: [] for fleet_id in state.fleets},
+        "center_wing_advance_gap_interval_ticks": 10,
+        "front_curvature_index": {fleet_id: [] for fleet_id in state.fleets},
+        "center_wing_parallel_share": {fleet_id: [] for fleet_id in state.fleets},
+        "posture_persistence_time": {fleet_id: [] for fleet_id in state.fleets},
     }
     combat_telemetry = {
         "in_contact_count": [],
@@ -1597,6 +1626,15 @@ def run_simulation(
     split_counter_state = {fleet_id: 0 for fleet_id in state.fleets}
     env_counter_state = {fleet_id: 0 for fleet_id in state.fleets}
     position_frames = []
+    center_wing_interval_ticks = int(observer_telemetry.get("center_wing_advance_gap_interval_ticks", 10))
+    center_wing_position_history = {fleet_id: [] for fleet_id in state.fleets}
+    posture_persistence_state = {
+        fleet_id: {"sign": 0, "length": 0}
+        for fleet_id in state.fleets
+    }
+    axis_initialized = False
+    axis_dir_x = 0.0
+    axis_dir_y = 0.0
 
     if steps <= 0:
         tick_limit = 999
@@ -1639,10 +1677,158 @@ def run_simulation(
             trajectory[fleet_id].append(state.last_fleet_cohesion.get(fleet_id, 1.0))
             alive_trajectory[fleet_id].append(len(fleet.unit_ids))
             fleet_size = 0.0
+            centroid_sum_x = 0.0
+            centroid_sum_y = 0.0
+            centroid_count = 0
+            unit_position_map: dict[str, tuple[float, float]] = {}
             for unit_id in fleet.unit_ids:
                 if unit_id in state.units:
-                    fleet_size += max(0.0, float(state.units[unit_id].hit_points))
+                    unit_state = state.units[unit_id]
+                    fleet_size += max(0.0, float(unit_state.hit_points))
+                    centroid_sum_x += float(unit_state.position.x)
+                    centroid_sum_y += float(unit_state.position.y)
+                    centroid_count += 1
+                    unit_position_map[str(unit_id)] = (float(unit_state.position.x), float(unit_state.position.y))
             fleet_size_trajectory[fleet_id].append(fleet_size)
+            center_wing_position_history[fleet_id].append(unit_position_map)
+            if centroid_count > 0:
+                observer_telemetry["centroid_x"][fleet_id].append(centroid_sum_x / float(centroid_count))
+                observer_telemetry["centroid_y"][fleet_id].append(centroid_sum_y / float(centroid_count))
+            else:
+                observer_telemetry["centroid_x"][fleet_id].append(float("nan"))
+                observer_telemetry["centroid_y"][fleet_id].append(float("nan"))
+        if not axis_initialized:
+            ax = float(observer_telemetry["centroid_x"].get("A", [float("nan")])[-1])
+            ay = float(observer_telemetry["centroid_y"].get("A", [float("nan")])[-1])
+            bx = float(observer_telemetry["centroid_x"].get("B", [float("nan")])[-1])
+            by = float(observer_telemetry["centroid_y"].get("B", [float("nan")])[-1])
+            if all(math.isfinite(value) for value in (ax, ay, bx, by)):
+                dx0 = bx - ax
+                dy0 = by - ay
+                norm0 = math.sqrt((dx0 * dx0) + (dy0 * dy0))
+                if norm0 > 1e-12:
+                    axis_dir_x = dx0 / norm0
+                    axis_dir_y = dy0 / norm0
+                    axis_initialized = True
+
+        for fleet_id in state.fleets:
+            series = observer_telemetry["center_wing_advance_gap"][fleet_id]
+            history = center_wing_position_history.get(fleet_id, [])
+            current_positions = history[-1] if history else {}
+            current_unit_ids = list(current_positions.keys())
+            if not axis_initialized or len(current_unit_ids) < 6:
+                series.append(float("nan"))
+                observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
+                observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
+                observer_telemetry["posture_persistence_time"][fleet_id].append(0.0)
+                posture_persistence_state[fleet_id]["sign"] = 0
+                posture_persistence_state[fleet_id]["length"] = 0
+                continue
+
+            curr_xs_now = [current_positions[unit_id][0] for unit_id in current_unit_ids]
+            curr_ys_now = [current_positions[unit_id][1] for unit_id in current_unit_ids]
+            centroid_x_now = sum(curr_xs_now) / float(len(curr_xs_now))
+            centroid_y_now = sum(curr_ys_now) / float(len(curr_ys_now))
+
+            projected_units: list[tuple[float, float, str]] = []
+            for unit_id in current_unit_ids:
+                curr_x, curr_y = current_positions[unit_id]
+                lateral_offset_now = ((curr_x - centroid_x_now) * (-axis_dir_y)) + ((curr_y - centroid_y_now) * axis_dir_x)
+                advance_now = ((curr_x - centroid_x_now) * axis_dir_x) + ((curr_y - centroid_y_now) * axis_dir_y)
+                projected_units.append((float(advance_now), abs(float(lateral_offset_now)), str(unit_id)))
+
+            projected_units.sort(key=lambda item: item[0])
+
+            if len(history) <= center_wing_interval_ticks:
+                series.append(float("nan"))
+            else:
+                prev_positions = history[-(center_wing_interval_ticks + 1)]
+                common_unit_ids = [unit_id for unit_id in current_positions if unit_id in prev_positions]
+                if len(common_unit_ids) < 4:
+                    series.append(float("nan"))
+                else:
+                    ranked_units_interval: list[tuple[float, float]] = []
+                    for unit_id in common_unit_ids:
+                        curr_x, curr_y = current_positions[unit_id]
+                        prev_x, prev_y = prev_positions[unit_id]
+                        lateral_offset = ((curr_x - centroid_x_now) * (-axis_dir_y)) + ((curr_y - centroid_y_now) * axis_dir_x)
+                        advance = ((curr_x - prev_x) * axis_dir_x) + ((curr_y - prev_y) * axis_dir_y)
+                        ranked_units_interval.append((abs(lateral_offset), float(advance)))
+                    ranked_units_interval.sort(key=lambda item: item[0])
+                    split_index = len(ranked_units_interval) // 2
+                    center_band = ranked_units_interval[:split_index]
+                    wing_band = ranked_units_interval[split_index:]
+                    if not center_band or not wing_band:
+                        series.append(float("nan"))
+                    else:
+                        center_mean = sum(item[1] for item in center_band) / float(len(center_band))
+                        wing_mean = sum(item[1] for item in wing_band) / float(len(wing_band))
+                        series.append(0.5 * float(center_mean - wing_mean))
+
+            front_group_size = max(3, int(math.ceil(len(projected_units) * 0.30)))
+            front_group = projected_units[-front_group_size:]
+            front_group.sort(key=lambda item: item[1])
+            front_split_index = len(front_group) // 2
+            front_center_band = front_group[:front_split_index]
+            front_wing_band = front_group[front_split_index:]
+            if front_center_band and front_wing_band:
+                front_center_mean = sum(item[0] for item in front_center_band) / float(len(front_center_band))
+                front_wing_mean = sum(item[0] for item in front_wing_band) / float(len(front_wing_band))
+                front_curvature_raw = float(front_center_mean - front_wing_mean)
+            else:
+                front_curvature_raw = float("nan")
+            observer_telemetry["front_curvature_index"][fleet_id].append(front_curvature_raw)
+
+            projected_units_by_width = sorted(
+                ((item[1], item[2]) for item in projected_units),
+                key=lambda item: item[0],
+            )
+            width_split_index = len(projected_units_by_width) // 2
+            center_unit_ids = {unit_id for _, unit_id in projected_units_by_width[:width_split_index]}
+            wing_unit_ids = {unit_id for _, unit_id in projected_units_by_width[width_split_index:]}
+            center_parallel_total = 0.0
+            wing_parallel_total = 0.0
+            for unit_id in current_unit_ids:
+                unit_state = state.units.get(unit_id)
+                if unit_state is None:
+                    continue
+                parallel_velocity = (
+                    float(unit_state.velocity.x) * axis_dir_x
+                    + float(unit_state.velocity.y) * axis_dir_y
+                )
+                if parallel_velocity < 0.0:
+                    parallel_velocity = 0.0
+                if unit_id in center_unit_ids:
+                    center_parallel_total += parallel_velocity
+                elif unit_id in wing_unit_ids:
+                    wing_parallel_total += parallel_velocity
+            total_parallel = center_parallel_total + wing_parallel_total
+            if total_parallel > 1e-12:
+                center_wing_parallel_share_gap = float(
+                    (center_parallel_total - wing_parallel_total) / total_parallel
+                )
+            else:
+                center_wing_parallel_share_gap = 0.0
+            observer_telemetry["center_wing_parallel_share"][fleet_id].append(center_wing_parallel_share_gap)
+
+            posture_sign = 0
+            if math.isfinite(front_curvature_raw):
+                front_curvature_norm = float(front_curvature_raw) / max(float(separation_radius), 1e-12)
+                if front_curvature_norm >= 0.10 and center_wing_parallel_share_gap >= 0.05:
+                    posture_sign = 1
+                elif front_curvature_norm <= -0.10 and center_wing_parallel_share_gap <= -0.05:
+                    posture_sign = -1
+            prior_sign = int(posture_persistence_state[fleet_id]["sign"])
+            prior_length = int(posture_persistence_state[fleet_id]["length"])
+            if posture_sign == 0:
+                next_length = 0
+            elif posture_sign == prior_sign:
+                next_length = prior_length + 1
+            else:
+                next_length = 1
+            posture_persistence_state[fleet_id]["sign"] = posture_sign
+            posture_persistence_state[fleet_id]["length"] = next_length
+            observer_telemetry["posture_persistence_time"][fleet_id].append(float(posture_sign * next_length))
         shadow_v3 = getattr(engine, "debug_last_cohesion_v3", {})
         if not isinstance(shadow_v3, dict):
             shadow_v3 = {}
@@ -1761,6 +1947,87 @@ def run_simulation(
         else:
             if any_fleet_eliminated:
                 break
+
+    net_axis_push_interval_ticks = int(observer_telemetry.get("net_axis_push_interval_ticks", 10))
+    center_wing_interval_ticks = int(observer_telemetry.get("center_wing_advance_gap_interval_ticks", 10))
+    max_unit_speed = 1.0
+    if isinstance(state.units, Mapping) and state.units:
+        unit_speed_values = []
+        for unit_state in state.units.values():
+            try:
+                unit_speed_values.append(float(getattr(unit_state, "max_speed", 0.0)))
+            except (TypeError, ValueError):
+                continue
+        finite_unit_speed_values = [value for value in unit_speed_values if math.isfinite(value) and value > 0.0]
+        if finite_unit_speed_values:
+            max_unit_speed = max(finite_unit_speed_values)
+    net_axis_push_normalization_scale = float(max_unit_speed) * float(net_axis_push_interval_ticks)
+    if net_axis_push_normalization_scale <= 0.0 or not math.isfinite(net_axis_push_normalization_scale):
+        net_axis_push_normalization_scale = 1.0
+    center_wing_normalization_scale = float(max_unit_speed) * float(center_wing_interval_ticks)
+    if center_wing_normalization_scale <= 0.0 or not math.isfinite(center_wing_normalization_scale):
+        center_wing_normalization_scale = 1.0
+    front_curvature_normalization_scale = max(float(separation_radius), 1e-12)
+    centroid_x_a = observer_telemetry.get("centroid_x", {}).get("A", [])
+    centroid_y_a = observer_telemetry.get("centroid_y", {}).get("A", [])
+    centroid_x_b = observer_telemetry.get("centroid_x", {}).get("B", [])
+    centroid_y_b = observer_telemetry.get("centroid_y", {}).get("B", [])
+    net_axis_push_series: list[float] = []
+    axis_initialized = False
+    axis_dir_x = 0.0
+    axis_dir_y = 0.0
+    for idx in range(len(trajectory.get("A", []))):
+        ax = float(centroid_x_a[idx]) if idx < len(centroid_x_a) else float("nan")
+        ay = float(centroid_y_a[idx]) if idx < len(centroid_y_a) else float("nan")
+        bx = float(centroid_x_b[idx]) if idx < len(centroid_x_b) else float("nan")
+        by = float(centroid_y_b[idx]) if idx < len(centroid_y_b) else float("nan")
+        valid_pair = all(math.isfinite(value) for value in (ax, ay, bx, by))
+        if valid_pair and not axis_initialized:
+            dx0 = bx - ax
+            dy0 = by - ay
+            norm0 = math.sqrt((dx0 * dx0) + (dy0 * dy0))
+            if norm0 > 1e-12:
+                axis_dir_x = dx0 / norm0
+                axis_dir_y = dy0 / norm0
+                axis_initialized = True
+        if (
+            not axis_initialized
+            or not valid_pair
+            or idx < net_axis_push_interval_ticks
+        ):
+            net_axis_push_series.append(float("nan"))
+            continue
+        prev_idx = idx - net_axis_push_interval_ticks
+        ax_prev = float(centroid_x_a[prev_idx]) if prev_idx < len(centroid_x_a) else float("nan")
+        ay_prev = float(centroid_y_a[prev_idx]) if prev_idx < len(centroid_y_a) else float("nan")
+        bx_prev = float(centroid_x_b[prev_idx]) if prev_idx < len(centroid_x_b) else float("nan")
+        by_prev = float(centroid_y_b[prev_idx]) if prev_idx < len(centroid_y_b) else float("nan")
+        if not all(math.isfinite(value) for value in (ax_prev, ay_prev, bx_prev, by_prev)):
+            net_axis_push_series.append(float("nan"))
+            continue
+        advance_a = ((ax - ax_prev) * axis_dir_x) + ((ay - ay_prev) * axis_dir_y)
+        advance_b = ((bx_prev - bx) * axis_dir_x) + ((by_prev - by) * axis_dir_y)
+        net_axis_push_value = 0.5 * float(advance_a - advance_b)
+        net_axis_push_series.append(float(net_axis_push_value / net_axis_push_normalization_scale))
+    observer_telemetry["net_axis_push"]["net"] = net_axis_push_series
+    observer_telemetry["net_axis_push_normalization_scale"] = net_axis_push_normalization_scale
+    for fleet_id in state.fleets:
+        normalized_gap_series: list[float] = []
+        for raw_value in observer_telemetry["center_wing_advance_gap"][fleet_id]:
+            if math.isfinite(float(raw_value)):
+                normalized_gap_series.append(float(raw_value) / center_wing_normalization_scale)
+            else:
+                normalized_gap_series.append(float("nan"))
+        observer_telemetry["center_wing_advance_gap"][fleet_id] = normalized_gap_series
+        normalized_front_curvature_series: list[float] = []
+        for raw_value in observer_telemetry["front_curvature_index"][fleet_id]:
+            if math.isfinite(float(raw_value)):
+                normalized_front_curvature_series.append(float(raw_value) / front_curvature_normalization_scale)
+            else:
+                normalized_front_curvature_series.append(float("nan"))
+        observer_telemetry["front_curvature_index"][fleet_id] = normalized_front_curvature_series
+    observer_telemetry["center_wing_advance_gap_normalization_scale"] = center_wing_normalization_scale
+    observer_telemetry["front_curvature_index_normalization_scale"] = front_curvature_normalization_scale
 
     collapse_shadow_telemetry = compute_collapse_v2_shadow_telemetry(
         observer_enabled=diagnostics_enabled,
@@ -1894,6 +2161,21 @@ def main() -> None:
         centroid_probe_scale_effective = 1.0
     else:
         centroid_probe_scale_effective = centroid_probe_scale
+    odw_posture_bias_enabled = bool(get_runtime_setting(settings, "odw_posture_bias_enabled", False))
+    odw_posture_bias_k = float(get_runtime_setting(settings, "odw_posture_bias_k", 0.3))
+    odw_posture_bias_clip_delta = float(get_runtime_setting(settings, "odw_posture_bias_clip_delta", 0.2))
+    if odw_posture_bias_k < 0.0:
+        odw_posture_bias_k = 0.0
+    if odw_posture_bias_clip_delta < 0.0:
+        odw_posture_bias_clip_delta = 0.0
+    if movement_model_effective != "v3a":
+        odw_posture_bias_enabled_effective = False
+        odw_posture_bias_k_effective = 0.0
+        odw_posture_bias_clip_delta_effective = 0.2
+    else:
+        odw_posture_bias_enabled_effective = odw_posture_bias_enabled
+        odw_posture_bias_k_effective = odw_posture_bias_k if odw_posture_bias_enabled_effective else 0.0
+        odw_posture_bias_clip_delta_effective = odw_posture_bias_clip_delta if odw_posture_bias_enabled_effective else 0.2
     bridge_theta_split = float(get_event_bridge_setting(settings, "theta_split", BRIDGE_THETA_SPLIT_DEFAULT))
     bridge_theta_env = float(get_event_bridge_setting(settings, "theta_env", BRIDGE_THETA_ENV_DEFAULT))
     bridge_sustain_ticks = max(1, int(get_event_bridge_setting(settings, "sustain_ticks", BRIDGE_SUSTAIN_TICKS_DEFAULT)))
@@ -1963,6 +2245,9 @@ def main() -> None:
     show_attack_target_lines = bool(get_visualization_setting(settings, "show_attack_target_lines", False))
     tick_plots_follow_battlefield_tick = bool(get_visualization_setting(settings, "tick_plots_follow_battlefield_tick", False))
     print_tick_summary = bool(get_visualization_setting(settings, "print_tick_summary", True))
+    plot_smoothing_ticks = int(get_visualization_setting(settings, "plot_smoothing_ticks", 5))
+    if plot_smoothing_ticks < 1:
+        plot_smoothing_ticks = 1
     test_mode = parse_test_mode(get_run_control_setting(settings, "test_mode", 0))
     test_mode_name = test_mode_label(test_mode)
     observer_enabled = test_mode >= 1
@@ -2015,6 +2300,9 @@ def main() -> None:
     if movement_model_effective == "v3a":
         print(f"[mode] movement_v3a_experiment_effective={movement_v3a_experiment_effective}")
         print(f"[mode] centroid_probe_scale_effective={centroid_probe_scale_effective:.3f}")
+        print(f"[mode] odw_posture_bias_enabled_effective={odw_posture_bias_enabled_effective}")
+        print(f"[mode] odw_posture_bias_k_effective={odw_posture_bias_k_effective:.3f}")
+        print(f"[mode] odw_posture_bias_clip_delta_effective={odw_posture_bias_clip_delta_effective:.3f}")
     print(f"[viz] vector_display_mode={unit_direction_mode}")
     print(
         f"[runtime] boundary soft={boundary_enabled} "
@@ -2025,14 +2313,21 @@ def main() -> None:
     print(f"[observer] enabled={observer_enabled}")
     print(f"[plot] diagnostics_enabled={plot_diagnostics_enabled}")
     print(f"[report] enabled={export_battle_report}")
+    run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
     export_video_cfg = visualization_section.get("export_video", {})
     if not isinstance(export_video_cfg, dict):
         export_video_cfg = {}
     else:
         export_video_cfg = dict(export_video_cfg)
     raw_video_output_path = str(export_video_cfg.get("output_path", DEFAULT_VIDEO_EXPORT_DIR))
-    resolved_video_output_path = resolve_timestamped_video_output_path(raw_video_output_path, base_dir=base_dir)
+    resolved_video_output_path = resolve_timestamped_video_output_path(
+        raw_video_output_path,
+        base_dir=base_dir,
+        export_stem=f"{run_export_stem}_video",
+    )
     export_video_cfg["output_path"] = str(resolved_video_output_path)
+    export_video_cfg["output_path_is_final"] = True
 
     capture_target_directions = show_attack_target_lines or (unit_direction_mode in {"attack", "composite"})
     (
@@ -2080,6 +2375,9 @@ def main() -> None:
         plot_diagnostics_enabled=plot_diagnostics_enabled,
         movement_v3a_experiment=movement_v3a_experiment_effective,
         centroid_probe_scale=centroid_probe_scale_effective,
+        odw_posture_bias_enabled=odw_posture_bias_enabled_effective,
+        odw_posture_bias_k=odw_posture_bias_k_effective,
+        odw_posture_bias_clip_delta=odw_posture_bias_clip_delta_effective,
         v3_connect_radius_multiplier=v3_connect_radius_multiplier_effective,
         v3_r_ref_radius_multiplier=v3_r_ref_radius_multiplier_effective,
     )
@@ -2103,6 +2401,15 @@ def main() -> None:
         "movement_v3a_experiment_effective": movement_v3a_experiment_effective if movement_model_effective == "v3a" else "N/A",
         "centroid_probe_scale_effective": (
             centroid_probe_scale_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "odw_posture_bias_enabled_effective": (
+            odw_posture_bias_enabled_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "odw_posture_bias_k_effective": (
+            odw_posture_bias_k_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "odw_posture_bias_clip_delta_effective": (
+            odw_posture_bias_clip_delta_effective if movement_model_effective == "v3a" else "N/A"
         ),
         "attack_range": attack_range,
         "min_unit_spacing": unit_spacing,
@@ -2147,23 +2454,39 @@ def main() -> None:
             initial_fleet_sizes=initial_fleet_sizes,
             alive_trajectory=alive_trajectory,
             fleet_size_trajectory=fleet_size_trajectory,
+            observer_telemetry=observer_telemetry,
             combat_telemetry=combat_telemetry,
             bridge_telemetry=bridge_telemetry,
             collapse_shadow_telemetry=collapse_shadow_telemetry,
             final_state=final_state,
             run_config_snapshot=run_config_snapshot,
         )
-        report_date_dir = datetime.now().strftime("%Y%m%d")
+        report_date_dir = run_export_timestamp[:8]
         report_export_dir = (base_dir.parent / DEFAULT_BATTLE_REPORT_EXPORT_DIR / report_date_dir).resolve()
         report_export_dir.mkdir(parents=True, exist_ok=True)
-        report_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_filename = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{report_timestamp}_Battle_Report_Framework_v1.0.md"
+        report_filename = f"{run_export_stem}_Battle_Report_Framework_v1.0.md"
         report_output_path = report_export_dir / report_filename
         report_output_path.write_text(report_markdown, encoding="utf-8")
         print(f"[report] battle_report_exported={report_output_path}")
 
     if not animate:
         return
+
+    def _first_contact_tick_from_combat(combat_data: Mapping[str, Any]) -> int | None:
+        series = combat_data.get("in_contact_count", [])
+        if not isinstance(series, Sequence):
+            return None
+        for idx, value in enumerate(series, start=1):
+            try:
+                in_contact = int(value)
+            except (TypeError, ValueError):
+                continue
+            if in_contact > 0:
+                return idx
+        return None
+
+    bridge_ticks_debug = compute_bridge_event_ticks(bridge_telemetry if isinstance(bridge_telemetry, dict) else None)
+    first_contact_tick_debug = _first_contact_tick_from_combat(combat_telemetry if isinstance(combat_telemetry, Mapping) else {})
 
     try:
         from test_run.test_run_v1_0_viz import render_test_run
@@ -2198,6 +2521,22 @@ def main() -> None:
         observer_telemetry=observer_telemetry,
         observer_enabled=observer_enabled,
         plot_profile=plot_profile_effective,
+        plot_smoothing_ticks=plot_smoothing_ticks,
+        damage_per_tick=damage_per_tick,
+        combat_telemetry=combat_telemetry,
+        debug_context={
+            "test_mode_label": TEST_MODE_LABELS.get(test_mode, "default"),
+            "movement_model_effective": movement_model_effective,
+            "cohesion_decision_source_effective": runtime_decision_source_effective,
+            "odw_posture_bias_enabled_effective": odw_posture_bias_enabled_effective,
+            "odw_posture_bias_k_effective": odw_posture_bias_k_effective,
+            "odw_posture_bias_clip_delta_effective": odw_posture_bias_clip_delta_effective,
+            "v3_connect_radius_multiplier_effective": v3_connect_radius_multiplier_effective,
+            "plot_smoothing_ticks": plot_smoothing_ticks,
+            "first_contact_tick": first_contact_tick_debug,
+            "formation_cut_tick": bridge_ticks_debug.get("formation_cut_tick"),
+            "pocket_formation_tick": bridge_ticks_debug.get("pocket_formation_tick"),
+        },
         export_video_cfg=export_video_cfg,
         boundary_enabled=boundary_enabled,
         boundary_hard_enabled=boundary_hard_enabled,

@@ -129,7 +129,7 @@ Required outputs:
 
 -   No targeting modification\
 -   No attack range modification\
--   No pursuit_threshold activation\
+-   No pursuit_drive activation\
 -   No combat-layer modification
 
 ------------------------------------------------------------------------

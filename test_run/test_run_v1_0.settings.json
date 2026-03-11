@@ -23,6 +23,7 @@
       "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
       "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
       "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
+      "plot_smoothing_ticks": "Display-only smoothing window for non-Alive plots. Default 5 ticks. Raw telemetry/export values remain unchanged.",
       "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
       "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
       "print_tick_summary": "Print per-tick summary logs to console."
@@ -35,7 +36,10 @@
       "movement": {
         "v3a": {
           "experiment": "v3a selector: base | exp_precontact_centroid_probe.",
-          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe."
+          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe.",
+          "odw_posture_bias_enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. Default false.",
+          "odw_posture_bias_k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when odw_posture_bias_enabled=true.",
+          "odw_posture_bias_clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when odw_posture_bias_enabled=true."
         }
       },
       "semantics": {
@@ -115,7 +119,7 @@
   "visualization": {
     "plot_profile": "auto",
     "export_video": {
-      "enabled": false,
+      "enabled": true,
       "full_plot": true,
       "output_path": "analysis/exports/videos",
       "fps": 5,
@@ -129,6 +133,7 @@
     "vector_display_mode": "composite",
     "show_attack_target_lines": true,
     "tick_plots_follow_battlefield_tick": false,
+    "plot_smoothing_ticks": 5,
     "animation_play_speed": 1.0,
     "animation_frame_interval_ms": 100,
     "print_tick_summary": true
@@ -141,7 +146,10 @@
     "movement": {
       "v3a": {
         "experiment": "exp_precontact_centroid_probe",
-        "centroid_probe_scale": 0.5
+        "centroid_probe_scale": 0.5,
+        "odw_posture_bias_enabled": true,
+        "odw_posture_bias_k": 0.5,
+        "odw_posture_bias_clip_delta": 0.4
       }
     },
     "semantics": {

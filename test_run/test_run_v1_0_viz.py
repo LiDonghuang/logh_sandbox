@@ -221,17 +221,33 @@ def _compute_formation_metrics_xy(
             out["AR_forward"] = sigma_forward / (sigma_lateral + 1e-9)
             out["major_axis_alignment"] = abs((ux * fx) + (uy * fy))
 
-    n_units = len(u_values)
-    if n_units > 0:
+    n_units = len(side_points)
+    if n_units > 0 and enemy_points:
         group_size = max(1, int(math.ceil(0.3 * float(n_units))))
-        sorted_idx = sorted(range(n_units), key=lambda i: u_values[i])
-        rear_idx = sorted_idx[:group_size]
-        front_idx = sorted_idx[-group_size:]
-        v_rear = [v_values[i] for i in rear_idx]
-        v_front = [v_values[i] for i in front_idx]
-        width_front = _std_population(v_front)
-        width_back = _std_population(v_rear)
-        out["wedge_ratio"] = width_front / (width_back + 1e-9)
+        ex, ey = _mean_xy(enemy_points)
+        fx = ex - cx
+        fy = ey - cy
+        fn = math.sqrt((fx * fx) + (fy * fy))
+        if fn > 1e-9:
+            fx /= fn
+            fy /= fn
+            lx = -fy
+            ly = fx
+            forward_values = []
+            lateral_values = []
+            for x, y in side_points:
+                dx = float(x) - cx
+                dy = float(y) - cy
+                forward_values.append((dx * fx) + (dy * fy))
+                lateral_values.append((dx * lx) + (dy * ly))
+            sorted_idx = sorted(range(n_units), key=lambda i: forward_values[i])
+            rear_idx = sorted_idx[:group_size]
+            front_idx = sorted_idx[-group_size:]
+            lateral_rear = [lateral_values[i] for i in rear_idx]
+            lateral_front = [lateral_values[i] for i in front_idx]
+            width_front = _std_population(lateral_front)
+            width_back = _std_population(lateral_rear)
+            out["wedge_ratio"] = width_front / (width_back + 1e-9)
     return out
 
 
@@ -262,9 +278,13 @@ def render_test_run(
     observer_telemetry: Mapping[str, Any] | None = None,
     observer_enabled: bool = True,
     plot_profile: str = "extended",
+    plot_smoothing_ticks: int = 5,
+    combat_telemetry: Mapping[str, Sequence[int | float]] | None = None,
+    debug_context: Mapping[str, Any] | None = None,
     export_video_cfg: Mapping[str, Any] | None = None,
     boundary_enabled: bool = True,
     boundary_hard_enabled: bool = True,
+    damage_per_tick: float = 1.0,
 ) -> None:
     export_video_cfg_layout = export_video_cfg if isinstance(export_video_cfg, Mapping) else {}
     export_video_enabled_layout = bool(_cfg(export_video_cfg_layout, "enabled", False))
@@ -473,20 +493,22 @@ def render_test_run(
         "slot_07": fig.add_subplot(column3_grid[0, 0]),
         "slot_08": fig.add_subplot(column3_grid[1, 0]),
         "slot_09": fig.add_subplot(column3_grid[2, 0]),
+        "slot_10": fig.add_subplot(column3_grid[3, 0]),
     }
     # Active slot map:
-    # slot_01+02 Alive, slot_03 Cohesion, slot_04 AR_forward, slot_05 WedgeRatio,
-    # slot_06 SplitSeparation, slot_07 LossRate, slot_08 CollapseSignal,
-    # slot_09 C Margin / Shadow C Margin.
+    # slot_01+02 Alive, slot_03 FireEff, slot_04 LossRate,
+    # slot_05 Coh_v2/Coh_v3, slot_06 CollapseSig, slot_07 SplitSep,
+    # slot_08 FrontCurv, slot_09 Wedge, slot_10 C_W_PShare.
     alive_ax = plot_slot_axes["slot_01"]  # occupies slot_01 + slot_02
-    cohesion_ax = plot_slot_axes["slot_03"]
-    ar_ax = plot_slot_axes["slot_04"]
-    wedge_ax = plot_slot_axes["slot_05"]
-    split_ax = plot_slot_axes["slot_06"]
-    loss_rate_ax = plot_slot_axes["slot_07"]
-    collapse_signal_ax = plot_slot_axes["slot_08"]
-    collapse_margin_ax = plot_slot_axes["slot_09"]
-    debug_ax = fig.add_subplot(column3_grid[3:, 0])
+    fire_efficiency_ax = plot_slot_axes["slot_03"]
+    loss_rate_ax = plot_slot_axes["slot_04"]
+    cohesion_ax = plot_slot_axes["slot_05"]
+    collapse_signal_ax = plot_slot_axes["slot_06"]
+    split_ax = plot_slot_axes["slot_07"]
+    front_curvature_ax = plot_slot_axes["slot_08"]
+    wedge_ax = plot_slot_axes["slot_09"]
+    center_wing_parallel_share_ax = plot_slot_axes["slot_10"]
+    debug_ax = fig.add_subplot(column3_grid[4:, 0])
 
     battle_ax.set_title(battle_title_base)
     battle_ax.set_xlim(0.0, arena_size)
@@ -506,6 +528,14 @@ def render_test_run(
         spine.set_visible(True)
         spine.set_linewidth(1.2)
         spine.set_edgecolor("#444444")
+    # Lock layout margins before any overlay geometry converts points -> axes fractions.
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.07)
+    if export_video_enabled_layout and (not export_full_plot_layout):
+        for ax in fig.axes:
+            if ax is battle_ax:
+                continue
+            ax.set_visible(False)
+        battle_ax.set_position([0.0, 0.0, 1.0, 1.0])
 
     def draw_space_background(ax, size: float, rng: random.Random) -> dict[str, int]:
         # 1) Galaxy haze fixed at battlefield center, fixed size, fixed 135deg.
@@ -1594,10 +1624,12 @@ def render_test_run(
     debug_param_cell_width = 7
     debug_max_row_chars = 42
 
+    debug_context = debug_context if isinstance(debug_context, Mapping) else {}
+    combat_telemetry = combat_telemetry if isinstance(combat_telemetry, Mapping) else {}
+
     def format_runtime_diag_lines(
+        tick_index: int,
         runtime_debug: Mapping[str, Any] | None,
-        collapse_margin_a: float,
-        collapse_margin_b: float,
     ) -> list[str]:
         if not plot_panel_enabled:
             return [
@@ -1609,21 +1641,29 @@ def render_test_run(
                 "runtime_diag: n/a",
                 "tip: debug data requires frame runtime_debug payload",
             ]
-        contact_count = int(runtime_debug.get("in_contact_count", 0))
-        damage_events = int(runtime_debug.get("damage_events_count", 0))
-        proj_max = float(runtime_debug.get("projection_max_displacement", 0.0))
-        proj_mean = float(runtime_debug.get("projection_mean_displacement", 0.0))
-        proj_pairs = int(runtime_debug.get("projection_pairs_count", 0))
-        persist_total = int(runtime_debug.get("persistent_outlier_total", 0))
-        max_persist = int(runtime_debug.get("max_outlier_persistence", 0))
-        collapse_state = f"A:{'Y' if collapse_margin_a > 0.0 else 'N'} B:{'Y' if collapse_margin_b > 0.0 else 'N'}"
-
+        mode_label = str(_cfg(debug_context, "test_mode_label", "n/a"))
+        movement_label = str(_cfg(debug_context, "movement_model_effective", "n/a"))
+        cohesion_label = str(_cfg(debug_context, "cohesion_decision_source_effective", "n/a"))
+        odw_on = bool(_cfg(debug_context, "odw_posture_bias_enabled_effective", False))
+        odw_k = float(_cfg(debug_context, "odw_posture_bias_k_effective", 0.0))
+        odw_clip = float(_cfg(debug_context, "odw_posture_bias_clip_delta_effective", 0.0))
+        v3_connect = float(_cfg(debug_context, "v3_connect_radius_multiplier_effective", 1.0))
+        plot_smoothing = int(_cfg(debug_context, "plot_smoothing_ticks", 5))
+        first_contact_tick = _cfg(debug_context, "first_contact_tick", "n/a")
+        formation_cut_tick = _cfg(debug_context, "formation_cut_tick", "n/a")
+        pocket_tick = _cfg(debug_context, "pocket_formation_tick", "n/a")
+        selector_line = f"mode={mode_label} mov={movement_label} coh={cohesion_label}"
+        odw_line = (
+            f"odw={'on' if odw_on else 'off'} "
+            f"k={odw_k:.2f} clip={odw_clip:.2f}"
+        )
+        collapse_line = f"csrc={cohesion_label}@{v3_connect:.2f} sm={plot_smoothing}"
+        event_line = f"ct={first_contact_tick} cut={formation_cut_tick} pkt={pocket_tick}"
         return [
-            f"c_margin A={collapse_margin_a:+.3f} B={collapse_margin_b:+.3f}",
-            f"collapse_state {collapse_state}",
-            f"contact={contact_count} dmg={damage_events}",
-            f"proj m/M={proj_mean:.3f}/{proj_max:.3f} p={proj_pairs}",
-            f"persist={persist_total} max={max_persist}",
+            selector_line,
+            odw_line,
+            collapse_line,
+            event_line,
         ]
 
     def format_archetype_param_lines(fleet_id: str) -> list[str]:
@@ -1649,10 +1689,9 @@ def render_test_run(
         def format_cell(short_key: str, attr_name: str) -> str:
             value = getattr(params, attr_name, None)
             if isinstance(value, (int, float)):
-                # Keep compact token shape for stable 5-column alignment.
-                # No leading spaces after ":" to avoid row overflow.
-                return f"{short_key}:{float(value):.1f}"
-            return f"{short_key}:n/a"
+                label = short_key.upper().ljust(3)
+                return f"{label}:{float(value):.1f}"
+            return f"{short_key.upper().ljust(3)}:n/a"
 
         cells = [format_cell(short_key, attr_name) for short_key, attr_name in specs]
         lines = [f"{fleet_id}[{archetype_id}]"]
@@ -1666,15 +1705,13 @@ def render_test_run(
 
     archetype_param_lines = []
     archetype_param_lines.extend(format_archetype_param_lines("A"))
-    archetype_param_lines.append("")
     archetype_param_lines.extend(format_archetype_param_lines("B"))
 
     def format_debug_text(
         mode: str,
         radial_outliers: int,
+        tick_index: int,
         runtime_debug: Mapping[str, Any] | None,
-        collapse_margin_a: float,
-        collapse_margin_b: float,
     ) -> str:
         def clip_line(raw: str) -> str:
             if len(raw) <= debug_max_row_chars:
@@ -1683,20 +1720,10 @@ def render_test_run(
                 return raw[:debug_max_row_chars]
             return raw[: debug_max_row_chars - 1] + "..."
 
-        raw_lines = [
-            *archetype_param_lines,
-            "",
-            f"vector_display_mode: {mode}",
-            f"plot_profile: {plot_profile}",
-            f"observer_profile: {cohesion_source_label}",
-        ]
+        raw_lines = [*archetype_param_lines]
         if mode == "radial_debug":
             raw_lines.append(f"radial_outward_count: {radial_outliers}")
-        raw_lines.extend([
-            "",
-            *format_runtime_diag_lines(runtime_debug, collapse_margin_a, collapse_margin_b),
-            "",
-        ])
+        raw_lines.extend([*format_runtime_diag_lines(tick_index, runtime_debug)])
         normalized_lines = [clip_line(raw) if raw else "" for raw in raw_lines]
         return "\n".join(normalized_lines)
 
@@ -1765,7 +1792,7 @@ def render_test_run(
         transform=battle_ax.transAxes,
         va="bottom",
         ha="right",
-        fontsize=legend_fontsize + 1,
+        fontsize=legend_fontsize,
         fontfamily=tick_text_fontfamily,
         bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
     )
@@ -1788,13 +1815,13 @@ def render_test_run(
         transform=debug_ax.transAxes,
         va="top",
         ha="left",
-        fontsize=max(8, int(round(legend_fontsize)) - 1),
+        fontsize=max(7, int(round(legend_fontsize)) - 2),
         family="monospace",
         linespacing=1.12,
         clip_on=True,
         zorder=0.3,
     )
-    debug_text.set_text(format_debug_text(vector_display_mode, 0, {}, float("nan"), float("nan")))
+    debug_text.set_text(format_debug_text(vector_display_mode, 0, 0, {}))
     count_text_cache = {"value": ""}
     debug_text_cache = {"value": debug_text.get_text()}
     tick_text_cache = {"value": ""}
@@ -1890,7 +1917,7 @@ def render_test_run(
 
     plot_label_fontsize = 9
     plot_tick_fontsize = 8
-    plot_legend_fontsize = 8
+    plot_legend_fontsize = 7
 
     def _quantile_sorted(sorted_values: Sequence[float], q: float) -> float:
         if not sorted_values:
@@ -2003,6 +2030,57 @@ def render_test_run(
         window=20,
     )
 
+    def compute_fire_efficiency_series(
+        size_a: Sequence[float],
+        size_b: Sequence[float],
+        alive_a: Sequence[float],
+        alive_b: Sequence[float],
+        *,
+        per_unit_damage: float,
+    ) -> tuple[list[float], list[float]]:
+        n = max(len(size_a), len(size_b), len(alive_a), len(alive_b))
+        if n <= 0:
+            return ([], [])
+        out_a: list[float] = []
+        out_b: list[float] = []
+        last_size_a = float(size_a[-1]) if size_a else 0.0
+        last_size_b = float(size_b[-1]) if size_b else 0.0
+        last_alive_a = float(alive_a[-1]) if alive_a else 0.0
+        last_alive_b = float(alive_b[-1]) if alive_b else 0.0
+        damage_floor = max(0.0, float(per_unit_damage))
+        for idx in range(n):
+            curr_size_a = float(size_a[idx]) if idx < len(size_a) else last_size_a
+            curr_size_b = float(size_b[idx]) if idx < len(size_b) else last_size_b
+            curr_alive_a = float(alive_a[idx]) if idx < len(alive_a) else last_alive_a
+            curr_alive_b = float(alive_b[idx]) if idx < len(alive_b) else last_alive_b
+            if idx <= 0:
+                prev_size_a = curr_size_a
+                prev_size_b = curr_size_b
+                prev_alive_a = curr_alive_a
+                prev_alive_b = curr_alive_b
+            else:
+                prev_size_a = float(size_a[idx - 1]) if (idx - 1) < len(size_a) else curr_size_a
+                prev_size_b = float(size_b[idx - 1]) if (idx - 1) < len(size_b) else curr_size_b
+                prev_alive_a = float(alive_a[idx - 1]) if (idx - 1) < len(alive_a) else curr_alive_a
+                prev_alive_b = float(alive_b[idx - 1]) if (idx - 1) < len(alive_b) else curr_alive_b
+            actual_damage_by_a = max(0.0, prev_size_b - curr_size_b)
+            actual_damage_by_b = max(0.0, prev_size_a - curr_size_a)
+            max_damage_a = max(0.0, prev_alive_a) * damage_floor
+            max_damage_b = max(0.0, prev_alive_b) * damage_floor
+            eff_a = actual_damage_by_a / max_damage_a if max_damage_a > 0.0 else 0.0
+            eff_b = actual_damage_by_b / max_damage_b if max_damage_b > 0.0 else 0.0
+            out_a.append(max(0.0, min(1.0, float(eff_a))))
+            out_b.append(max(0.0, min(1.0, float(eff_b))))
+        return (out_a, out_b)
+
+    fire_efficiency_series_a_raw, fire_efficiency_series_b_raw = compute_fire_efficiency_series(
+        [float(v) for v in fleet_size_trajectory.get("A", [])],
+        [float(v) for v in fleet_size_trajectory.get("B", [])],
+        [float(v) for v in alive_trajectory.get("A", [])],
+        [float(v) for v in alive_trajectory.get("B", [])],
+        per_unit_damage=float(damage_per_tick),
+    )
+
     collapse_margin_series_a = [
         collapse_margin(theta_a, cohesion_series_b[idx] if idx < len(cohesion_series_b) else 1.0)
         for idx in range(len(ticks))
@@ -2011,6 +2089,73 @@ def render_test_run(
         collapse_margin(theta_b, cohesion_series_a[idx] if idx < len(cohesion_series_a) else 1.0)
         for idx in range(len(ticks))
     ]
+    front_curvature_series_a = extract_observer_series("front_curvature_index", "A", len(ticks))
+    front_curvature_series_b = extract_observer_series("front_curvature_index", "B", len(ticks))
+    center_wing_parallel_share_series_a = extract_observer_series("center_wing_parallel_share", "A", len(ticks))
+    center_wing_parallel_share_series_b = extract_observer_series("center_wing_parallel_share", "B", len(ticks))
+
+    def _ema_series(values: Sequence[float], span: int) -> list[float]:
+        out: list[float] = []
+        alpha = 2.0 / float(max(2, span) + 1)
+        ema_value: float | None = None
+        for value in values:
+            fv = float(value)
+            if not math.isfinite(fv):
+                out.append(float("nan"))
+                continue
+            if ema_value is None or not math.isfinite(ema_value):
+                ema_value = fv
+            else:
+                ema_value = (alpha * fv) + ((1.0 - alpha) * ema_value)
+            out.append(float(ema_value))
+        return out
+
+    def _center_against_early_baseline(values: Sequence[float], baseline_count: int = 10) -> list[float]:
+        baseline_values: list[float] = []
+        for value in values:
+            fv = float(value)
+            if math.isfinite(fv):
+                baseline_values.append(fv)
+            if len(baseline_values) >= baseline_count:
+                break
+        if not baseline_values:
+            return [float(v) for v in values]
+        baseline = sum(baseline_values) / float(len(baseline_values))
+        out: list[float] = []
+        for value in values:
+            fv = float(value)
+            if math.isfinite(fv):
+                out.append(float(fv - baseline))
+            else:
+                out.append(float("nan"))
+        return out
+
+    def _fill_nonfinite_with_zero(values: Sequence[float]) -> list[float]:
+        out: list[float] = []
+        for value in values:
+            fv = float(value)
+            out.append(fv if math.isfinite(fv) else 0.0)
+        return out
+
+    smoothing_span = max(1, int(plot_smoothing_ticks))
+
+    def _smooth_plot_series(values: Sequence[float]) -> list[float]:
+        if smoothing_span <= 1:
+            return [float(v) if math.isfinite(float(v)) else float("nan") for v in values]
+        return _ema_series(values, span=smoothing_span)
+
+    front_curvature_plot_a = _smooth_plot_series(
+        _fill_nonfinite_with_zero(_center_against_early_baseline(front_curvature_series_a, baseline_count=10))
+    )
+    front_curvature_plot_b = _smooth_plot_series(
+        _fill_nonfinite_with_zero(_center_against_early_baseline(front_curvature_series_b, baseline_count=10))
+    )
+    center_wing_parallel_share_plot_a = _smooth_plot_series(
+        _fill_nonfinite_with_zero(center_wing_parallel_share_series_a)
+    )
+    center_wing_parallel_share_plot_b = _smooth_plot_series(
+        _fill_nonfinite_with_zero(center_wing_parallel_share_series_b)
+    )
 
     # Formation diagnostics derived from battlefield geometry per frame.
     ar_series_a = [float("nan")] * len(ticks)
@@ -2128,73 +2273,85 @@ def render_test_run(
         shape_q_high = 1.0
 
     runtime_series = {
-        "ar_a": ar_plot_a,
-        "ar_b": ar_plot_b,
-        "wedge_a": wedge_plot_a,
-        "wedge_b": wedge_plot_b,
-        "split_a": split_series_a,
-        "split_b": split_series_b,
-        "loss_rate_a": list(loss_rate_series_a),
-        "loss_rate_b": list(loss_rate_series_b),
-        "collapse_margin_a": collapse_margin_series_a,
-        "collapse_margin_b": collapse_margin_series_b,
+        "ar_a": _smooth_plot_series(ar_plot_a),
+        "ar_b": _smooth_plot_series(ar_plot_b),
+        "wedge_a": _smooth_plot_series(wedge_plot_a),
+        "wedge_b": _smooth_plot_series(wedge_plot_b),
+        "split_a": _smooth_plot_series(split_series_a),
+        "split_b": _smooth_plot_series(split_series_b),
+        "fire_efficiency_a": _smooth_plot_series(fire_efficiency_series_a_raw),
+        "fire_efficiency_b": _smooth_plot_series(fire_efficiency_series_b_raw),
+        "loss_rate_a": _smooth_plot_series(loss_rate_series_a),
+        "loss_rate_b": _smooth_plot_series(loss_rate_series_b),
+        "collapse_margin_a": _smooth_plot_series(collapse_margin_series_a),
+        "collapse_margin_b": _smooth_plot_series(collapse_margin_series_b),
+        "front_curvature_a": front_curvature_plot_a,
+        "front_curvature_b": front_curvature_plot_b,
+        "center_wing_parallel_share_a": center_wing_parallel_share_plot_a,
+        "center_wing_parallel_share_b": center_wing_parallel_share_plot_b,
     }
 
     if extended_plot_mode and observer_shadow_ready:
-        cohesion_axis_ylabel = "Cohesion (C_v3)"
+        cohesion_axis_ylabel = "Coh_v3"
         collapse_axis_ylabel = "Shadow C Margin"
     else:
-        cohesion_axis_ylabel = "Cohesion (C_v2)"
+        cohesion_axis_ylabel = "Coh_v2"
         collapse_axis_ylabel = "C Margin"
-    ar_axis_ylabel = "AR_forward"
-    wedge_axis_ylabel = "WedgeRatio"
-    split_axis_ylabel = "SplitSeparation"
+    wedge_axis_ylabel = "Wedge"
+    front_curvature_axis_ylabel = "FrontCurv"
+    center_wing_parallel_share_axis_ylabel = "C_W_PShare"
+    split_axis_ylabel = "SplitSep"
+    fire_efficiency_axis_ylabel = "FireEff"
     loss_rate_axis_ylabel = "LossRate"
-    collapse_signal_axis_ylabel = "CollapseSignal"
+    collapse_signal_axis_ylabel = "CollapseSig"
+
+    def apply_time_axis_label(ax: plt.Axes) -> None:
+        ax.set_xlabel("t", fontsize=plot_label_fontsize, labelpad=0.0)
+        ax.xaxis.set_label_coords(1.015, -0.035)
+        ax.xaxis.label.set_horizontalalignment("left")
+
+    plot_legend_axes: list[plt.Axes] = []
+
+    def apply_plot_legend(ax: plt.Axes) -> None:
+        ax.legend(fontsize=plot_legend_fontsize, loc="best")
+        plot_legend_axes.append(ax)
 
     alive_line_a, = alive_ax.plot(ticks, alive_trajectory["A"], label="A", color=fleet_a_color)
     alive_line_b, = alive_ax.plot(ticks, alive_trajectory["B"], label="B", color=fleet_b_color)
-    alive_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    alive_ax.set_ylabel("Alive Units", fontsize=plot_label_fontsize)
+    apply_time_axis_label(alive_ax)
+    alive_ax.set_ylabel("Alive", fontsize=plot_label_fontsize)
     alive_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    alive_ax.legend(fontsize=plot_legend_fontsize)
+    apply_plot_legend(alive_ax)
 
-    cohesion_line_a, = cohesion_ax.plot(ticks, cohesion_series_a, label="A", color=fleet_a_color)
-    cohesion_line_b, = cohesion_ax.plot(ticks, cohesion_series_b, label="B", color=fleet_b_color)
-    cohesion_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    cohesion_ax.set_ylabel(cohesion_axis_ylabel, fontsize=plot_label_fontsize)
-    cohesion_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    cohesion_ax.legend(fontsize=plot_legend_fontsize)
+    fire_efficiency_line_a, = fire_efficiency_ax.plot(
+        ticks,
+        runtime_series["fire_efficiency_a"],
+        label="A",
+        color=fleet_a_color,
+    )
+    fire_efficiency_line_b, = fire_efficiency_ax.plot(
+        ticks,
+        runtime_series["fire_efficiency_b"],
+        label="B",
+        color=fleet_b_color,
+    )
+    apply_time_axis_label(fire_efficiency_ax)
+    fire_efficiency_ax.set_ylabel(fire_efficiency_axis_ylabel, fontsize=plot_label_fontsize)
+    fire_efficiency_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(fire_efficiency_ax)
 
-    ar_line_a, = ar_ax.plot(ticks, runtime_series["ar_a"], label="A", color=fleet_a_color)
-    ar_line_b, = ar_ax.plot(ticks, runtime_series["ar_b"], label="B", color=fleet_b_color)
-    ar_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    ar_ax.set_ylabel(ar_axis_ylabel, fontsize=plot_label_fontsize)
-    ar_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    ar_ax.legend(fontsize=plot_legend_fontsize)
-
-    wedge_line_a, = wedge_ax.plot(ticks, runtime_series["wedge_a"], label="A", color=fleet_a_color)
-    wedge_line_b, = wedge_ax.plot(ticks, runtime_series["wedge_b"], label="B", color=fleet_b_color)
-    wedge_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    wedge_ax.set_ylabel(wedge_axis_ylabel, fontsize=plot_label_fontsize)
-    wedge_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    wedge_ax.legend(fontsize=plot_legend_fontsize)
-
-    loss_rate_line_a, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_a"], label="A", color=fleet_a_color)
-    loss_rate_line_b, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_b"], label="B", color=fleet_b_color)
-    loss_rate_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    loss_rate_ax.set_ylabel(loss_rate_axis_ylabel, fontsize=plot_label_fontsize)
-    loss_rate_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    loss_rate_ax.legend(fontsize=plot_legend_fontsize)
-
-    collapse_signal_series_a = [
+    collapse_signal_series_a_raw = [
         (1.0 - float(cohesion_series_b[idx])) if idx < len(cohesion_series_b) and math.isfinite(float(cohesion_series_b[idx])) else float("nan")
         for idx in range(len(ticks))
     ]
-    collapse_signal_series_b = [
+    collapse_signal_series_b_raw = [
         (1.0 - float(cohesion_series_a[idx])) if idx < len(cohesion_series_a) and math.isfinite(float(cohesion_series_a[idx])) else float("nan")
         for idx in range(len(ticks))
     ]
+    collapse_signal_series_a = _smooth_plot_series(collapse_signal_series_a_raw)
+    collapse_signal_series_b = _smooth_plot_series(collapse_signal_series_b_raw)
+    cohesion_plot_series_a = _smooth_plot_series(cohesion_series_a)
+    cohesion_plot_series_b = _smooth_plot_series(cohesion_series_b)
     collapse_signal_line_a, = collapse_signal_ax.plot(
         ticks,
         collapse_signal_series_a,
@@ -2207,47 +2364,78 @@ def render_test_run(
         label="B",
         color=fleet_b_color,
     )
-    collapse_signal_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
+    apply_time_axis_label(collapse_signal_ax)
     collapse_signal_ax.set_ylabel(collapse_signal_axis_ylabel, fontsize=plot_label_fontsize)
     collapse_signal_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    collapse_signal_ax.legend(fontsize=plot_legend_fontsize)
-
-    collapse_margin_line_a, = collapse_margin_ax.plot(
-        ticks,
-        runtime_series["collapse_margin_a"],
-        label="A",
-        color=fleet_a_color,
-    )
-    collapse_margin_line_b, = collapse_margin_ax.plot(
-        ticks,
-        runtime_series["collapse_margin_b"],
-        label="B",
-        color=fleet_b_color,
-    )
-    collapse_margin_ax.axhline(0.0, color="#666666", linewidth=0.9, linestyle="--")
-    collapse_margin_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
-    collapse_margin_ax.set_ylabel(collapse_axis_ylabel, fontsize=plot_label_fontsize)
-    collapse_margin_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    collapse_margin_ax.legend(fontsize=plot_legend_fontsize)
+    apply_plot_legend(collapse_signal_ax)
 
     split_line_a, = split_ax.plot(ticks, runtime_series["split_a"], label="A", color=fleet_a_color)
     split_line_b, = split_ax.plot(ticks, runtime_series["split_b"], label="B", color=fleet_b_color)
-    split_ax.set_xlabel("Tick", fontsize=plot_label_fontsize)
+    apply_time_axis_label(split_ax)
     split_ax.set_ylabel(split_axis_ylabel, fontsize=plot_label_fontsize)
     split_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    split_ax.legend(fontsize=plot_legend_fontsize)
+    apply_plot_legend(split_ax)
+
+    loss_rate_line_a, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_a"], label="A", color=fleet_a_color)
+    loss_rate_line_b, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_b"], label="B", color=fleet_b_color)
+    apply_time_axis_label(loss_rate_ax)
+    loss_rate_ax.set_ylabel(loss_rate_axis_ylabel, fontsize=plot_label_fontsize)
+    loss_rate_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(loss_rate_ax)
+
+    cohesion_line_a, = cohesion_ax.plot(ticks, cohesion_plot_series_a, label="A", color=fleet_a_color)
+    cohesion_line_b, = cohesion_ax.plot(ticks, cohesion_plot_series_b, label="B", color=fleet_b_color)
+    apply_time_axis_label(cohesion_ax)
+    cohesion_ax.set_ylabel(cohesion_axis_ylabel, fontsize=plot_label_fontsize)
+    cohesion_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(cohesion_ax)
+
+    front_curvature_line_a, = front_curvature_ax.plot(
+        ticks, runtime_series["front_curvature_a"], label="A", color=fleet_a_color
+    )
+    front_curvature_line_b, = front_curvature_ax.plot(
+        ticks, runtime_series["front_curvature_b"], label="B", color=fleet_b_color
+    )
+    apply_time_axis_label(front_curvature_ax)
+    front_curvature_ax.set_ylabel(front_curvature_axis_ylabel, fontsize=plot_label_fontsize)
+    front_curvature_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(front_curvature_ax)
+
+    wedge_line_a, = wedge_ax.plot(ticks, runtime_series["wedge_a"], label="A", color=fleet_a_color)
+    wedge_line_b, = wedge_ax.plot(ticks, runtime_series["wedge_b"], label="B", color=fleet_b_color)
+    apply_time_axis_label(wedge_ax)
+    wedge_ax.set_ylabel(wedge_axis_ylabel, fontsize=plot_label_fontsize)
+    wedge_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(wedge_ax)
+
+    center_wing_parallel_share_line_a, = center_wing_parallel_share_ax.plot(
+        ticks, runtime_series["center_wing_parallel_share_a"], label="A", color=fleet_a_color
+    )
+    center_wing_parallel_share_line_b, = center_wing_parallel_share_ax.plot(
+        ticks, runtime_series["center_wing_parallel_share_b"], label="B", color=fleet_b_color
+    )
+    apply_time_axis_label(center_wing_parallel_share_ax)
+    center_wing_parallel_share_ax.set_ylabel(center_wing_parallel_share_axis_ylabel, fontsize=plot_label_fontsize)
+    center_wing_parallel_share_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+    apply_plot_legend(center_wing_parallel_share_ax)
 
     observer_series_lines = [
-        ar_line_a,
-        ar_line_b,
+        fire_efficiency_line_a,
+        fire_efficiency_line_b,
         wedge_line_a,
         wedge_line_b,
+        center_wing_parallel_share_line_a,
+        center_wing_parallel_share_line_b,
         split_line_a,
         split_line_b,
         loss_rate_line_a,
         loss_rate_line_b,
+        cohesion_line_a,
+        cohesion_line_b,
         collapse_signal_line_a,
         collapse_signal_line_b,
+        front_curvature_line_a,
+        front_curvature_line_b,
     ]
 
     def apply_observer_axis_disabled_style(ax, slot_name: str) -> None:
@@ -2280,37 +2468,67 @@ def render_test_run(
     if not plot_panel_enabled:
         for line in observer_series_lines:
             line.set_visible(False)
-        apply_observer_axis_disabled_style(cohesion_ax, "slot_03")
-        apply_observer_axis_disabled_style(ar_ax, "slot_04")
-        apply_observer_axis_disabled_style(wedge_ax, "slot_05")
-        apply_observer_axis_disabled_style(split_ax, "slot_06")
-        apply_observer_axis_disabled_style(loss_rate_ax, "slot_07")
-        apply_observer_axis_disabled_style(collapse_signal_ax, "slot_08")
-        apply_observer_axis_disabled_style(collapse_margin_ax, "slot_09")
+        apply_observer_axis_disabled_style(fire_efficiency_ax, "slot_03")
+        apply_observer_axis_disabled_style(loss_rate_ax, "slot_04")
+        apply_observer_axis_disabled_style(cohesion_ax, "slot_05")
+        apply_observer_axis_disabled_style(collapse_signal_ax, "slot_06")
+        apply_observer_axis_disabled_style(split_ax, "slot_07")
+        apply_observer_axis_disabled_style(front_curvature_ax, "slot_08")
+        apply_observer_axis_disabled_style(wedge_ax, "slot_09")
+        apply_observer_axis_disabled_style(center_wing_parallel_share_ax, "slot_10")
+
+    def freeze_plot_legends() -> None:
+        active_axes = [ax for ax in plot_legend_axes if ax.get_legend() is not None]
+        if not active_axes:
+            return
+        try:
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+        except Exception:
+            return
+        for ax in active_axes:
+            legend = ax.get_legend()
+            if legend is None:
+                continue
+            try:
+                bbox_axes = legend.get_window_extent(renderer=renderer).transformed(ax.transAxes.inverted())
+                handles, labels = ax.get_legend_handles_labels()
+                legend.remove()
+                ax.legend(
+                    handles,
+                    labels,
+                    fontsize=plot_legend_fontsize,
+                    loc="upper left",
+                    bbox_to_anchor=(float(bbox_axes.x0), float(bbox_axes.y1)),
+                    bbox_transform=ax.transAxes,
+                    borderaxespad=0.0,
+                )
+            except Exception:
+                continue
+
+    freeze_plot_legends()
 
     x_limit_right = max(1, len(ticks) - 1)
     for ax in (
         alive_ax,
-        cohesion_ax,
-        ar_ax,
-        wedge_ax,
-        split_ax,
+        fire_efficiency_ax,
         loss_rate_ax,
+        cohesion_ax,
         collapse_signal_ax,
-        collapse_margin_ax,
+        split_ax,
+        front_curvature_ax,
+        wedge_ax,
+        center_wing_parallel_share_ax,
     ):
         ax.set_xlim(0.0, float(x_limit_right))
 
     alive_ax.set_ylim(*compute_axis_limits_many(alive_trajectory["A"], alive_trajectory["B"]))
+    fire_efficiency_ax.set_ylim(0.0, 1.0)
+    loss_rate_ax.set_ylim(*compute_axis_limits_many(runtime_series["loss_rate_a"], runtime_series["loss_rate_b"]))
     cohesion_ax.set_ylim(*compute_axis_limits_many(cohesion_series_a, cohesion_series_b))
-    ar_ax.set_ylim(
-        *compute_axis_limits_many(
-            runtime_series["ar_a"],
-            runtime_series["ar_b"],
-            q_low=shape_q_low,
-            q_high=shape_q_high,
-        )
-    )
+    collapse_signal_ax.set_ylim(*compute_axis_limits_many(collapse_signal_series_a, collapse_signal_series_b))
+    split_ax.set_ylim(1.5, 2.5)
+    front_curvature_ax.set_ylim(*compute_axis_limits_many(runtime_series["front_curvature_a"], runtime_series["front_curvature_b"]))
     wedge_ax.set_ylim(
         *compute_axis_limits_many(
             runtime_series["wedge_a"],
@@ -2319,28 +2537,50 @@ def render_test_run(
             q_high=shape_q_high,
         )
     )
-    split_ax.set_ylim(*compute_axis_limits_many(runtime_series["split_a"], runtime_series["split_b"]))
-    loss_rate_ax.set_ylim(*compute_axis_limits_many(runtime_series["loss_rate_a"], runtime_series["loss_rate_b"]))
-    collapse_signal_ax.set_ylim(*compute_axis_limits_many(collapse_signal_series_a, collapse_signal_series_b))
-    collapse_margin_ax.set_ylim(*compute_axis_limits_many(runtime_series["collapse_margin_a"], runtime_series["collapse_margin_b"]))
+    center_wing_parallel_share_ax.set_ylim(-1.0, 1.0)
+
+    tick_cursor_style = {
+        "color": "#4a4a4a",
+        "linestyle": ":",
+        "linewidth": 0.9,
+        "alpha": 0.85,
+        "zorder": 2.6,
+    }
+    initial_cursor_x = 0.0
+    tick_cursor_lines = [
+        alive_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        fire_efficiency_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        loss_rate_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        cohesion_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        collapse_signal_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        split_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        front_curvature_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        wedge_ax.axvline(initial_cursor_x, **tick_cursor_style),
+        center_wing_parallel_share_ax.axvline(initial_cursor_x, **tick_cursor_style),
+    ]
+    if not plot_panel_enabled:
+        for line in tick_cursor_lines[1:]:
+            line.set_visible(False)
 
     tick_plot_lines = [
         (alive_line_a, alive_trajectory["A"]),
         (alive_line_b, alive_trajectory["B"]),
-        (cohesion_line_a, cohesion_series_a),
-        (cohesion_line_b, cohesion_series_b),
-        (ar_line_a, runtime_series["ar_a"]),
-        (ar_line_b, runtime_series["ar_b"]),
-        (wedge_line_a, runtime_series["wedge_a"]),
-        (wedge_line_b, runtime_series["wedge_b"]),
-        (split_line_a, runtime_series["split_a"]),
-        (split_line_b, runtime_series["split_b"]),
+        (fire_efficiency_line_a, runtime_series["fire_efficiency_a"]),
+        (fire_efficiency_line_b, runtime_series["fire_efficiency_b"]),
         (loss_rate_line_a, runtime_series["loss_rate_a"]),
         (loss_rate_line_b, runtime_series["loss_rate_b"]),
+        (cohesion_line_a, cohesion_series_a),
+        (cohesion_line_b, cohesion_series_b),
         (collapse_signal_line_a, collapse_signal_series_a),
         (collapse_signal_line_b, collapse_signal_series_b),
-        (collapse_margin_line_a, runtime_series["collapse_margin_a"]),
-        (collapse_margin_line_b, runtime_series["collapse_margin_b"]),
+        (split_line_a, runtime_series["split_a"]),
+        (split_line_b, runtime_series["split_b"]),
+        (front_curvature_line_a, runtime_series["front_curvature_a"]),
+        (front_curvature_line_b, runtime_series["front_curvature_b"]),
+        (wedge_line_a, runtime_series["wedge_a"]),
+        (wedge_line_b, runtime_series["wedge_b"]),
+        (center_wing_parallel_share_line_a, runtime_series["center_wing_parallel_share_a"]),
+        (center_wing_parallel_share_line_b, runtime_series["center_wing_parallel_share_b"]),
     ]
 
     tick_plots_follow_enabled = bool(tick_plots_follow_battlefield_tick and len(prepared_frames) > 0)
@@ -2356,6 +2596,8 @@ def render_test_run(
     count_text.set_animated(blit_enabled)
     debug_text.set_animated(blit_enabled)
     battle_tick_text.set_animated(blit_enabled)
+    for line in tick_cursor_lines:
+        line.set_animated(blit_enabled)
 
     if prepared_frames:
         first_tick = prepared_frames[0]["tick"]
@@ -2507,13 +2749,13 @@ def render_test_run(
         initial_points_a_norm = prepared_frames[0]["A_norm"]
         initial_points_b_norm = prepared_frames[0]["B_norm"]
         initial_attack_direction_map = prepared_frames[0]["attack_direction_map"]
-        initial_render_points_a, _ = build_render_points_for_mode(
+        initial_render_points_a, initial_radial_outward_a = build_render_points_for_mode(
             initial_points_a_norm,
             "A",
             attack_direction_map=initial_attack_direction_map,
             commit_positions=False,
         )
-        initial_render_points_b, _ = build_render_points_for_mode(
+        initial_render_points_b, initial_radial_outward_b = build_render_points_for_mode(
             initial_points_b_norm,
             "B",
             attack_direction_map=initial_attack_direction_map,
@@ -2522,6 +2764,63 @@ def render_test_run(
         quiver_all.remove()
         quiver_all = make_quiver(initial_render_points_a, initial_render_points_b)
         quiver_all.set_animated(blit_enabled)
+
+        def prime_first_frame_overlays() -> None:
+            first_frame = prepared_frames[0]
+            first_tick_value = int(first_frame["tick"])
+            first_tick_index = max(0, first_tick_value - 1)
+            a_series_local = fleet_size_trajectory.get("A", [])
+            b_series_local = fleet_size_trajectory.get("B", [])
+            if a_series_local:
+                curr_size_a_local = float(a_series_local[min(first_tick_index, len(a_series_local) - 1)])
+            else:
+                curr_size_a_local = 0.0
+            if b_series_local:
+                curr_size_b_local = float(b_series_local[min(first_tick_index, len(b_series_local) - 1)])
+            else:
+                curr_size_b_local = 0.0
+            pct_a_local = (curr_size_a_local / initial_size_a * 100.0) if initial_size_a > 0.0 else 0.0
+            pct_b_local = (curr_size_b_local / initial_size_b * 100.0) if initial_size_b > 0.0 else 0.0
+            first_tick_text = format_battle_tick_text(first_tick_value)
+            battle_tick_text.set_text(first_tick_text)
+            tick_text_cache["value"] = first_tick_text
+            if vector_display_mode == "radial_debug":
+                first_mode_outliers = initial_radial_outward_a + initial_radial_outward_b
+            else:
+                first_mode_outliers = 0
+            first_debug_text = format_debug_text(
+                vector_display_mode,
+                first_mode_outliers,
+                first_tick_index,
+                first_frame["runtime_debug"],
+            )
+            debug_text.set_text(first_debug_text)
+            debug_text_cache["value"] = first_debug_text
+            first_count_text = format_count_text(
+                len(first_frame["A_alive"]),
+                len(first_frame["B_alive"]),
+                curr_size_a_local,
+                curr_size_b_local,
+                pct_a_local,
+                pct_b_local,
+            )
+            count_text.set_text(first_count_text)
+            count_text_cache["value"] = first_count_text
+            if show_attack_target_lines:
+                first_segments = first_frame["target_segments"]
+                target_line_collection.set_segments(first_segments)
+                target_segments_empty["value"] = len(first_segments) == 0
+            cursor_x_local = float(min(max(first_tick_value - 1, 0), x_limit_right))
+            for line in tick_cursor_lines:
+                line.set_xdata([cursor_x_local, cursor_x_local])
+            if tick_plots_follow_enabled:
+                reveal_count_local = min(max(first_tick_value, 0), len(ticks))
+                reveal_x_local = ticks[:reveal_count_local]
+                for line, series in tick_plot_lines:
+                    line.set_data(reveal_x_local, series[:reveal_count_local])
+                last_reveal_count["value"] = reveal_count_local
+
+        prime_first_frame_overlays()
 
         def reset_to_full_view():
             auto_zoom_state["current_x"] = arena_size * 0.5
@@ -2868,9 +3167,8 @@ def render_test_run(
             next_debug_text = format_debug_text(
                 vector_display_mode,
                 mode_outliers,
+                tick_index,
                 runtime_debug,
-                collapse_margin_current_a,
-                collapse_margin_current_b,
             )
             if next_debug_text != debug_text_cache["value"]:
                 debug_text.set_text(next_debug_text)
@@ -2887,12 +3185,31 @@ def render_test_run(
                     for line, series in tick_plot_lines:
                         line.set_data(reveal_x, series[:reveal_count])
                     last_reveal_count["value"] = reveal_count
+            cursor_x = float(min(max(int(frame["tick"]) - 1, 0), x_limit_right))
+            for line in tick_cursor_lines:
+                line.set_xdata([cursor_x, cursor_x])
             if blit_enabled:
-                return (quiver_all, target_line_collection, death_ring_collection, count_text, debug_text, battle_tick_text)
+                return (
+                    quiver_all,
+                    target_line_collection,
+                    death_ring_collection,
+                    count_text,
+                    debug_text,
+                    battle_tick_text,
+                    *tick_cursor_lines,
+                )
             return ()
 
         def init_frame():
-            return (quiver_all, target_line_collection, death_ring_collection, count_text, debug_text, battle_tick_text)
+            return (
+                quiver_all,
+                target_line_collection,
+                death_ring_collection,
+                count_text,
+                debug_text,
+                battle_tick_text,
+                *tick_cursor_lines,
+            )
 
         anim = FuncAnimation(
             fig,
@@ -2939,13 +3256,10 @@ def render_test_run(
         pct_b = (curr_size_b / initial_size_b * 100.0) if initial_size_b > 0.0 else 0.0
         final_margin_a = float(runtime_series["collapse_margin_a"][-1]) if runtime_series["collapse_margin_a"] else float("nan")
         final_margin_b = float(runtime_series["collapse_margin_b"][-1]) if runtime_series["collapse_margin_b"] else float("nan")
-        debug_text.set_text(format_debug_text(vector_display_mode, 0, {}, final_margin_a, final_margin_b))
+        debug_text.set_text(format_debug_text(vector_display_mode, 0, len(ticks) - 1, {}))
         battle_tick_text.set_text(format_battle_tick_text(int(final_state.tick)))
         count_text.set_text(format_count_text(len(final_a), len(final_b), curr_size_a, curr_size_b, pct_a, pct_b))
         anim = None
-
-    # Keep consistent layout margins for both interactive display and video export.
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.07)
 
     export_video_cfg_local = export_video_cfg if isinstance(export_video_cfg, Mapping) else {}
     export_video_enabled = bool(_cfg(export_video_cfg_local, "enabled", False))
@@ -2961,13 +3275,15 @@ def render_test_run(
         output_path = Path(raw_output_path)
         if not output_path.is_absolute():
             output_path = (Path.cwd() / output_path).resolve()
-        stem_has_timestamp = re.search(r"_\d{8}_\d{6}$", output_path.stem) is not None
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if output_path.suffix:
-            if not stem_has_timestamp:
-                output_path = output_path.with_name(f"{output_path.stem}_{timestamp}{output_path.suffix}")
-        else:
-            output_path = output_path / f"test_run_v1_0_{timestamp}.mp4"
+        output_path_is_final = bool(_cfg(export_video_cfg_local, "output_path_is_final", False))
+        if not output_path_is_final:
+            stem_has_timestamp = re.search(r"_\d{8}_\d{6}$", output_path.stem) is not None
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            if output_path.suffix:
+                if not stem_has_timestamp:
+                    output_path = output_path.with_name(f"{output_path.stem}_{timestamp}{output_path.suffix}")
+            else:
+                output_path = output_path / f"test_run_v1_0_{timestamp}.mp4"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         default_fps = max(1, int(round(1000.0 / max(1, frame_interval_ms))))

@@ -141,9 +141,9 @@ If a visualization regression is detected:
 Engineering executes within this contract by default.  
 Governance is consulted only for Class C or scope ambiguity.
 
-## 11. Plot Profile Governance (9 Slots)
+## 11. Plot Profile Governance (10 Slots)
 
-The 9-slot plotting layout is position-frozen. Slot geometry is stable; only metric assignment may change.
+The 10-slot plotting layout is position-frozen. Slot geometry is stable; only metric assignment may change.
 
 `run_control.test_mode` is the execution permission switch for slot content, but `runtime.selectors.cohesion_decision_source` controls whether v3-test cohesion plots are allowed.
 
@@ -167,14 +167,39 @@ Rules:
 
 Current active slot mapping:
 
-- `slot_01 + slot_02`: Alive Units
-- `slot_03`: Cohesion (`C_v2` when plotting legacy `v2`; `C_v3` when plotting current `v3_test` source)
-- `slot_04`: `AR_forward`
-- `slot_05`: `WedgeRatio`
-- `slot_06`: `SplitSeparation`
-- `slot_07`: `LossRate`
-- `slot_08`: `CollapseSignal`
-- `slot_09`: `C Margin` / `Shadow C Margin`
+- `slot_01 + slot_02`: `Alive`
+- `slot_03`: `FireEff`
+- `slot_04`: `LossRate`
+- `slot_05`: `Coh_v2` / `Coh_v3`
+- `slot_06`: `CollapseSig`
+- `slot_07`: `SplitSep`
+- `slot_08`: `FrontCurv`
+- `slot_09`: `Wedge`
+- `slot_10`: `C_W_PShare`
+
+Current non-active / hidden indicators retained in telemetry or local visualization helpers:
+
+- `AR_Fwd`
+- `CollapseMargin`
+- `c_conn`
+- `rho`
+- `c_scale`
+- `NetAxisPush`
+- `C_W_AdvGap`
+- `PosPersist`
+
+These indicators are not currently assigned to active slots. They may still exist as:
+
+- raw observer telemetry;
+- display-only helper series;
+- BRF summary inputs;
+- local diagnostic candidates for future review.
+
+X-axis label rule for all active plot slots:
+
+- do not place centered `Tick` under the plot;
+- use compact right-edge label `t`;
+- anchor the label to the far-right end of the x-axis to avoid overlap with lower layout elements.
 
 `observer_enabled` is treated as legacy compatibility input and must not override `test_mode` semantics.
 
@@ -191,6 +216,20 @@ Required:
 - adding new debug rows must not require panel-boundary retuning.
 
 Goal: avoid right-edge overflow regressions while keeping debug content readable.
+
+Current active debug payload should prioritize:
+
+- side archetype identities and parameter rows;
+- `mode / movement / cohesion source`;
+- ODW prototype switch and strength (`on/off`, `k`, `clip`);
+- collapse baseline summary (`coh source @ multiplier`, plot smoothing);
+- event anchors (`ct / cut / pkt`).
+
+Current debug payload should not carry:
+
+- per-tick contact / damage counters already represented by active plots;
+- projection displacement diagnostics in normal review mode;
+- movement experiment labels that are only internal subselectors of the current baseline implementation.
 
 ## 13. Change Log
 
@@ -261,7 +300,90 @@ v1.7 (Local update):
 - Side-plot slot mapping refreshed again:
   - moved `LossRate` to `slot_07`;
   - moved `CollapseSignal` to `slot_08`;
-  - moved `C Margin` / `Shadow C Margin` to `slot_09`.
+  - moved `NetAxisPush` to `slot_09`.
+
+- `v1.7`
+  - `slot_09` now plots `NetAxisPush` instead of `C Margin` / `Shadow C Margin`;
+  - `NetAxisPush` is recorded per tick as an interval-difference observer metric over a fixed `10`-tick window;
+  - it measures `0.5 * (Advance_A(interval) - Advance_B(interval))` along the initial A->B battle axis;
+  - the value is normalized by `abs(max_unit_speed * interval)`;
+  - axis range is fixed to `[-1, +1]`.
+
+v1.8 (Local update):
+- `slot_09` now plots `C_W_AdvGap` instead of `NetAxisPush`.
+
+v1.8 (Local update):
+- Plot layout compacted for the next indicator cycle:
+  - debug panel reduced from three slot-heights to two;
+  - `slot_10` added for posture/readout expansion;
+  - `Wedge` retained as the sole whole-fleet geometry-shape plot in the former `AR_Fwd` / `Wedge` pair.
+
+v1.9 (Local update):
+- Posture readout refinement activated:
+  - `slot_03`: `LossRate`
+  - `slot_04`: `Coh_v2` / `Coh_v3`
+  - `slot_05`: `CollapseSig`
+  - `slot_06`: `SplitSep`
+  - `slot_07`: `FrontCurv`
+  - `slot_08`: `Wedge`
+  - `slot_09`: `C_W_PShare`
+  - `slot_10`: `PosPersist`
+- `FrontCurv` (`Front Curvature Index`) is observer-only and measures center-vs-wing front protrusion using the current front band, normalized by `min_unit_spacing`.
+- `C_W_PShare` (`Center / Wing Parallel Pressure Share`) is observer-only and measures center-vs-wing share of positive parallel velocity along the initial battle axis.
+- `PosPersist` (`Posture Persistence Time`) is observer-only and tracks consecutive ticks of coherent posture state when front-curvature sign and center/wing pressure-share sign agree above small thresholds.
+- `SplitSep` keeps the raw metric meaning in plots, but its active display range is narrowed for human review.
+- Current visualization window for `SplitSep` is fixed to `[1.5, 2.5]`.
+
+v1.10 (Local update):
+- Debug panel compacted further:
+  - removed `collapse_state`
+  - removed `plot_profile`
+  - removed `observer_profile`
+  - removed the blank separator between A and B archetype blocks
+- All active plot slots now use right-edge x-axis label `t` instead of centered `Tick`.
+
+v1.11 (Local update):
+- Posture readout display refinement:
+  - `FrontCurv` is now plotted as an early-baseline-centered display view to better separate stable rectangular fronts from later center-led protrusion.
+  - `C_W_PShare` is now plotted with display-only smoothing for readability.
+  - `PosPersist` is now plotted as a display-only hysteresis persistence readout derived from smoothed `FrontCurv` and `C_W_PShare`.
+- Raw observer telemetry and exported log values remain unchanged; only plot-side display was adjusted.
+
+v1.12 (Local update):
+- Non-Alive plot smoothing is now controlled by `visualization.plot_smoothing_ticks` in `test_run/test_run_v1_0.settings.json`.
+- The configured smoothing window applies uniformly to display-only views of:
+  - `FireEff`
+  - `LossRate`
+  - `Coh_v2` / `Coh_v3`
+  - `CollapseSig`
+  - `SplitSep`
+  - `Wedge`
+  - `FrontCurv`
+  - `C_W_PShare`
+- Raw observer telemetry and exported values remain unchanged.
+
+v1.13 (Local update):
+- Active slot layout refreshed:
+  - `slot_03`: `FireEff`
+  - `slot_04`: `LossRate`
+  - `slot_05`: `Coh_v2` / `Coh_v3`
+  - `slot_06`: `CollapseSig`
+  - `slot_07`: `SplitSep`
+  - `slot_08`: `FrontCurv`
+  - `slot_09`: `Wedge`
+  - `slot_10`: `C_W_PShare`
+- `FireEff` is display-only and measures per-tick realized damage divided by same-tick theoretical maximum damage from currently active units.
+- `PosPersist` remains raw observer telemetry but is no longer plotted in an active slot.
+
+v1.14 (Local update):
+- `SplitSep` remains the active plot label/value in `slot_07`.
+- `SplitSep` display range is intentionally narrowed to `[1.5, 2.5]` for human review.
+- Debug payload was compacted further:
+  - removed per-tick contact/damage counters from the debug block;
+  - removed projection-displacement diagnostics from the default debug block;
+  - removed movement experiment subselector text from the default debug block;
+  - added compact event anchors: `ct / cut / pkt`;
+  - added compact ODW / collapse-baseline summary fields.
 
 ## 14. Battlefield Identity Block Layout Contract
 

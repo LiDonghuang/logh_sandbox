@@ -123,13 +123,13 @@
     "color_code": "",
     "force_concentration_ratio": 5.0,
     "mobility_bias": 8.0,
-    "offense_defense_weight": 5.0,
+    "offense_defense_weight": 2.0,
     "risk_appetite": 5.0,
     "time_preference": 5.0,
     "targeting_logic": 5.0,
-    "formation_rigidity": 2.0,
+    "formation_rigidity": 8.0,
     "perception_radius": 5.0,
-    "pursuit_drive": 2.0,
+    "pursuit_drive": 8.0,
     "retreat_threshold": 5.0
   },
   "knappstein": {
@@ -142,13 +142,13 @@
     "color_code": "",
     "force_concentration_ratio": 5.0,
     "mobility_bias": 2.0,
-    "offense_defense_weight": 5.0,
+    "offense_defense_weight": 8.0,
     "risk_appetite": 5.0,
     "time_preference": 5.0,
     "targeting_logic": 5.0,
-    "formation_rigidity": 8.0,
+    "formation_rigidity": 2.0,
     "perception_radius": 5.0,
-    "pursuit_drive": 8.0,
+    "pursuit_drive": 2.0,
     "retreat_threshold": 5.0
   }
 }

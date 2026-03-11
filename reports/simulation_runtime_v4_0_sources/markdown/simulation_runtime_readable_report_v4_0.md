@@ -238,7 +238,7 @@ Each archetype defines:
 6. `targeting_logic`
 7. `formation_rigidity`
 8. `perception_radius`
-9. `pursuit_threshold`
+9. `pursuit_drive`
 10. `retreat_threshold`
 
 All raw values are stored in \([1,10]\), with normalized form via:
@@ -262,7 +262,7 @@ Stored but currently not directly consumed in `engine_skeleton.py` equations:
 - `time_preference`
 - `targeting_logic` (present in parameter set; current targeting behavior is fixed by implemented selector)
 - `perception_radius`
-- `pursuit_threshold`
+- `pursuit_drive`
 - `retreat_threshold`
 
 ### 3.3 Data Path
