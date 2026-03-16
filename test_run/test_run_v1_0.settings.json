@@ -153,9 +153,9 @@
     "background_map_seed": -1
   },
   "fleet": {
-    "fleet_a_archetype_id": "yang",
-    "fleet_b_archetype_id": "kircheis",
-    "initial_fleet_a_size": 80,
+    "fleet_a_archetype_id": "reinhard",
+    "fleet_b_archetype_id": "lobos",
+    "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,
     "initial_fleet_a_aspect_ratio": 2.0,
     "initial_fleet_b_aspect_ratio": 2.0,

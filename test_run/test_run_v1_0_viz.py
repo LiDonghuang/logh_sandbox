@@ -1540,9 +1540,9 @@ def render_test_run(
                 grid_line.set_clip_path(None)
 
     apply_grid_clip()
-    boundary_line_width = 3.0 if boundary_soft_effective else 2.2
+    boundary_line_width = 3.0 if boundary_soft_effective else 1.5
     boundary_edge_color = "#000000" if boundary_soft_effective else "#555555"
-    boundary_linestyle = "-" if boundary_soft_effective else ":"
+    boundary_linestyle = "-" if boundary_soft_effective else "--"
     battle_ax.add_patch(
         Rectangle(
             (0.0, 0.0),

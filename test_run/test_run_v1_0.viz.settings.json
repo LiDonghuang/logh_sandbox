@@ -98,20 +98,20 @@
       0.5
     ],
     "angle_deg": 135.0,
-    "inner_size_ratio": 1.35,
-    "outer_inner_ratio": 2.25,
+    "inner_size_ratio": 1.25,
+    "outer_inner_ratio": 2.00,
     "axis_ratio": 0.25,
-    "outer_color": "#d7deea",
-    "inner_color": "#c7d3e5",
-    "outer_alpha": 0.15,
-    "inner_alpha": 0.15
+    "outer_color": "#BFCBDA",
+    "inner_color": "#D2D7DF",
+    "outer_alpha": 0.10,
+    "inner_alpha": 0.10
   },
 
   "_comment_background_major_star": "background_major_star: radius_range=[min,max]; colors=candidate palette; glow_scale=halo radius multiplier; glow_alpha=halo opacity; core_alpha=core opacity; secondary_count_range controls random 0~2 secondary stars (binary/trinary visuals); secondary_scale can be a fixed number or [min,max] random range relative to primary; secondary_min_separation_ratio keeps secondary stars at far distance and avoids visual overlap with other major celestial effects.",
   "background_major_star": {
     "radius_range": [
       15.0,
-      25.0
+      20.0
     ],
     "colors": [
       "#FF6666",
@@ -126,7 +126,7 @@
       2
     ],
     "secondary_scale": [
-      0.25,
+      0.3,
       0.5
     ],
     "secondary_min_separation_ratio": 0.7
@@ -137,13 +137,13 @@
     "orbit_radius_base_ratio": 0.7,
     "orbit_count_range": [
       8,
-      14
+      12
     ],
     "eccentricity_near": 0.0,
-    "eccentricity_far": 0.25,
+    "eccentricity_far": 0.35,
     "draw_orbits_enabled": true,
     "orbit_line_color": "#778899",
-    "orbit_line_alpha": 0.25,
+    "orbit_line_alpha": 0.3,
     "orbit_line_width": 0.5,
     "draw_extent_ratio_max": 1.25,
     "planet_orbit_gap_ratio_min": 0.05,
@@ -158,8 +158,8 @@
       8
     ],
     "orbit_ratio_range": [
-      0.25,
-      0.75
+      0.15,
+      0.80
     ],
     "orbit_jitter_range": [
       0.92,
@@ -170,7 +170,7 @@
     "small_zone_max_ratio": 0.42,
     "mid_zone_max_ratio": 0.72,
     "radius_range": [
-      3.0,
+      2.0,
       6.0
     ],
     "colors": [
@@ -182,8 +182,8 @@
     "moons": {
       "enabled": true,
       "size_ratio_range": [
-        0.2,
-        0.4
+        0.25,
+        0.5
       ],
       "orbit_scale_range": [
         1.5,
@@ -197,7 +197,7 @@
         1,
         2
       ],
-      "color": "#43474e",
+      "color": "#6f7f95",
       "alpha": 0.4
     },
     "gas_giant_ring": {
@@ -226,16 +226,16 @@
       4
     ],
     "points_per_360_degree_range": [
-      90,
-      270
+      180,
+      360
     ],
     "orbit_ratio_range": [
-      0.25,
+      0.35,
       1.0
     ],
     "thickness_ratio_range": [
-      0.05,
-      0.1
+      0.025,
+      0.05
     ],
     "arc_span_deg_range": [
       180.0,
@@ -246,8 +246,8 @@
       0.1
     ],
     "asteroid_radius_range": [
-      0.05,
-      0.5
+      0.2,
+      0.4
     ],
     "color": "#595F68",
     "alpha": 0.4
