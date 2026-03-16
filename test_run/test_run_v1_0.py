@@ -1,6 +1,8 @@
 import json
 import math
+import os
 import random
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -55,6 +57,67 @@ COHESION_DECISION_SOURCE_LABELS = {
 BASELINE_COHESION_DECISION_SOURCE = "v3_test"
 BASELINE_V3_CONNECT_RADIUS_MULTIPLIER = 1.1
 BASELINE_V3_R_REF_RADIUS_MULTIPLIER = 1.0
+V3A_EXPERIMENT_BASE = "base"
+V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE = "exp_precontact_centroid_probe"
+V3A_EXPERIMENT_LABELS = {
+    V3A_EXPERIMENT_BASE,
+    V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE,
+}
+PRE_TL_TARGET_SUBSTRATE_NEAREST5 = "nearest5_centroid"
+PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL = "weighted_local"
+PRE_TL_TARGET_SUBSTRATE_LOCAL_CLUSTER = "local_cluster"
+PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED = "soft_local_weighted"
+PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT = "soft_local_weighted_tight"
+PRE_TL_TARGET_SUBSTRATE_LABELS = {
+    PRE_TL_TARGET_SUBSTRATE_NEAREST5,
+    PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL,
+    PRE_TL_TARGET_SUBSTRATE_LOCAL_CLUSTER,
+    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
+    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
+}
+PRE_TL_TARGET_SUBSTRATE_DEFAULT = PRE_TL_TARGET_SUBSTRATE_NEAREST5
+HOSTILE_CONTACT_IMPEDANCE_MODE_OFF = "off"
+HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1 = "repulsion_v1"
+HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2 = "damping_v2"
+HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 = "hybrid_v2"
+HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1 = "intent_unified_spacing_v1"
+HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1 = "intent_occupancy_only_v1"
+HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS = {
+    HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
+    HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1,
+    HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2,
+    HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2,
+    HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1,
+    HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1,
+}
+HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT = HOSTILE_CONTACT_IMPEDANCE_MODE_OFF
+HOSTILE_CONTACT_IMPEDANCE_STRENGTH_DEFAULT = 0.50
+HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER_DEFAULT = 1.50
+HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT = 1.50
+HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT = 0.20
+HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT = 0.50
+HOSTILE_SPACING_FLOOR_SCALE_DEFAULT = 0.00
+HOSTILE_SPACING_FLOOR_STRENGTH_DEFAULT = 0.00
+HOSTILE_SPACING_FLOOR_V2_SCALE_DEFAULT = 0.00
+HOSTILE_SPACING_FLOOR_V2_STRENGTH_DEFAULT = 0.00
+HOSTILE_SPACING_CO_RESOLUTION_SCALE_DEFAULT = 0.00
+HOSTILE_SPACING_CO_RESOLUTION_STRENGTH_DEFAULT = 0.00
+HOSTILE_GATED_COHERENCE_REGULARIZATION_SCALE_DEFAULT = 0.00
+HOSTILE_GATED_COHERENCE_REGULARIZATION_STRENGTH_DEFAULT = 0.00
+HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT = 1.00
+HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT = 1.00
+HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE_DEFAULT = 1.00
+HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH_DEFAULT = 1.00
+CONTINUOUS_FR_SHAPING_OFF = "off"
+CONTINUOUS_FR_SHAPING_CANDIDATE_A = "candidate_a"
+CONTINUOUS_FR_SHAPING_CANDIDATE_B = "candidate_b"
+CONTINUOUS_FR_SHAPING_CANDIDATE_C = "candidate_c"
+CONTINUOUS_FR_SHAPING_LABELS = {
+    CONTINUOUS_FR_SHAPING_OFF,
+    CONTINUOUS_FR_SHAPING_CANDIDATE_A,
+    CONTINUOUS_FR_SHAPING_CANDIDATE_B,
+    CONTINUOUS_FR_SHAPING_CANDIDATE_C,
+}
 _MISSING = object()
 RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
@@ -70,11 +133,21 @@ RUNTIME_SETTING_PATHS = {
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
-    "movement_v3a_experiment": ("movement", "v3a", "experiment"),
-    "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
-    "odw_posture_bias_enabled": ("movement", "v3a", "odw_posture_bias_enabled"),
-    "odw_posture_bias_k": ("movement", "v3a", "odw_posture_bias_k"),
-    "odw_posture_bias_clip_delta": ("movement", "v3a", "odw_posture_bias_clip_delta"),
+    "movement_v3a_experiment": ("movement", "v3a", "test_only", "experiment"),
+    "centroid_probe_scale": ("movement", "v3a", "test_only", "centroid_probe_scale"),
+    "pre_tl_target_substrate": ("movement", "v3a", "test_only", "pre_tl_target_substrate"),
+    "odw_posture_bias_enabled": ("movement", "v3a", "test_only", "odw_posture_bias", "enabled"),
+    "odw_posture_bias_k": ("movement", "v3a", "test_only", "odw_posture_bias", "k"),
+    "odw_posture_bias_clip_delta": ("movement", "v3a", "test_only", "odw_posture_bias", "clip_delta"),
+    "symmetric_movement_sync_enabled": ("movement", "v3a", "test_only", "symmetric_movement_sync_enabled"),
+    "continuous_fr_shaping_enabled": ("movement", "v3a", "test_only", "continuous_fr_shaping", "enabled"),
+    "continuous_fr_shaping_mode": ("movement", "v3a", "test_only", "continuous_fr_shaping", "mode"),
+    "continuous_fr_shaping_a": ("movement", "v3a", "test_only", "continuous_fr_shaping", "a"),
+    "continuous_fr_shaping_sigma": ("movement", "v3a", "test_only", "continuous_fr_shaping", "sigma"),
+    "continuous_fr_shaping_p": ("movement", "v3a", "test_only", "continuous_fr_shaping", "p"),
+    "continuous_fr_shaping_q": ("movement", "v3a", "test_only", "continuous_fr_shaping", "q"),
+    "continuous_fr_shaping_beta": ("movement", "v3a", "test_only", "continuous_fr_shaping", "beta"),
+    "continuous_fr_shaping_gamma": ("movement", "v3a", "test_only", "continuous_fr_shaping", "gamma"),
 }
 OBSERVER_SETTING_PATHS = {
     "event_bridge": {
@@ -146,7 +219,7 @@ def resolve_optional_json_path(base_dir: Path, configured_path: str, default_pat
 
 def load_metatype_settings(base_dir: Path, settings: dict) -> dict:
     configured_path = str(
-        get_run_control_setting(settings, "metatype_settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
+        get_runtime_metatype_setting(settings, "settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
     )
     metatype_path = resolve_optional_json_path(base_dir, configured_path, DEFAULT_METATYPE_SETTINGS_PATH)
     if not metatype_path.exists():
@@ -157,7 +230,1621 @@ def load_metatype_settings(base_dir: Path, settings: dict) -> dict:
     return {}
 
 
+def _clamp01(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value
+
+
+def _sigmoid(value: float) -> float:
+    if value >= 0.0:
+        z = math.exp(-value)
+        return 1.0 / (1.0 + z)
+    z = math.exp(value)
+    return z / (1.0 + z)
+
+
+def _continuous_fr_midband_gate(kappa: float, sigma: float) -> float:
+    sigma_eff = max(1e-6, float(sigma))
+    delta = float(kappa) - 0.5
+    exponent = -((delta * delta) / (2.0 * sigma_eff * sigma_eff))
+    return math.exp(exponent)
+
+
+def _compute_continuous_fr_shaping(
+    *,
+    mode: str,
+    kappa: float,
+    pd_norm: float,
+    engaged_fraction: float,
+    mobility_raw: float,
+    a: float,
+    sigma: float,
+    p: float,
+    q: float,
+    beta: float,
+    gamma: float,
+) -> dict[str, float | bool | str]:
+    mode_effective = str(mode).strip().lower()
+    kappa_base = _clamp01(float(kappa))
+    pd_norm_base = _clamp01(float(pd_norm))
+    engaged_fraction_base = _clamp01(float(engaged_fraction))
+    precontact_gate = _clamp01(1.0 - engaged_fraction_base)
+    influence = 0.0
+    midband_gate = _continuous_fr_midband_gate(kappa_base, sigma)
+    pd_factor = pd_norm_base ** max(0.0, float(p))
+    precontact_factor = precontact_gate ** max(0.0, float(q))
+    mb_taper = 1.0
+    pd_shoulder = pd_factor
+
+    if mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_A:
+        influence = float(a) * midband_gate * pd_factor * precontact_factor
+    elif mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_B:
+        mb_taper = 1.0 / (1.0 + math.exp(max(0.0, float(beta)) * (float(mobility_raw) - 5.0)))
+        influence = float(a) * midband_gate * pd_factor * precontact_factor * mb_taper
+    elif mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_C:
+        mb_taper = 1.0 / (1.0 + math.exp(max(0.0, float(beta)) * (float(mobility_raw) - 5.0)))
+        pd_shoulder = _sigmoid(max(0.0, float(gamma)) * (pd_norm_base - 0.5))
+        influence = float(a) * midband_gate * pd_shoulder * precontact_factor * mb_taper
+
+    influence = _clamp01(influence)
+    attenuation = _clamp01(1.0 - influence)
+    return {
+        "mode": mode_effective,
+        "active": mode_effective in CONTINUOUS_FR_SHAPING_LABELS and mode_effective != CONTINUOUS_FR_SHAPING_OFF,
+        "kappa_base": kappa_base,
+        "kappa_eff": kappa_base * attenuation,
+        "attenuation": attenuation,
+        "influence": influence,
+        "midband_gate": midband_gate,
+        "pd_factor": pd_factor,
+        "pd_shoulder": pd_shoulder,
+        "precontact_factor": precontact_factor,
+        "mb_taper": mb_taper,
+        "engaged_fraction": engaged_fraction_base,
+        "pd_norm": pd_norm_base,
+        "mobility_raw": float(mobility_raw),
+    }
+
+
+def _compute_hostile_intermix_metrics(
+    state: BattleState,
+    separation_radius: float,
+) -> dict[str, float]:
+    alive_units = [
+        unit for unit in state.units.values() if float(unit.hit_points) > 0.0
+    ]
+    if len(alive_units) <= 1 or separation_radius <= 1e-12:
+        return {
+            "hostile_overlap_pairs": 0.0,
+            "hostile_deep_pairs": 0.0,
+            "hostile_deep_intermix_ratio": 0.0,
+            "hostile_intermix_severity": 0.0,
+            "hostile_intermix_coverage": 0.0,
+        }
+
+    alive_counts_by_fleet: dict[str, int] = {}
+    overlapped_units_by_fleet: dict[str, set[str]] = {}
+    for unit in alive_units:
+        fleet_id = str(unit.fleet_id)
+        alive_counts_by_fleet[fleet_id] = alive_counts_by_fleet.get(fleet_id, 0) + 1
+        overlapped_units_by_fleet.setdefault(fleet_id, set())
+    overlap_pairs = 0
+    deep_pairs = 0
+    severity_sum = 0.0
+    deep_threshold = 0.5 * float(separation_radius)
+    radius_sq = float(separation_radius) * float(separation_radius)
+    for i in range(len(alive_units)):
+        unit_i = alive_units[i]
+        for j in range(i + 1, len(alive_units)):
+            unit_j = alive_units[j]
+            if unit_i.fleet_id == unit_j.fleet_id:
+                continue
+            dx = float(unit_i.position.x) - float(unit_j.position.x)
+            dy = float(unit_i.position.y) - float(unit_j.position.y)
+            distance_sq = (dx * dx) + (dy * dy)
+            if distance_sq >= radius_sq:
+                continue
+            distance = math.sqrt(max(0.0, distance_sq))
+            overlap_pairs += 1
+            overlapped_units_by_fleet.setdefault(str(unit_i.fleet_id), set()).add(str(unit_i.unit_id))
+            overlapped_units_by_fleet.setdefault(str(unit_j.fleet_id), set()).add(str(unit_j.unit_id))
+            if distance < deep_threshold:
+                deep_pairs += 1
+            penetration = _clamp01((float(separation_radius) - distance) / float(separation_radius))
+            severity_sum += penetration * penetration
+
+    coverage_components: list[float] = []
+    for fleet_id, alive_count in alive_counts_by_fleet.items():
+        if alive_count <= 0:
+            continue
+        overlapped_count = len(overlapped_units_by_fleet.get(fleet_id, set()))
+        coverage_components.append(float(overlapped_count) / float(alive_count))
+
+    return {
+        "hostile_overlap_pairs": float(overlap_pairs),
+        "hostile_deep_pairs": float(deep_pairs),
+        "hostile_deep_intermix_ratio": float(deep_pairs) / float(max(1, overlap_pairs)),
+        "hostile_intermix_severity": severity_sum / float(max(1, overlap_pairs)),
+        "hostile_intermix_coverage": (
+            sum(coverage_components) / float(len(coverage_components))
+            if coverage_components
+            else 0.0
+        ),
+    }
+
+
+class FormationRigidityFirstReadProxy:
+    def __init__(self, base_parameters: PersonalityParameters, kappa_eff: float) -> None:
+        self._base_parameters = base_parameters
+        self._kappa_eff = _clamp01(float(kappa_eff))
+        self._first_normalized_pending = True
+
+    def normalized(self) -> dict[str, float]:
+        normalized = dict(self._base_parameters.normalized())
+        if self._first_normalized_pending:
+            normalized["formation_rigidity"] = self._kappa_eff
+            self._first_normalized_pending = False
+        return normalized
+
+    def __getattr__(self, name: str):
+        return getattr(self._base_parameters, name)
+
+
 class TestModeEngineTickSkeleton(EngineTickSkeleton):
+    @staticmethod
+    def _compute_position_centroid(units: Sequence[UnitState]) -> tuple[float, float]:
+        if not units:
+            return 0.0, 0.0
+        inv_n = 1.0 / float(len(units))
+        return (
+            sum(unit.position.x for unit in units) * inv_n,
+            sum(unit.position.y for unit in units) * inv_n,
+        )
+
+    @staticmethod
+    def _normalize_direction(dx: float, dy: float) -> tuple[tuple[float, float], float]:
+        norm = math.sqrt((dx * dx) + (dy * dy))
+        if norm > 0.0:
+            return (dx / norm, dy / norm), 1.0
+        return (0.0, 0.0), 0.0
+
+    def _evaluate_target_with_pre_tl_substrate(self, state: BattleState) -> BattleState:
+        substrate = str(
+            getattr(self, "PRE_TL_TARGET_SUBSTRATE", PRE_TL_TARGET_SUBSTRATE_DEFAULT)
+        ).strip().lower()
+        if substrate not in PRE_TL_TARGET_SUBSTRATE_LABELS:
+            substrate = PRE_TL_TARGET_SUBSTRATE_DEFAULT
+
+        last_target_direction = {}
+        last_engagement_intensity = {}
+
+        for fleet_id, fleet in state.fleets.items():
+            own_units = [
+                state.units[uid]
+                for uid in fleet.unit_ids
+                if uid in state.units and float(state.units[uid].hit_points) > 0.0
+            ]
+            enemy_units = [
+                unit
+                for unit in state.units.values()
+                if unit.fleet_id != fleet_id and float(unit.hit_points) > 0.0
+            ]
+
+            if not own_units or not enemy_units:
+                last_target_direction[fleet_id] = (0.0, 0.0)
+                last_engagement_intensity[fleet_id] = 0.0
+                continue
+
+            centroid_x, centroid_y = self._compute_position_centroid(own_units)
+
+            def _distance_sq(unit: UnitState) -> float:
+                dx = unit.position.x - centroid_x
+                dy = unit.position.y - centroid_y
+                return (dx * dx) + (dy * dy)
+
+            sorted_enemy_units = sorted(enemy_units, key=_distance_sq)
+
+            if substrate == PRE_TL_TARGET_SUBSTRATE_NEAREST5:
+                reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
+                ref_x, ref_y = self._compute_position_centroid(reference_units)
+            elif substrate in {
+                PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
+                PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
+            }:
+                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                if not local_units:
+                    local_units = sorted_enemy_units[:1]
+                distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
+                local_scale = max(1.0, sum(distances) / float(len(distances)))
+                boundary_index = min(4, len(distances) - 1)
+                boundary_distance = max(1e-9, distances[boundary_index])
+                envelope_factor = 0.20 if substrate == PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT else 0.35
+                envelope_width = max(0.5, local_scale * envelope_factor)
+                weight_sum = 0.0
+                ref_x = 0.0
+                ref_y = 0.0
+                for unit, distance in zip(local_units, distances, strict=False):
+                    radial_weight = math.exp(-((distance / local_scale) ** 2))
+                    envelope_weight = 1.0 / (
+                        1.0 + math.exp((distance - boundary_distance) / envelope_width)
+                    )
+                    weight = radial_weight * envelope_weight
+                    ref_x += unit.position.x * weight
+                    ref_y += unit.position.y * weight
+                    weight_sum += weight
+                if weight_sum > 0.0:
+                    ref_x /= weight_sum
+                    ref_y /= weight_sum
+                else:
+                    ref_x, ref_y = self._compute_position_centroid(local_units)
+            elif substrate == PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL:
+                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                if not local_units:
+                    local_units = sorted_enemy_units[:1]
+                distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
+                local_scale = max(1.0, sum(distances) / float(len(distances)))
+                weight_sum = 0.0
+                ref_x = 0.0
+                ref_y = 0.0
+                for unit, distance in zip(local_units, distances, strict=False):
+                    weight = math.exp(-((distance / local_scale) ** 2))
+                    ref_x += unit.position.x * weight
+                    ref_y += unit.position.y * weight
+                    weight_sum += weight
+                if weight_sum > 0.0:
+                    ref_x /= weight_sum
+                    ref_y /= weight_sum
+                else:
+                    ref_x, ref_y = self._compute_position_centroid(local_units)
+            else:
+                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                if not local_units:
+                    local_units = sorted_enemy_units[:1]
+                cluster_size = min(3, len(local_units))
+                best_cluster_score = None
+                best_cluster_units = local_units[:cluster_size]
+                for anchor in local_units:
+                    cluster_units = sorted(
+                        local_units,
+                        key=lambda candidate: (
+                            (candidate.position.x - anchor.position.x) ** 2
+                            + (candidate.position.y - anchor.position.y) ** 2
+                        ),
+                    )[:cluster_size]
+                    cluster_centroid_x, cluster_centroid_y = self._compute_position_centroid(cluster_units)
+                    cluster_score = sum(
+                        ((unit.position.x - cluster_centroid_x) ** 2)
+                        + ((unit.position.y - cluster_centroid_y) ** 2)
+                        for unit in cluster_units
+                    ) / float(cluster_size)
+                    if best_cluster_score is None or cluster_score < best_cluster_score:
+                        best_cluster_score = cluster_score
+                        best_cluster_units = cluster_units
+                ref_x, ref_y = self._compute_position_centroid(best_cluster_units)
+
+            direction, intensity = self._normalize_direction(ref_x - centroid_x, ref_y - centroid_y)
+            last_target_direction[fleet_id] = direction
+            last_engagement_intensity[fleet_id] = intensity
+
+        return replace(
+            state,
+            last_target_direction=last_target_direction,
+            last_engagement_intensity=last_engagement_intensity,
+        )
+
+    def evaluate_target(self, state: BattleState) -> BattleState:
+        return self._evaluate_target_with_pre_tl_substrate(state)
+
+    def _integrate_movement_symmetric_merge(self, state: BattleState) -> BattleState:
+        fleet_ids = list(state.fleets.keys())
+        if len(fleet_ids) <= 1:
+            return self.integrate_movement(state)
+
+        base_fleets = state.fleets
+        merged_units = dict(state.units)
+        first_debug_snapshot = None
+        for lead_fleet_id in fleet_ids:
+            ordered_fleets = {lead_fleet_id: base_fleets[lead_fleet_id]}
+            for other_fleet_id in fleet_ids:
+                if other_fleet_id != lead_fleet_id:
+                    ordered_fleets[other_fleet_id] = base_fleets[other_fleet_id]
+            moved_variant = self.integrate_movement(replace(state, fleets=ordered_fleets))
+            if first_debug_snapshot is None:
+                first_debug_snapshot = {
+                    "debug_diag_last_tick": getattr(self, "debug_diag_last_tick", None),
+                    "debug_last_cohesion_v3": getattr(self, "debug_last_cohesion_v3", None),
+                    "debug_last_cohesion_v3_components": getattr(self, "debug_last_cohesion_v3_components", None),
+                }
+            for unit_id in base_fleets[lead_fleet_id].unit_ids:
+                moved_unit = moved_variant.units.get(unit_id)
+                if moved_unit is not None:
+                    merged_units[unit_id] = moved_unit
+        if first_debug_snapshot is not None:
+            self.debug_diag_last_tick = first_debug_snapshot["debug_diag_last_tick"]
+            self.debug_last_cohesion_v3 = first_debug_snapshot["debug_last_cohesion_v3"]
+            self.debug_last_cohesion_v3_components = first_debug_snapshot["debug_last_cohesion_v3_components"]
+        return replace(state, units=merged_units)
+
+    @staticmethod
+    def _stable_pair_direction(unit_i: str, unit_j: str) -> tuple[float, float]:
+        low, high = (unit_i, unit_j) if unit_i < unit_j else (unit_j, unit_i)
+        acc_x = 0
+        acc_y = 0
+        for idx, ch in enumerate(low + "|" + high, start=1):
+            code = ord(ch)
+            acc_x = (acc_x * 131) + (code * idx)
+            acc_y = (acc_y * 137) + (code * (idx + 17))
+        sx = float((acc_x % 1024) - 512)
+        sy = float((acc_y % 1024) - 512)
+        if sx == 0.0 and sy == 0.0:
+            sy = 1.0
+        norm = math.sqrt((sx * sx) + (sy * sy))
+        return (sx / norm, sy / norm)
+
+    def _resolve_hostile_contact_impedance_mode(self) -> str:
+        raw_mode = str(
+            getattr(
+                self,
+                "HOSTILE_CONTACT_IMPEDANCE_MODE",
+                HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
+            )
+        ).strip().lower()
+        if raw_mode not in HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS:
+            raw_mode = HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT
+        return raw_mode
+
+    def _compute_fleet_enemy_axes(self, state: BattleState) -> dict[str, tuple[float, float]]:
+        axes: dict[str, tuple[float, float]] = {}
+        fleet_centroids: dict[str, tuple[float, float]] = {}
+        for fleet_id, fleet in state.fleets.items():
+            alive_units = [
+                state.units[uid]
+                for uid in fleet.unit_ids
+                if uid in state.units and float(state.units[uid].hit_points) > 0.0
+            ]
+            fleet_centroids[fleet_id] = self._compute_position_centroid(alive_units)
+        for fleet_id, (cx, cy) in fleet_centroids.items():
+            enemy_centroids = [
+                pos for other_fleet_id, pos in fleet_centroids.items() if other_fleet_id != fleet_id
+            ]
+            if not enemy_centroids:
+                axes[fleet_id] = (0.0, 0.0)
+                continue
+            enemy_cx = sum(pos[0] for pos in enemy_centroids) / float(len(enemy_centroids))
+            enemy_cy = sum(pos[1] for pos in enemy_centroids) / float(len(enemy_centroids))
+            axis, _ = self._normalize_direction(enemy_cx - cx, enemy_cy - cy)
+            axes[fleet_id] = axis
+        return axes
+
+    def _compute_unit_hostile_proximity(
+        self,
+        state: BattleState,
+        impedance_radius: float,
+    ) -> tuple[dict[str, float], dict[str, list[tuple[str, float, float, float, float]]]]:
+        alive_units = [
+            unit for unit in state.units.values() if float(unit.hit_points) > 0.0
+        ]
+        proximity_by_unit = {unit.unit_id: 0.0 for unit in alive_units}
+        pair_terms_by_unit = {unit.unit_id: [] for unit in alive_units}
+        radius_sq = impedance_radius * impedance_radius
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id == unit_j.fleet_id:
+                    continue
+                dx = float(unit_i.position.x) - float(unit_j.position.x)
+                dy = float(unit_i.position.y) - float(unit_j.position.y)
+                distance_sq = (dx * dx) + (dy * dy)
+                if distance_sq > radius_sq:
+                    continue
+                if distance_sq > 1e-12:
+                    distance = math.sqrt(distance_sq)
+                    nx = dx / distance
+                    ny = dy / distance
+                else:
+                    nx, ny = self._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+                    distance = 0.0
+                proximity = _clamp01(1.0 - (distance / impedance_radius))
+                weight = proximity * proximity
+                proximity_by_unit[unit_i.unit_id] = _clamp01(proximity_by_unit[unit_i.unit_id] + weight)
+                proximity_by_unit[unit_j.unit_id] = _clamp01(proximity_by_unit[unit_j.unit_id] + weight)
+                pair_terms_by_unit[unit_i.unit_id].append((unit_j.unit_id, nx, ny, proximity, weight))
+                pair_terms_by_unit[unit_j.unit_id].append((unit_i.unit_id, -nx, -ny, proximity, weight))
+        return proximity_by_unit, pair_terms_by_unit
+
+    @staticmethod
+    def _hostile_spacing_depth(distance: float, envelope_radius: float) -> float:
+        if envelope_radius <= 1e-12:
+            return 0.0
+        return _clamp01((envelope_radius - distance) / envelope_radius)
+
+    def _compute_hostile_spacing_value(
+        self,
+        state: BattleState,
+        *,
+        own_fleet_id: str,
+        x: float,
+        y: float,
+        envelope_radius: float,
+    ) -> float:
+        if envelope_radius <= 1e-12:
+            return 0.0
+        remaining_clearance = 1.0
+        radius_sq = envelope_radius * envelope_radius
+        for unit in state.units.values():
+            if unit.fleet_id == own_fleet_id or float(unit.hit_points) <= 0.0:
+                continue
+            dx = x - float(unit.position.x)
+            dy = y - float(unit.position.y)
+            distance_sq = (dx * dx) + (dy * dy)
+            if distance_sq >= radius_sq:
+                continue
+            distance = math.sqrt(max(0.0, distance_sq))
+            depth = self._hostile_spacing_depth(distance, envelope_radius)
+            if depth <= 0.0:
+                continue
+            remaining_clearance *= (1.0 - (depth * depth))
+            if remaining_clearance <= 1e-9:
+                return 1.0
+        return _clamp01(1.0 - remaining_clearance)
+
+    def _apply_hostile_intent_penetration_bias(self, state: BattleState) -> BattleState:
+        mode = self._resolve_hostile_contact_impedance_mode()
+        if mode not in {
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1,
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1,
+        }:
+            return state
+
+        if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1:
+            scale = max(
+                1e-6,
+                float(
+                    getattr(
+                        self,
+                        "HOSTILE_INTENT_UNIFIED_SPACING_SCALE",
+                        HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
+                    )
+                ),
+            )
+            strength = _clamp01(
+                float(
+                    getattr(
+                        self,
+                        "HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH",
+                        HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
+                    )
+                )
+            )
+        else:
+            scale = max(
+                1e-6,
+                float(
+                    getattr(
+                        self,
+                        "HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE",
+                        HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE_DEFAULT,
+                    )
+                ),
+            )
+            strength = _clamp01(
+                float(
+                    getattr(
+                        self,
+                        "HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH",
+                        HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH_DEFAULT,
+                    )
+                )
+            )
+
+        envelope_radius = scale * float(self.separation_radius)
+        alive_units = [unit for unit in state.units.values() if float(unit.hit_points) > 0.0]
+        if len(alive_units) <= 1 or envelope_radius <= 1e-12 or strength <= 0.0:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": True,
+                "active": False,
+                "layer": "intent",
+                "radius": envelope_radius,
+                "mean_signal": 0.0,
+                "mean_speed_scale": 1.0,
+                "strength": strength,
+            }
+            return state
+
+        fallback_axes = self._compute_fleet_enemy_axes(state)
+        updated_units = dict(state.units)
+        signal_sum = 0.0
+        speed_scale_sum = 0.0
+        active_count = 0
+        for unit in alive_units:
+            pre_x = float(unit.position.x)
+            pre_y = float(unit.position.y)
+            pre_occ = self._compute_hostile_spacing_value(
+                state,
+                own_fleet_id=unit.fleet_id,
+                x=pre_x,
+                y=pre_y,
+                envelope_radius=envelope_radius,
+            )
+            if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1:
+                signal = pre_occ
+            else:
+                dir_x, dir_y = state.last_target_direction.get(unit.fleet_id, (0.0, 0.0))
+                dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
+                if dir_norm <= 1e-12:
+                    dir_x, dir_y = fallback_axes.get(unit.fleet_id, (0.0, 0.0))
+                    dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
+                if dir_norm > 1e-12:
+                    dir_x /= dir_norm
+                    dir_y /= dir_norm
+                projected_x = pre_x + (dir_x * float(unit.max_speed) * float(state.dt))
+                projected_y = pre_y + (dir_y * float(unit.max_speed) * float(state.dt))
+                post_occ = self._compute_hostile_spacing_value(
+                    state,
+                    own_fleet_id=unit.fleet_id,
+                    x=projected_x,
+                    y=projected_y,
+                    envelope_radius=envelope_radius,
+                )
+                signal = max(0.0, post_occ - pre_occ)
+            speed_scale = 1.0 - (strength * signal)
+            if speed_scale < 0.0:
+                speed_scale = 0.0
+            if speed_scale >= 0.999999:
+                continue
+            updated_units[unit.unit_id] = replace(unit, max_speed=float(unit.max_speed) * speed_scale)
+            signal_sum += signal
+            speed_scale_sum += speed_scale
+            active_count += 1
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": mode,
+            "enabled": True,
+            "active": active_count > 0,
+            "layer": "intent",
+            "radius": envelope_radius,
+            "mean_signal": (signal_sum / float(active_count)) if active_count > 0 else 0.0,
+            "mean_speed_scale": (speed_scale_sum / float(active_count)) if active_count > 0 else 1.0,
+            "strength": strength,
+        }
+        return replace(state, units=updated_units)
+
+    def _restore_intent_penetration_bias_units(
+        self,
+        reference_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        mode = self._resolve_hostile_contact_impedance_mode()
+        if mode not in {
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1,
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1,
+        }:
+            return moved_state
+
+        updated_units = dict(moved_state.units)
+        changed = False
+        for unit_id, unit in moved_state.units.items():
+            reference_unit = reference_state.units.get(unit_id)
+            if reference_unit is None:
+                continue
+            if float(unit.max_speed) == float(reference_unit.max_speed):
+                continue
+            updated_units[unit_id] = replace(unit, max_speed=float(reference_unit.max_speed))
+            changed = True
+        if not changed:
+            return moved_state
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_contact_impedance_v1(self, state: BattleState) -> BattleState:
+        strength = max(
+            0.0,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_CONTACT_IMPEDANCE_STRENGTH",
+                    HOSTILE_CONTACT_IMPEDANCE_STRENGTH_DEFAULT,
+                )
+            ),
+        )
+        radius_multiplier = max(
+            1e-6,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER",
+                    HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER_DEFAULT,
+                )
+            ),
+        )
+        impedance_radius = float(self.separation_radius) * radius_multiplier
+        if strength <= 0.0 or impedance_radius <= 1e-12:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "strength": strength,
+                "mean_displacement": 0.0,
+                "max_displacement": 0.0,
+            }
+            return state
+
+        alive_units = [
+            unit for unit in state.units.values() if float(unit.hit_points) > 0.0
+        ]
+        if len(alive_units) <= 1:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "strength": strength,
+                "mean_displacement": 0.0,
+                "max_displacement": 0.0,
+            }
+            return state
+
+        radius_sq = impedance_radius * impedance_radius
+        delta = {unit.unit_id: [0.0, 0.0] for unit in alive_units}
+        pair_count = 0
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id == unit_j.fleet_id:
+                    continue
+                dx = float(unit_i.position.x) - float(unit_j.position.x)
+                dy = float(unit_i.position.y) - float(unit_j.position.y)
+                distance_sq = (dx * dx) + (dy * dy)
+                if distance_sq > radius_sq:
+                    continue
+                pair_count += 1
+                if distance_sq > 1e-12:
+                    distance = math.sqrt(distance_sq)
+                    nx = dx / distance
+                    ny = dy / distance
+                else:
+                    nx, ny = self._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+                    distance = 0.0
+                proximity = 1.0 - (distance / impedance_radius)
+                if proximity <= 0.0:
+                    continue
+                correction_mag = 0.25 * float(self.separation_radius) * strength * (proximity * proximity)
+                correction_x = nx * correction_mag
+                correction_y = ny * correction_mag
+                delta[unit_i.unit_id][0] += 0.5 * correction_x
+                delta[unit_i.unit_id][1] += 0.5 * correction_y
+                delta[unit_j.unit_id][0] -= 0.5 * correction_x
+                delta[unit_j.unit_id][1] -= 0.5 * correction_y
+
+        updated_units = dict(state.units)
+        displacement_sum = 0.0
+        displacement_max = 0.0
+        displacement_count = 0
+        max_unit_displacement = 0.35 * float(self.separation_radius) * strength
+        for unit in alive_units:
+            dx, dy = delta[unit.unit_id]
+            disp = math.sqrt((dx * dx) + (dy * dy))
+            if disp > max_unit_displacement > 0.0:
+                scale = max_unit_displacement / disp
+                dx *= scale
+                dy *= scale
+                disp = max_unit_displacement
+            if disp <= 0.0:
+                continue
+            displacement_sum += disp
+            displacement_count += 1
+            if disp > displacement_max:
+                displacement_max = disp
+            new_position = Vec2(x=float(unit.position.x) + dx, y=float(unit.position.y) + dy)
+            updated_units[unit.unit_id] = replace(unit, position=new_position)
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1,
+            "active": pair_count > 0,
+            "pair_count": pair_count,
+            "radius": impedance_radius,
+            "strength": strength,
+            "mean_displacement": (displacement_sum / displacement_count) if displacement_count > 0 else 0.0,
+            "max_displacement": displacement_max,
+        }
+        return replace(state, units=updated_units)
+
+    def _apply_hostile_contact_impedance_v2(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+        *,
+        mode: str,
+    ) -> BattleState:
+        radius_multiplier = max(
+            1e-6,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+                )
+            ),
+        )
+        repulsion_max_disp_ratio = max(
+            0.0,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+                )
+            ),
+        )
+        forward_damping_strength = _clamp01(
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+                )
+            )
+        )
+        impedance_radius = float(self.separation_radius) * radius_multiplier
+        if impedance_radius <= 1e-12:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": False,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "mean_proximity": 0.0,
+                "mean_forward_damping": 0.0,
+                "mean_repulsion_displacement": 0.0,
+                "max_repulsion_displacement": 0.0,
+            }
+            return moved_state
+
+        alive_units = [
+            unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0
+        ]
+        if len(alive_units) <= 1:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": True,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "mean_proximity": 0.0,
+                "mean_forward_damping": 0.0,
+                "mean_repulsion_displacement": 0.0,
+                "max_repulsion_displacement": 0.0,
+            }
+            return moved_state
+
+        fleet_axes = self._compute_fleet_enemy_axes(moved_state)
+        proximity_by_unit, pair_terms_by_unit = self._compute_unit_hostile_proximity(moved_state, impedance_radius)
+        updated_units = dict(moved_state.units)
+        repulsion_sum = 0.0
+        repulsion_max = 0.0
+        repulsion_count = 0
+        damping_sum = 0.0
+        damping_count = 0
+        max_repulsion_disp = float(self.separation_radius) * repulsion_max_disp_ratio
+        pair_count = sum(len(terms) for terms in pair_terms_by_unit.values()) // 2
+
+        for unit in alive_units:
+            pre_unit = pre_state.units.get(unit.unit_id)
+            if pre_unit is None:
+                continue
+            axis_x, axis_y = fleet_axes.get(unit.fleet_id, (0.0, 0.0))
+            dx_move = float(unit.position.x) - float(pre_unit.position.x)
+            dy_move = float(unit.position.y) - float(pre_unit.position.y)
+            forward_disp = (dx_move * axis_x) + (dy_move * axis_y)
+            residual_x = dx_move
+            residual_y = dy_move
+            if abs(forward_disp) > 1e-12:
+                residual_x -= forward_disp * axis_x
+                residual_y -= forward_disp * axis_y
+
+            local_proximity = _clamp01(proximity_by_unit.get(unit.unit_id, 0.0))
+            damping_factor = 1.0
+            if mode in {
+                HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2,
+                HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2,
+            } and forward_disp > 0.0:
+                damping_factor = 1.0 - (_clamp01(forward_damping_strength * local_proximity))
+                forward_disp *= damping_factor
+                damping_sum += (1.0 - damping_factor)
+                damping_count += 1
+
+            repulsion_x = 0.0
+            repulsion_y = 0.0
+            if (
+                mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2
+                and max_repulsion_disp > 0.0
+                and local_proximity > 0.0
+            ):
+                for _, nx, ny, _, weight in pair_terms_by_unit.get(unit.unit_id, []):
+                    repulsion_x += nx * weight
+                    repulsion_y += ny * weight
+                repulsion_norm = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
+                if repulsion_norm > 1e-12:
+                    scale = max_repulsion_disp * local_proximity / repulsion_norm
+                    repulsion_x *= scale
+                    repulsion_y *= scale
+                    repulsion_disp = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
+                    repulsion_sum += repulsion_disp
+                    repulsion_count += 1
+                    if repulsion_disp > repulsion_max:
+                        repulsion_max = repulsion_disp
+
+            new_dx = (forward_disp * axis_x) + residual_x + repulsion_x
+            new_dy = (forward_disp * axis_y) + residual_y + repulsion_y
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(
+                    x=float(pre_unit.position.x) + new_dx,
+                    y=float(pre_unit.position.y) + new_dy,
+                ),
+            )
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": mode,
+            "enabled": True,
+            "active": pair_count > 0,
+            "pair_count": pair_count,
+            "radius": impedance_radius,
+            "mean_proximity": (
+                sum(proximity_by_unit.values()) / float(max(1, len(proximity_by_unit)))
+            ),
+            "mean_forward_damping": (damping_sum / damping_count) if damping_count > 0 else 0.0,
+            "mean_repulsion_displacement": (repulsion_sum / repulsion_count) if repulsion_count > 0 else 0.0,
+            "max_repulsion_displacement": repulsion_max,
+            "repulsion_max_disp_ratio": repulsion_max_disp_ratio,
+            "forward_damping_strength": forward_damping_strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_spacing_floor_v1(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        scale = max(
+            1e-6,
+            float(getattr(self, "HOSTILE_SPACING_FLOOR_SCALE", HOSTILE_SPACING_FLOOR_SCALE_DEFAULT)),
+        )
+        strength = _clamp01(
+            float(getattr(self, "HOSTILE_SPACING_FLOOR_STRENGTH", HOSTILE_SPACING_FLOOR_STRENGTH_DEFAULT))
+        )
+        envelope_radius = scale * float(self.separation_radius)
+        alive_units = [unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0]
+        if len(alive_units) <= 1 or envelope_radius <= 1e-12 or strength <= 0.0:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_FLOOR_V1,
+                "enabled": True,
+                "active": False,
+                "pair_count": 0,
+                "radius": envelope_radius,
+                "mean_penetration_delta": 0.0,
+                "mean_clip_fraction": 0.0,
+                "max_clip_fraction": 0.0,
+                "strength": strength,
+            }
+            return moved_state
+
+        _, pair_terms_by_unit = self._compute_unit_hostile_proximity(moved_state, envelope_radius)
+        updated_units = dict(moved_state.units)
+        penetration_delta_sum = 0.0
+        clip_fraction_sum = 0.0
+        clip_fraction_max = 0.0
+        active_count = 0
+        pair_count = sum(len(terms) for terms in pair_terms_by_unit.values()) // 2
+        for unit in alive_units:
+            pre_unit = pre_state.units.get(unit.unit_id)
+            if pre_unit is None:
+                continue
+            pre_x = float(pre_unit.position.x)
+            pre_y = float(pre_unit.position.y)
+            post_x = float(unit.position.x)
+            post_y = float(unit.position.y)
+            dx_move = post_x - pre_x
+            dy_move = post_y - pre_y
+            pair_terms = pair_terms_by_unit.get(unit.unit_id, [])
+            inward_x = 0.0
+            inward_y = 0.0
+            total_weight = 0.0
+            for _, nx, ny, _, weight in pair_terms:
+                inward_x += -nx * weight
+                inward_y += -ny * weight
+                total_weight += weight
+            inward_norm = math.sqrt((inward_x * inward_x) + (inward_y * inward_y))
+            if total_weight <= 1e-12 or inward_norm <= 1e-12:
+                continue
+            inward_x /= inward_norm
+            inward_y /= inward_norm
+            inward_disp = (dx_move * inward_x) + (dy_move * inward_y)
+            if inward_disp <= 1e-12:
+                continue
+            residual_x = dx_move - (inward_disp * inward_x)
+            residual_y = dy_move - (inward_disp * inward_y)
+
+            pre_value = self._compute_hostile_spacing_value(
+                moved_state,
+                own_fleet_id=unit.fleet_id,
+                x=pre_x,
+                y=pre_y,
+                envelope_radius=envelope_radius,
+            )
+            post_value = self._compute_hostile_spacing_value(
+                moved_state,
+                own_fleet_id=unit.fleet_id,
+                x=post_x,
+                y=post_y,
+                envelope_radius=envelope_radius,
+            )
+            penetration_delta = max(0.0, post_value - pre_value)
+            if penetration_delta <= 0.0:
+                continue
+            target_value = pre_value + ((1.0 - strength) * penetration_delta)
+            low = 0.0
+            high = 1.0
+            for _ in range(12):
+                mid = 0.5 * (low + high)
+                cand_x = pre_x + residual_x + (inward_x * inward_disp * mid)
+                cand_y = pre_y + residual_y + (inward_y * inward_disp * mid)
+                cand_value = self._compute_hostile_spacing_value(
+                    moved_state,
+                    own_fleet_id=unit.fleet_id,
+                    x=cand_x,
+                    y=cand_y,
+                    envelope_radius=envelope_radius,
+                )
+                if cand_value <= target_value:
+                    low = mid
+                else:
+                    high = mid
+            inward_progress = low
+            clip_fraction = _clamp01(1.0 - inward_progress)
+            new_x = pre_x + residual_x + (inward_x * inward_disp * inward_progress)
+            new_y = pre_y + residual_y + (inward_y * inward_disp * inward_progress)
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(x=new_x, y=new_y),
+            )
+            penetration_delta_sum += penetration_delta
+            clip_fraction_sum += clip_fraction
+            active_count += 1
+            if clip_fraction > clip_fraction_max:
+                clip_fraction_max = clip_fraction
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_FLOOR_V1,
+            "enabled": True,
+            "active": active_count > 0,
+            "pair_count": pair_count,
+            "radius": envelope_radius,
+            "mean_penetration_delta": (
+                penetration_delta_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "mean_clip_fraction": (
+                clip_fraction_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "max_clip_fraction": clip_fraction_max,
+            "strength": strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_spacing_floor_v2(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        scale = max(
+            1e-6,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_SPACING_FLOOR_V2_SCALE",
+                    HOSTILE_SPACING_FLOOR_V2_SCALE_DEFAULT,
+                )
+            ),
+        )
+        strength = _clamp01(
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_SPACING_FLOOR_V2_STRENGTH",
+                    HOSTILE_SPACING_FLOOR_V2_STRENGTH_DEFAULT,
+                )
+            )
+        )
+        envelope_radius = scale * float(self.separation_radius)
+        alive_units = [unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0]
+        if len(alive_units) <= 1 or envelope_radius <= 1e-12 or strength <= 0.0:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_FLOOR_V2,
+                "enabled": True,
+                "active": False,
+                "pair_count": 0,
+                "radius": envelope_radius,
+                "mean_penetration_delta": 0.0,
+                "mean_resolution_displacement": 0.0,
+                "max_resolution_displacement": 0.0,
+                "mean_source_count": 0.0,
+                "strength": strength,
+            }
+            return moved_state
+
+        pair_terms_by_unit: dict[str, list[tuple[str, float, float]]] = {}
+        pair_count = 0
+        radius_sq = envelope_radius * envelope_radius
+        for unit in alive_units:
+            pair_terms_by_unit[unit.unit_id] = []
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id == unit_j.fleet_id:
+                    continue
+                dx = float(unit_i.position.x) - float(unit_j.position.x)
+                dy = float(unit_i.position.y) - float(unit_j.position.y)
+                distance_sq = (dx * dx) + (dy * dy)
+                if distance_sq > radius_sq:
+                    continue
+                pair_count += 1
+                pair_terms_by_unit[unit_i.unit_id].append(
+                    (unit_j.unit_id, float(unit_j.position.x), float(unit_j.position.y))
+                )
+                pair_terms_by_unit[unit_j.unit_id].append(
+                    (unit_i.unit_id, float(unit_i.position.x), float(unit_i.position.y))
+                )
+
+        updated_units = dict(moved_state.units)
+        penetration_delta_sum = 0.0
+        resolution_disp_sum = 0.0
+        resolution_disp_max = 0.0
+        source_count_sum = 0.0
+        active_count = 0
+        for unit in alive_units:
+            pre_unit = pre_state.units.get(unit.unit_id)
+            if pre_unit is None:
+                continue
+            pair_terms = pair_terms_by_unit.get(unit.unit_id, [])
+            if not pair_terms:
+                continue
+            pre_x = float(pre_unit.position.x)
+            pre_y = float(pre_unit.position.y)
+            cand_x = float(unit.position.x)
+            cand_y = float(unit.position.y)
+            resolution_x = 0.0
+            resolution_y = 0.0
+            penetration_delta_total = 0.0
+            source_count = 0
+            for _ in range(3):
+                iter_dx = 0.0
+                iter_dy = 0.0
+                iter_sources = 0
+                for hostile_id, hostile_x, hostile_y in pair_terms:
+                    del hostile_id
+                    pre_dx = pre_x - hostile_x
+                    pre_dy = pre_y - hostile_y
+                    pre_dist = math.sqrt((pre_dx * pre_dx) + (pre_dy * pre_dy))
+                    pre_depth = self._hostile_spacing_depth(pre_dist, envelope_radius)
+
+                    cand_dx = cand_x - hostile_x
+                    cand_dy = cand_y - hostile_y
+                    cand_dist = math.sqrt((cand_dx * cand_dx) + (cand_dy * cand_dy))
+                    cand_depth = self._hostile_spacing_depth(cand_dist, envelope_radius)
+                    penetration_delta = max(0.0, cand_depth - pre_depth)
+                    if penetration_delta <= 1e-12:
+                        continue
+                    if cand_dist > 1e-12:
+                        nx = cand_dx / cand_dist
+                        ny = cand_dy / cand_dist
+                    else:
+                        nx, ny = self._stable_pair_direction(unit.unit_id, "hostile")
+                    correction_mag = strength * penetration_delta * envelope_radius
+                    iter_dx += nx * correction_mag
+                    iter_dy += ny * correction_mag
+                    penetration_delta_total += penetration_delta
+                    iter_sources += 1
+                if iter_sources <= 0:
+                    break
+                cand_x += iter_dx
+                cand_y += iter_dy
+                resolution_x += iter_dx
+                resolution_y += iter_dy
+                source_count += iter_sources
+
+            resolution_disp = math.sqrt((resolution_x * resolution_x) + (resolution_y * resolution_y))
+            if resolution_disp <= 1e-12 or source_count <= 0:
+                continue
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(x=cand_x, y=cand_y),
+            )
+            penetration_delta_sum += penetration_delta_total / float(max(1, source_count))
+            resolution_disp_sum += resolution_disp
+            source_count_sum += float(source_count)
+            active_count += 1
+            if resolution_disp > resolution_disp_max:
+                resolution_disp_max = resolution_disp
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_FLOOR_V2,
+            "enabled": True,
+            "active": active_count > 0,
+            "pair_count": pair_count,
+            "radius": envelope_radius,
+            "mean_penetration_delta": (
+                penetration_delta_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "mean_resolution_displacement": (
+                resolution_disp_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "max_resolution_displacement": resolution_disp_max,
+            "mean_source_count": (
+                source_count_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "strength": strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_spacing_co_resolution_v1(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        scale = max(
+            1e-6,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_SPACING_CO_RESOLUTION_SCALE",
+                    HOSTILE_SPACING_CO_RESOLUTION_SCALE_DEFAULT,
+                )
+            ),
+        )
+        strength = _clamp01(
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_SPACING_CO_RESOLUTION_STRENGTH",
+                    HOSTILE_SPACING_CO_RESOLUTION_STRENGTH_DEFAULT,
+                )
+            )
+        )
+        envelope_radius = scale * float(self.separation_radius)
+        alive_units = [unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0]
+        if len(alive_units) <= 1 or envelope_radius <= 1e-12 or strength <= 0.0:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_CO_RESOLUTION_V1,
+                "enabled": True,
+                "active": False,
+                "hostile_pair_count": 0,
+                "friendly_pair_count": 0,
+                "radius": envelope_radius,
+                "mean_displacement": 0.0,
+                "max_displacement": 0.0,
+                "strength": strength,
+            }
+            return moved_state
+
+        delta = {unit.unit_id: [0.0, 0.0] for unit in alive_units}
+        hostile_pair_count = 0
+        friendly_pair_count = 0
+        envelope_radius_sq = envelope_radius * envelope_radius
+        local_pair_radius = max(float(self.separation_radius), envelope_radius)
+        local_pair_radius_sq = local_pair_radius * local_pair_radius
+
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            pre_i = pre_state.units.get(unit_i.unit_id)
+            if pre_i is None:
+                continue
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                pre_j = pre_state.units.get(unit_j.unit_id)
+                if pre_j is None:
+                    continue
+
+                post_dx = float(unit_i.position.x) - float(unit_j.position.x)
+                post_dy = float(unit_i.position.y) - float(unit_j.position.y)
+                post_dist_sq = (post_dx * post_dx) + (post_dy * post_dy)
+                pre_dx = float(pre_i.position.x) - float(pre_j.position.x)
+                pre_dy = float(pre_i.position.y) - float(pre_j.position.y)
+                pre_dist_sq = (pre_dx * pre_dx) + (pre_dy * pre_dy)
+
+                if unit_i.fleet_id != unit_j.fleet_id:
+                    if post_dist_sq > envelope_radius_sq and pre_dist_sq > envelope_radius_sq:
+                        continue
+                    hostile_pair_count += 1
+                    post_dist = math.sqrt(max(0.0, post_dist_sq))
+                    pre_dist = math.sqrt(max(0.0, pre_dist_sq))
+                    pre_depth = self._hostile_spacing_depth(pre_dist, envelope_radius)
+                    post_depth = self._hostile_spacing_depth(post_dist, envelope_radius)
+                    penetration_delta = max(0.0, post_depth - pre_depth)
+                    if penetration_delta <= 1e-12:
+                        continue
+                    if post_dist > 1e-12:
+                        nx = post_dx / post_dist
+                        ny = post_dy / post_dist
+                    else:
+                        nx, ny = self._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+                    correction_mag = 0.5 * strength * penetration_delta * envelope_radius
+                    delta[unit_i.unit_id][0] += nx * correction_mag
+                    delta[unit_i.unit_id][1] += ny * correction_mag
+                    delta[unit_j.unit_id][0] -= nx * correction_mag
+                    delta[unit_j.unit_id][1] -= ny * correction_mag
+                    continue
+
+                if post_dist_sq > local_pair_radius_sq and pre_dist_sq > local_pair_radius_sq:
+                    continue
+                friendly_pair_count += 1
+                post_dist = math.sqrt(max(0.0, post_dist_sq))
+                pre_dist = math.sqrt(max(0.0, pre_dist_sq))
+                if post_dist > 1e-12:
+                    nx = post_dx / post_dist
+                    ny = post_dy / post_dist
+                else:
+                    nx, ny = self._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+
+                # Friendly crowding: keep same-fleet spacing from collapsing below the base floor.
+                crowd_depth = self._hostile_spacing_depth(post_dist, float(self.separation_radius))
+                if crowd_depth > 1e-12:
+                    crowd_mag = 0.5 * strength * crowd_depth * float(self.separation_radius)
+                    delta[unit_i.unit_id][0] += nx * crowd_mag
+                    delta[unit_i.unit_id][1] += ny * crowd_mag
+                    delta[unit_j.unit_id][0] -= nx * crowd_mag
+                    delta[unit_j.unit_id][1] -= ny * crowd_mag
+
+                # Friendly tearing: preserve local neighborhood integrity relative to the pre-state.
+                if pre_dist < envelope_radius and post_dist > pre_dist:
+                    stretch_delta = _clamp01((post_dist - pre_dist) / envelope_radius)
+                    if stretch_delta > 1e-12:
+                        stretch_mag = 0.5 * strength * stretch_delta * envelope_radius
+                        delta[unit_i.unit_id][0] -= nx * stretch_mag
+                        delta[unit_i.unit_id][1] -= ny * stretch_mag
+                        delta[unit_j.unit_id][0] += nx * stretch_mag
+                        delta[unit_j.unit_id][1] += ny * stretch_mag
+
+        updated_units = dict(moved_state.units)
+        displacement_sum = 0.0
+        displacement_max = 0.0
+        displacement_count = 0
+        max_unit_displacement = 0.5 * float(self.separation_radius) * strength
+        for unit in alive_units:
+            dx, dy = delta[unit.unit_id]
+            disp = math.sqrt((dx * dx) + (dy * dy))
+            if disp > max_unit_displacement > 0.0:
+                scale_factor = max_unit_displacement / disp
+                dx *= scale_factor
+                dy *= scale_factor
+                disp = max_unit_displacement
+            if disp <= 1e-12:
+                continue
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(
+                    x=float(unit.position.x) + dx,
+                    y=float(unit.position.y) + dy,
+                ),
+            )
+            displacement_sum += disp
+            displacement_count += 1
+            if disp > displacement_max:
+                displacement_max = disp
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_SPACING_CO_RESOLUTION_V1,
+            "enabled": True,
+            "active": displacement_count > 0,
+            "hostile_pair_count": hostile_pair_count,
+            "friendly_pair_count": friendly_pair_count,
+            "radius": envelope_radius,
+            "mean_displacement": (
+                displacement_sum / float(displacement_count)
+                if displacement_count > 0
+                else 0.0
+            ),
+            "max_displacement": displacement_max,
+            "strength": strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_gated_coherence_regularization_v1(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        scale = max(
+            1e-6,
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_GATED_COHERENCE_REGULARIZATION_SCALE",
+                    HOSTILE_GATED_COHERENCE_REGULARIZATION_SCALE_DEFAULT,
+                )
+            ),
+        )
+        strength = _clamp01(
+            float(
+                getattr(
+                    self,
+                    "HOSTILE_GATED_COHERENCE_REGULARIZATION_STRENGTH",
+                    HOSTILE_GATED_COHERENCE_REGULARIZATION_STRENGTH_DEFAULT,
+                )
+            )
+        )
+        envelope_radius = scale * float(self.separation_radius)
+        alive_units = [unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0]
+        if len(alive_units) <= 1 or envelope_radius <= 1e-12 or strength <= 0.0:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_GATED_COHERENCE_REGULARIZATION_V1,
+                "enabled": True,
+                "active": False,
+                "hostile_pair_count": 0,
+                "friendly_link_count": 0,
+                "radius": envelope_radius,
+                "mean_hostile_displacement": 0.0,
+                "mean_regularized_displacement": 0.0,
+                "strength": strength,
+            }
+            return moved_state
+
+        hostile_delta = {unit.unit_id: [0.0, 0.0] for unit in alive_units}
+        hostile_pair_count = 0
+        envelope_radius_sq = envelope_radius * envelope_radius
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            pre_i = pre_state.units.get(unit_i.unit_id)
+            if pre_i is None:
+                continue
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id == unit_j.fleet_id:
+                    continue
+                pre_j = pre_state.units.get(unit_j.unit_id)
+                if pre_j is None:
+                    continue
+                post_dx = float(unit_i.position.x) - float(unit_j.position.x)
+                post_dy = float(unit_i.position.y) - float(unit_j.position.y)
+                post_dist_sq = (post_dx * post_dx) + (post_dy * post_dy)
+                pre_dx = float(pre_i.position.x) - float(pre_j.position.x)
+                pre_dy = float(pre_i.position.y) - float(pre_j.position.y)
+                pre_dist_sq = (pre_dx * pre_dx) + (pre_dy * pre_dy)
+                if post_dist_sq > envelope_radius_sq and pre_dist_sq > envelope_radius_sq:
+                    continue
+                hostile_pair_count += 1
+                post_dist = math.sqrt(max(0.0, post_dist_sq))
+                pre_dist = math.sqrt(max(0.0, pre_dist_sq))
+                pre_depth = self._hostile_spacing_depth(pre_dist, envelope_radius)
+                post_depth = self._hostile_spacing_depth(post_dist, envelope_radius)
+                penetration_delta = max(0.0, post_depth - pre_depth)
+                if penetration_delta <= 1e-12:
+                    continue
+                if post_dist > 1e-12:
+                    nx = post_dx / post_dist
+                    ny = post_dy / post_dist
+                else:
+                    nx, ny = self._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+                correction_mag = 0.5 * strength * penetration_delta * envelope_radius
+                hostile_delta[unit_i.unit_id][0] += nx * correction_mag
+                hostile_delta[unit_i.unit_id][1] += ny * correction_mag
+                hostile_delta[unit_j.unit_id][0] -= nx * correction_mag
+                hostile_delta[unit_j.unit_id][1] -= ny * correction_mag
+
+        friendly_links_by_unit: dict[str, list[str]] = {unit.unit_id: [] for unit in alive_units}
+        local_radius_sq = envelope_radius_sq
+        friendly_link_count = 0
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            pre_i = pre_state.units.get(unit_i.unit_id)
+            if pre_i is None:
+                continue
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id != unit_j.fleet_id:
+                    continue
+                pre_j = pre_state.units.get(unit_j.unit_id)
+                if pre_j is None:
+                    continue
+                pre_dx = float(pre_i.position.x) - float(pre_j.position.x)
+                pre_dy = float(pre_i.position.y) - float(pre_j.position.y)
+                pre_dist_sq = (pre_dx * pre_dx) + (pre_dy * pre_dy)
+                if pre_dist_sq > local_radius_sq:
+                    continue
+                friendly_links_by_unit[unit_i.unit_id].append(unit_j.unit_id)
+                friendly_links_by_unit[unit_j.unit_id].append(unit_i.unit_id)
+                friendly_link_count += 1
+
+        updated_units = dict(moved_state.units)
+        hostile_disp_sum = 0.0
+        regularized_disp_sum = 0.0
+        active_count = 0
+        max_unit_displacement = 0.5 * float(self.separation_radius) * strength
+        for unit in alive_units:
+            raw_dx, raw_dy = hostile_delta[unit.unit_id]
+            raw_disp = math.sqrt((raw_dx * raw_dx) + (raw_dy * raw_dy))
+            if raw_disp <= 1e-12:
+                continue
+            neighbors = friendly_links_by_unit.get(unit.unit_id, [])
+            if neighbors:
+                avg_dx = raw_dx
+                avg_dy = raw_dy
+                count = 1.0
+                for other_id in neighbors:
+                    odx, ody = hostile_delta.get(other_id, (0.0, 0.0))
+                    avg_dx += odx
+                    avg_dy += ody
+                    count += 1.0
+                avg_dx /= count
+                avg_dy /= count
+                blend = 0.5 * strength
+                reg_dx = ((1.0 - blend) * raw_dx) + (blend * avg_dx)
+                reg_dy = ((1.0 - blend) * raw_dy) + (blend * avg_dy)
+            else:
+                reg_dx, reg_dy = raw_dx, raw_dy
+
+            reg_disp = math.sqrt((reg_dx * reg_dx) + (reg_dy * reg_dy))
+            if reg_disp > max_unit_displacement > 0.0:
+                scale_factor = max_unit_displacement / reg_disp
+                reg_dx *= scale_factor
+                reg_dy *= scale_factor
+                reg_disp = max_unit_displacement
+            if reg_disp <= 1e-12:
+                continue
+
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(
+                    x=float(unit.position.x) + reg_dx,
+                    y=float(unit.position.y) + reg_dy,
+                ),
+            )
+            hostile_disp_sum += raw_disp
+            regularized_disp_sum += reg_disp
+            active_count += 1
+
+        self.debug_last_hostile_contact_impedance = {
+            "mode": HOSTILE_CONTACT_IMPEDANCE_MODE_GATED_COHERENCE_REGULARIZATION_V1,
+            "enabled": True,
+            "active": active_count > 0,
+            "hostile_pair_count": hostile_pair_count,
+            "friendly_link_count": friendly_link_count,
+            "radius": envelope_radius,
+            "mean_hostile_displacement": (
+                hostile_disp_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "mean_regularized_displacement": (
+                regularized_disp_sum / float(active_count)
+                if active_count > 0
+                else 0.0
+            ),
+            "strength": strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+    def _apply_hostile_contact_impedance(
+        self,
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        mode = self._resolve_hostile_contact_impedance_mode()
+        if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_OFF:
+            self.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": False,
+                "active": False,
+                "pair_count": 0,
+                "radius": 0.0,
+            }
+            return moved_state
+        if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1:
+            return self._apply_hostile_contact_impedance_v1(moved_state)
+        if mode in {
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1,
+            HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_OCCUPANCY_ONLY_V1,
+        }:
+            return moved_state
+        return self._apply_hostile_contact_impedance_v2(pre_state, moved_state, mode=mode)
+
+    def _build_continuous_fr_proxy_state(
+        self, state: BattleState
+    ) -> tuple[BattleState, dict[str, dict[str, float | bool | str]]]:
+        movement_model = str(getattr(self, "MOVEMENT_MODEL", "v3a")).strip().lower()
+        movement_v3a_experiment = str(getattr(self, "MOVEMENT_V3A_EXPERIMENT", "base")).strip().lower()
+        shaping_enabled = bool(getattr(self, "CONTINUOUS_FR_SHAPING_ENABLED", False))
+        shaping_mode = str(
+            getattr(self, "CONTINUOUS_FR_SHAPING_MODE", CONTINUOUS_FR_SHAPING_OFF)
+        ).strip().lower()
+        if (
+            not shaping_enabled
+            or movement_model != "v3a"
+            or movement_v3a_experiment != V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+            or shaping_mode not in CONTINUOUS_FR_SHAPING_LABELS
+            or shaping_mode == CONTINUOUS_FR_SHAPING_OFF
+        ):
+            return state, {}
+
+        shaping_a = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_A", 0.0)))
+        shaping_sigma = max(1e-6, float(getattr(self, "CONTINUOUS_FR_SHAPING_SIGMA", 0.15)))
+        shaping_p = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_P", 1.0)))
+        shaping_q = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_Q", 1.0)))
+        shaping_beta = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_BETA", 0.0)))
+        shaping_gamma = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_GAMMA", 0.0)))
+
+        proxy_fleets = {}
+        debug_payload = {}
+        proxy_active = False
+        for fleet_id, fleet in state.fleets.items():
+            alive_count = 0
+            engaged_alive_count = 0
+            for unit_id in fleet.unit_ids:
+                unit = state.units.get(unit_id)
+                if unit is None or float(unit.hit_points) <= 0.0:
+                    continue
+                alive_count += 1
+                if bool(unit.engaged):
+                    engaged_alive_count += 1
+            engaged_fraction = (engaged_alive_count / float(alive_count)) if alive_count > 0 else 0.0
+
+            normalized = fleet.parameters.normalized()
+            shaping = _compute_continuous_fr_shaping(
+                mode=shaping_mode,
+                kappa=float(normalized.get("formation_rigidity", 0.0)),
+                pd_norm=float(normalized.get("pursuit_drive", 0.5)),
+                engaged_fraction=engaged_fraction,
+                mobility_raw=float(fleet.parameters.mobility_bias),
+                a=shaping_a,
+                sigma=shaping_sigma,
+                p=shaping_p,
+                q=shaping_q,
+                beta=shaping_beta,
+                gamma=shaping_gamma,
+            )
+            debug_payload[fleet_id] = shaping
+            proxy_parameters = FormationRigidityFirstReadProxy(fleet.parameters, float(shaping["kappa_eff"]))
+            proxy_fleets[fleet_id] = replace(fleet, parameters=proxy_parameters)
+            proxy_active = True
+
+        if not proxy_active:
+            return state, debug_payload
+        return replace(state, fleets=proxy_fleets), debug_payload
+
+    def step(self, state: BattleState) -> BattleState:
+        snapshot = replace(state, tick=state.tick + 1)
+        next_state = self.evaluate_cohesion(snapshot)
+        next_state = self.evaluate_target(next_state)
+        next_state = self.evaluate_utility(next_state)
+        proxy_state, proxy_debug = self._build_continuous_fr_proxy_state(next_state)
+        movement_input_state = self._apply_hostile_intent_penetration_bias(proxy_state)
+        if bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
+            moved_state = self._integrate_movement_symmetric_merge(movement_input_state)
+        else:
+            moved_state = self.integrate_movement(movement_input_state)
+        if proxy_state is not next_state:
+            moved_state = replace(moved_state, fleets=next_state.fleets)
+        moved_state = self._restore_intent_penetration_bias_units(proxy_state, moved_state)
+        moved_state = self._apply_hostile_contact_impedance(next_state, moved_state)
+        self.debug_last_continuous_fr_shaping = proxy_debug
+        return self.resolve_combat(moved_state)
+
     def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
         eps = 1e-12
         fleet = state.fleets.get(fleet_id)
@@ -502,7 +2189,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             )
         return replace(next_state, last_fleet_cohesion=runtime_cohesion)
 
-
 def resolve_archetype(archetypes: dict, archetype_ref: str):
     if archetype_ref == "default":
         return {
@@ -734,6 +2420,53 @@ def to_plot_color(data: dict, fallback: str) -> str:
     return f"#{code}"
 
 
+def _hex_color_to_rgb(color: str) -> tuple[int, int, int] | None:
+    normalized = str(color).strip()
+    if normalized.startswith("#"):
+        normalized = normalized[1:]
+    if re.fullmatch(r"[0-9A-Fa-f]{6}", normalized) is None:
+        return None
+    return (
+        int(normalized[0:2], 16),
+        int(normalized[2:4], 16),
+        int(normalized[4:6], 16),
+    )
+
+
+def _color_distance_sq(color_a: str, color_b: str) -> float:
+    rgb_a = _hex_color_to_rgb(color_a)
+    rgb_b = _hex_color_to_rgb(color_b)
+    if rgb_a is None or rgb_b is None:
+        return -1.0
+    dr = float(rgb_a[0] - rgb_b[0])
+    dg = float(rgb_a[1] - rgb_b[1])
+    db = float(rgb_a[2] - rgb_b[2])
+    return (dr * dr) + (dg * dg) + (db * db)
+
+
+def choose_max_contrast_default_color(reference_color: str, candidates: Sequence[str]) -> str:
+    best_color = str(candidates[0])
+    best_distance = _color_distance_sq(reference_color, best_color)
+    for candidate in candidates[1:]:
+        distance = _color_distance_sq(reference_color, str(candidate))
+        if distance > best_distance:
+            best_color = str(candidate)
+            best_distance = distance
+    return best_color
+
+
+def resolve_fleet_plot_colors(fleet_a_data: dict, fleet_b_data: dict) -> tuple[str, str]:
+    fleet_a_has_explicit = bool(str(fleet_a_data.get("color_code", "")).strip())
+    fleet_b_has_explicit = bool(str(fleet_b_data.get("color_code", "")).strip())
+    fleet_a_color = to_plot_color(fleet_a_data, DEFAULT_PLOT_COLORS[0])
+    fleet_b_color = to_plot_color(fleet_b_data, DEFAULT_PLOT_COLORS[1])
+    if fleet_a_has_explicit and (not fleet_b_has_explicit):
+        fleet_b_color = choose_max_contrast_default_color(fleet_a_color, DEFAULT_PLOT_COLORS)
+    elif fleet_b_has_explicit and (not fleet_a_has_explicit):
+        fleet_a_color = choose_max_contrast_default_color(fleet_b_color, DEFAULT_PLOT_COLORS)
+    return fleet_a_color, fleet_b_color
+
+
 def resolve_display_name(data: dict, language: str) -> str:
     if language == "ZH":
         value = data.get("disp_name_ZH")
@@ -772,7 +2505,10 @@ def get_nested_mapping_value(data: dict, path: tuple[str, ...], default=_MISSING
 
 
 def get_visualization_setting(settings: dict, key: str, default):
-    return get_section_setting(settings, "visualization", key, default)
+    section = settings.get("visualization", {})
+    if isinstance(section, dict) and key in section:
+        return section[key]
+    return default
 
 
 def get_visualization_section(settings: dict) -> dict:
@@ -780,6 +2516,15 @@ def get_visualization_section(settings: dict) -> dict:
     if isinstance(section, dict):
         return section
     return {}
+
+
+def get_runtime_metatype_setting(settings: dict, key: str, default):
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_value = get_nested_mapping_value(runtime_section, ("metatype", key), _MISSING)
+        if nested_value is not _MISSING:
+            return nested_value
+    return default
 
 
 def get_runtime_setting(settings: dict, key: str, default):
@@ -841,7 +2586,35 @@ def get_battlefield_setting(settings: dict, key: str, default):
 
 
 def get_run_control_setting(settings: dict, key: str, default):
-    return get_section_setting(settings, "run_control", key, default)
+    section = settings.get("run_control", {})
+    if isinstance(section, dict) and key in section:
+        return section[key]
+    return default
+
+
+def get_contact_model_test_setting(settings: dict, path: tuple[str, ...], default):
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_value = get_nested_mapping_value(
+            runtime_section,
+            ("physical", "contact_model", "test_only", "hostile_contact_impedance", *path),
+            _MISSING,
+        )
+        if nested_value is not _MISSING:
+            return nested_value
+    return default
+
+
+def get_env_bool(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
 
 
 def parse_test_mode(raw_value) -> int:
@@ -929,6 +2702,44 @@ def clamp(v: float, lo: float, hi: float) -> float:
     if v > hi:
         return hi
     return v
+
+
+def _direction_from_angle_deg(angle_deg: float) -> tuple[float, float]:
+    theta = math.radians(float(angle_deg))
+    return (math.cos(theta), math.sin(theta))
+
+
+def _resolve_initial_formation_layout(unit_count: int, aspect_ratio: float) -> list[int]:
+    grid_columns = max(1, int((unit_count * aspect_ratio) ** 0.5))
+    grid_rows = (unit_count + grid_columns - 1) // grid_columns
+    while grid_columns / max(1, grid_rows) < aspect_ratio and grid_columns < unit_count:
+        grid_columns += 1
+        grid_rows = (unit_count + grid_columns - 1) // grid_columns
+    row_counts = []
+    remaining = int(unit_count)
+    for _ in range(grid_rows):
+        row_count = min(grid_columns, remaining)
+        row_counts.append(int(row_count))
+        remaining -= row_count
+    return row_counts
+
+
+def _resolve_point_setting(
+    settings: dict,
+    *,
+    array_key: str,
+    x_key: str,
+    y_key: str,
+    default_x: float,
+    default_y: float,
+) -> tuple[float, float]:
+    raw = get_fleet_setting(settings, array_key, None)
+    if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)) and len(raw) >= 2:
+        return float(raw[0]), float(raw[1])
+    return (
+        float(get_fleet_setting(settings, x_key, default_x)),
+        float(get_fleet_setting(settings, y_key, default_y)),
+    )
 
 
 def resolve_effective_seed(seed_value: int) -> int:
@@ -1408,74 +3219,104 @@ def compute_collapse_v2_shadow_telemetry(
 def build_initial_state(
     fleet_a_params: PersonalityParameters,
     fleet_b_params: PersonalityParameters,
-    fleet_size: int,
-    aspect_ratio: float,
+    fleet_a_size: int,
+    fleet_b_size: int,
+    fleet_a_aspect_ratio: float,
+    fleet_b_aspect_ratio: float,
     unit_spacing: float,
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
+    fleet_a_origin_x: float | None = None,
+    fleet_a_origin_y: float | None = None,
+    fleet_b_origin_x: float | None = None,
+    fleet_b_origin_y: float | None = None,
+    fleet_a_facing_angle_deg: float | None = None,
+    fleet_b_facing_angle_deg: float | None = None,
 ) -> BattleState:
-    grid_columns = max(1, int((fleet_size * aspect_ratio) ** 0.5))
-    grid_rows = (fleet_size + grid_columns - 1) // grid_columns
-    while grid_columns / max(1, grid_rows) < aspect_ratio and grid_columns < fleet_size:
-        grid_columns += 1
-        grid_rows = (fleet_size + grid_columns - 1) // grid_columns
+    fleet_a_size_effective = int(fleet_a_size)
+    fleet_b_size_effective = int(fleet_b_size)
+    if fleet_a_size_effective < 1:
+        raise ValueError(f"fleet_a_size must be >= 1, got {fleet_a_size_effective}")
+    if fleet_b_size_effective < 1:
+        raise ValueError(f"fleet_b_size must be >= 1, got {fleet_b_size_effective}")
+    fleet_a_aspect_ratio_effective = float(fleet_a_aspect_ratio)
+    fleet_b_aspect_ratio_effective = float(fleet_b_aspect_ratio)
+    if fleet_a_aspect_ratio_effective <= 0.0:
+        raise ValueError(f"fleet_a_aspect_ratio must be > 0, got {fleet_a_aspect_ratio_effective}")
+    if fleet_b_aspect_ratio_effective <= 0.0:
+        raise ValueError(f"fleet_b_aspect_ratio must be > 0, got {fleet_b_aspect_ratio_effective}")
 
     spawn_margin = max(1.0, arena_size * DEFAULT_SPAWN_MARGIN_RATIO)
-    fleet_a_origin_x = spawn_margin
-    fleet_a_origin_y = spawn_margin
-    fleet_b_origin_x = arena_size - spawn_margin
-    fleet_b_origin_y = arena_size - spawn_margin
+    fleet_a_origin_x_effective = spawn_margin if fleet_a_origin_x is None else float(fleet_a_origin_x)
+    fleet_a_origin_y_effective = spawn_margin if fleet_a_origin_y is None else float(fleet_a_origin_y)
+    fleet_b_origin_x_effective = (arena_size - spawn_margin) if fleet_b_origin_x is None else float(fleet_b_origin_x)
+    fleet_b_origin_y_effective = (arena_size - spawn_margin) if fleet_b_origin_y is None else float(fleet_b_origin_y)
+    fleet_a_facing_angle_deg_effective = 45.0 if fleet_a_facing_angle_deg is None else float(fleet_a_facing_angle_deg)
+    fleet_b_facing_angle_deg_effective = 225.0 if fleet_b_facing_angle_deg is None else float(fleet_b_facing_angle_deg)
 
-    dx_ab = fleet_b_origin_x - fleet_a_origin_x
-    dy_ab = fleet_b_origin_y - fleet_a_origin_y
-    norm_ab = (dx_ab * dx_ab + dy_ab * dy_ab) ** 0.5
-    if norm_ab > 0.0:
-        dir_a = (dx_ab / norm_ab, dy_ab / norm_ab)
-    else:
-        dir_a = (1.0, 0.0)
-    dir_b = (-dir_a[0], -dir_a[1])
+    dir_a = _direction_from_angle_deg(fleet_a_facing_angle_deg_effective)
+    dir_b = _direction_from_angle_deg(fleet_b_facing_angle_deg_effective)
 
     perp_a = (-dir_a[1], dir_a[0])
     perp_b = (-dir_b[1], dir_b[0])
-    half_width = (grid_columns - 1) / 2.0
 
     units = {}
-    fleet_a_unit_ids = []
-    fleet_b_unit_ids = []
 
-    for i in range(fleet_size):
-        row = i // grid_columns
-        col = i % grid_columns
-        lateral = col - half_width
+    def _spawn_side(
+        *,
+        fleet_id: str,
+        unit_count: int,
+        aspect_ratio_local: float,
+        origin_x: float,
+        origin_y: float,
+        dir_xy: tuple[float, float],
+        perp_xy: tuple[float, float],
+    ) -> list[str]:
+        unit_ids = []
+        row_counts = _resolve_initial_formation_layout(unit_count, aspect_ratio_local)
+        half_depth = (len(row_counts) - 1) / 2.0
+        unit_index = 0
+        for row, row_count in enumerate(row_counts):
+            row_offset = row - half_depth
+            half_width = (row_count - 1) / 2.0
+            for col in range(row_count):
+                lateral = col - half_width
+                unit_id = f"{fleet_id}{unit_index + 1}"
+                px = origin_x + (dir_xy[0] * row_offset * unit_spacing) + (perp_xy[0] * lateral * unit_spacing)
+                py = origin_y + (dir_xy[1] * row_offset * unit_spacing) + (perp_xy[1] * lateral * unit_spacing)
+                units[unit_id] = UnitState(
+                    unit_id=unit_id,
+                    fleet_id=fleet_id,
+                    position=Vec2(x=clamp(px, 0.0, arena_size), y=clamp(py, 0.0, arena_size)),
+                    velocity=Vec2(x=0.0, y=0.0),
+                    hit_points=unit_max_hit_points,
+                    max_hit_points=unit_max_hit_points,
+                    max_speed=unit_speed,
+                    orientation_vector=Vec2(x=dir_xy[0], y=dir_xy[1]),
+                )
+                unit_ids.append(unit_id)
+                unit_index += 1
+        return unit_ids
 
-        unit_a_id = f"A{i + 1}"
-        ax = fleet_a_origin_x + (dir_a[0] * row * unit_spacing) + (perp_a[0] * lateral * unit_spacing)
-        ay = fleet_a_origin_y + (dir_a[1] * row * unit_spacing) + (perp_a[1] * lateral * unit_spacing)
-        units[unit_a_id] = UnitState(
-            unit_id=unit_a_id,
-            fleet_id="A",
-            position=Vec2(x=clamp(ax, 0.0, arena_size), y=clamp(ay, 0.0, arena_size)),
-            velocity=Vec2(x=0.0, y=0.0),
-            hit_points=unit_max_hit_points,
-            max_hit_points=unit_max_hit_points,
-            max_speed=unit_speed,
-        )
-        fleet_a_unit_ids.append(unit_a_id)
-
-        unit_b_id = f"B{i + 1}"
-        bx = fleet_b_origin_x + (dir_b[0] * row * unit_spacing) + (perp_b[0] * lateral * unit_spacing)
-        by = fleet_b_origin_y + (dir_b[1] * row * unit_spacing) + (perp_b[1] * lateral * unit_spacing)
-        units[unit_b_id] = UnitState(
-            unit_id=unit_b_id,
-            fleet_id="B",
-            position=Vec2(x=clamp(bx, 0.0, arena_size), y=clamp(by, 0.0, arena_size)),
-            velocity=Vec2(x=0.0, y=0.0),
-            hit_points=unit_max_hit_points,
-            max_hit_points=unit_max_hit_points,
-            max_speed=unit_speed,
-        )
-        fleet_b_unit_ids.append(unit_b_id)
+    fleet_a_unit_ids = _spawn_side(
+        fleet_id="A",
+        unit_count=fleet_a_size_effective,
+        aspect_ratio_local=fleet_a_aspect_ratio_effective,
+        origin_x=fleet_a_origin_x_effective,
+        origin_y=fleet_a_origin_y_effective,
+        dir_xy=dir_a,
+        perp_xy=perp_a,
+    )
+    fleet_b_unit_ids = _spawn_side(
+        fleet_id="B",
+        unit_count=fleet_b_size_effective,
+        aspect_ratio_local=fleet_b_aspect_ratio_effective,
+        origin_x=fleet_b_origin_x_effective,
+        origin_y=fleet_b_origin_y_effective,
+        dir_xy=dir_b,
+        perp_xy=perp_b,
+    )
 
     fleets = {
         "A": FleetState(fleet_id="A", parameters=fleet_a_params, unit_ids=tuple(fleet_a_unit_ids)),
@@ -1490,7 +3331,7 @@ def build_initial_state(
         fleets=fleets,
         last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
     )
-    return initialize_unit_orientations(state)
+    return state
 
 
 def run_simulation(
@@ -1528,14 +3369,44 @@ def run_simulation(
     alpha_sep: float = 0.6,
     movement_v3a_experiment: str = "base",
     centroid_probe_scale: float = 1.0,
+    pre_tl_target_substrate: str = PRE_TL_TARGET_SUBSTRATE_DEFAULT,
     odw_posture_bias_enabled: bool = False,
     odw_posture_bias_k: float = 0.3,
     odw_posture_bias_clip_delta: float = 0.2,
+    symmetric_movement_sync_enabled: bool = True,
+    hostile_contact_impedance_mode: str = HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
+    hostile_contact_impedance_strength: float = HOSTILE_CONTACT_IMPEDANCE_STRENGTH_DEFAULT,
+    hostile_contact_impedance_radius_multiplier: float = HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER_DEFAULT,
+    hostile_contact_impedance_v2_radius_multiplier: float = HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+    hostile_contact_impedance_v2_repulsion_max_disp_ratio: float = HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+    hostile_contact_impedance_v2_forward_damping_strength: float = HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+    hostile_spacing_floor_scale: float = HOSTILE_SPACING_FLOOR_SCALE_DEFAULT,
+    hostile_spacing_floor_strength: float = HOSTILE_SPACING_FLOOR_STRENGTH_DEFAULT,
+    hostile_spacing_floor_v2_scale: float = HOSTILE_SPACING_FLOOR_V2_SCALE_DEFAULT,
+    hostile_spacing_floor_v2_strength: float = HOSTILE_SPACING_FLOOR_V2_STRENGTH_DEFAULT,
+    hostile_spacing_co_resolution_scale: float = HOSTILE_SPACING_CO_RESOLUTION_SCALE_DEFAULT,
+    hostile_spacing_co_resolution_strength: float = HOSTILE_SPACING_CO_RESOLUTION_STRENGTH_DEFAULT,
+    hostile_gated_coherence_regularization_scale: float = HOSTILE_GATED_COHERENCE_REGULARIZATION_SCALE_DEFAULT,
+    hostile_gated_coherence_regularization_strength: float = HOSTILE_GATED_COHERENCE_REGULARIZATION_STRENGTH_DEFAULT,
+    hostile_intent_unified_spacing_scale: float = HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
+    hostile_intent_unified_spacing_strength: float = HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
+    hostile_intent_occupancy_only_scale: float = HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE_DEFAULT,
+    hostile_intent_occupancy_only_strength: float = HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH_DEFAULT,
+    continuous_fr_shaping_enabled: bool = False,
+    continuous_fr_shaping_mode: str = CONTINUOUS_FR_SHAPING_OFF,
+    continuous_fr_shaping_a: float = 0.0,
+    continuous_fr_shaping_sigma: float = 0.15,
+    continuous_fr_shaping_p: float = 1.0,
+    continuous_fr_shaping_q: float = 1.0,
+    continuous_fr_shaping_beta: float = 0.0,
+    continuous_fr_shaping_gamma: float = 0.0,
     v2_connect_radius_multiplier: float = 1.0,
     v3_connect_radius_multiplier: float = 1.0,
     v3_r_ref_radius_multiplier: float = 1.0,
     runtime_diag_enabled: bool = False,
+    post_elimination_extra_ticks: int = 10,
 ):
+    post_elimination_extra_ticks = max(0, int(post_elimination_extra_ticks))
     engine = TestModeEngineTickSkeleton(
         attack_range=attack_range,
         damage_per_tick=damage_per_tick,
@@ -1545,9 +3416,51 @@ def run_simulation(
     engine.MOVEMENT_MODEL = str(movement_model).strip().lower() or "v3a"
     engine.MOVEMENT_V3A_EXPERIMENT = str(movement_v3a_experiment).strip().lower() or "base"
     engine.CENTROID_PROBE_SCALE = float(centroid_probe_scale)
+    engine.PRE_TL_TARGET_SUBSTRATE = str(pre_tl_target_substrate).strip().lower() or PRE_TL_TARGET_SUBSTRATE_DEFAULT
     engine.ODW_POSTURE_BIAS_ENABLED = bool(odw_posture_bias_enabled)
     engine.ODW_POSTURE_BIAS_K = max(0.0, float(odw_posture_bias_k))
     engine.ODW_POSTURE_BIAS_CLIP_DELTA = max(0.0, float(odw_posture_bias_clip_delta))
+    engine.SYMMETRIC_MOVEMENT_SYNC_ENABLED = bool(symmetric_movement_sync_enabled)
+    engine.HOSTILE_CONTACT_IMPEDANCE_MODE = (
+        str(hostile_contact_impedance_mode).strip().lower() or HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT
+    )
+    engine.HOSTILE_CONTACT_IMPEDANCE_STRENGTH = max(0.0, float(hostile_contact_impedance_strength))
+    engine.HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER = max(
+        1e-6, float(hostile_contact_impedance_radius_multiplier)
+    )
+    engine.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER = max(
+        1e-6, float(hostile_contact_impedance_v2_radius_multiplier)
+    )
+    engine.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO = max(
+        0.0, float(hostile_contact_impedance_v2_repulsion_max_disp_ratio)
+    )
+    engine.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH = _clamp01(
+        float(hostile_contact_impedance_v2_forward_damping_strength)
+    )
+    engine.HOSTILE_SPACING_FLOOR_SCALE = max(1e-6, float(hostile_spacing_floor_scale))
+    engine.HOSTILE_SPACING_FLOOR_STRENGTH = _clamp01(float(hostile_spacing_floor_strength))
+    engine.HOSTILE_SPACING_FLOOR_V2_SCALE = max(1e-6, float(hostile_spacing_floor_v2_scale))
+    engine.HOSTILE_SPACING_FLOOR_V2_STRENGTH = _clamp01(float(hostile_spacing_floor_v2_strength))
+    engine.HOSTILE_SPACING_CO_RESOLUTION_SCALE = max(1e-6, float(hostile_spacing_co_resolution_scale))
+    engine.HOSTILE_SPACING_CO_RESOLUTION_STRENGTH = _clamp01(float(hostile_spacing_co_resolution_strength))
+    engine.HOSTILE_GATED_COHERENCE_REGULARIZATION_SCALE = max(
+        1e-6, float(hostile_gated_coherence_regularization_scale)
+    )
+    engine.HOSTILE_GATED_COHERENCE_REGULARIZATION_STRENGTH = _clamp01(
+        float(hostile_gated_coherence_regularization_strength)
+    )
+    engine.HOSTILE_INTENT_UNIFIED_SPACING_SCALE = max(1e-6, float(hostile_intent_unified_spacing_scale))
+    engine.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH = _clamp01(float(hostile_intent_unified_spacing_strength))
+    engine.HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE = max(1e-6, float(hostile_intent_occupancy_only_scale))
+    engine.HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH = _clamp01(float(hostile_intent_occupancy_only_strength))
+    engine.CONTINUOUS_FR_SHAPING_ENABLED = bool(continuous_fr_shaping_enabled)
+    engine.CONTINUOUS_FR_SHAPING_MODE = str(continuous_fr_shaping_mode).strip().lower() or CONTINUOUS_FR_SHAPING_OFF
+    engine.CONTINUOUS_FR_SHAPING_A = max(0.0, float(continuous_fr_shaping_a))
+    engine.CONTINUOUS_FR_SHAPING_SIGMA = max(1e-6, float(continuous_fr_shaping_sigma))
+    engine.CONTINUOUS_FR_SHAPING_P = max(0.0, float(continuous_fr_shaping_p))
+    engine.CONTINUOUS_FR_SHAPING_Q = max(0.0, float(continuous_fr_shaping_q))
+    engine.CONTINUOUS_FR_SHAPING_BETA = max(0.0, float(continuous_fr_shaping_beta))
+    engine.CONTINUOUS_FR_SHAPING_GAMMA = max(0.0, float(continuous_fr_shaping_gamma))
     engine.V2_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v2_connect_radius_multiplier))
     engine.V3_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v3_connect_radius_multiplier))
     engine.V3_R_REF_RADIUS_MULTIPLIER = max(1e-12, float(v3_r_ref_radius_multiplier))
@@ -1598,6 +3511,11 @@ def run_simulation(
         "front_curvature_index": {fleet_id: [] for fleet_id in state.fleets},
         "center_wing_parallel_share": {fleet_id: [] for fleet_id in state.fleets},
         "posture_persistence_time": {fleet_id: [] for fleet_id in state.fleets},
+        "hostile_overlap_pairs": [],
+        "hostile_deep_pairs": [],
+        "hostile_deep_intermix_ratio": [],
+        "hostile_intermix_severity": [],
+        "hostile_intermix_coverage": [],
     }
     combat_telemetry = {
         "in_contact_count": [],
@@ -1632,10 +3550,6 @@ def run_simulation(
         fleet_id: {"sign": 0, "length": 0}
         for fleet_id in state.fleets
     }
-    axis_initialized = False
-    axis_dir_x = 0.0
-    axis_dir_y = 0.0
-
     if steps <= 0:
         tick_limit = 999
         elimination_tick = None
@@ -1697,26 +3611,36 @@ def run_simulation(
             else:
                 observer_telemetry["centroid_x"][fleet_id].append(float("nan"))
                 observer_telemetry["centroid_y"][fleet_id].append(float("nan"))
-        if not axis_initialized:
-            ax = float(observer_telemetry["centroid_x"].get("A", [float("nan")])[-1])
-            ay = float(observer_telemetry["centroid_y"].get("A", [float("nan")])[-1])
-            bx = float(observer_telemetry["centroid_x"].get("B", [float("nan")])[-1])
-            by = float(observer_telemetry["centroid_y"].get("B", [float("nan")])[-1])
-            if all(math.isfinite(value) for value in (ax, ay, bx, by)):
-                dx0 = bx - ax
-                dy0 = by - ay
-                norm0 = math.sqrt((dx0 * dx0) + (dy0 * dy0))
-                if norm0 > 1e-12:
-                    axis_dir_x = dx0 / norm0
-                    axis_dir_y = dy0 / norm0
-                    axis_initialized = True
-
+        hostile_intermix_metrics = _compute_hostile_intermix_metrics(state, float(separation_radius))
+        observer_telemetry["hostile_overlap_pairs"].append(
+            float(hostile_intermix_metrics.get("hostile_overlap_pairs", 0.0))
+        )
+        observer_telemetry["hostile_deep_pairs"].append(
+            float(hostile_intermix_metrics.get("hostile_deep_pairs", 0.0))
+        )
+        observer_telemetry["hostile_deep_intermix_ratio"].append(
+            float(hostile_intermix_metrics.get("hostile_deep_intermix_ratio", 0.0))
+        )
+        observer_telemetry["hostile_intermix_severity"].append(
+            float(hostile_intermix_metrics.get("hostile_intermix_severity", 0.0))
+        )
+        observer_telemetry["hostile_intermix_coverage"].append(
+            float(hostile_intermix_metrics.get("hostile_intermix_coverage", 0.0))
+        )
         for fleet_id in state.fleets:
             series = observer_telemetry["center_wing_advance_gap"][fleet_id]
             history = center_wing_position_history.get(fleet_id, [])
             current_positions = history[-1] if history else {}
             current_unit_ids = list(current_positions.keys())
-            if not axis_initialized or len(current_unit_ids) < 6:
+            enemy_centroids = []
+            for other_fleet_id in state.fleets:
+                if other_fleet_id == fleet_id:
+                    continue
+                enemy_x = float(observer_telemetry["centroid_x"].get(other_fleet_id, [float("nan")])[-1])
+                enemy_y = float(observer_telemetry["centroid_y"].get(other_fleet_id, [float("nan")])[-1])
+                if math.isfinite(enemy_x) and math.isfinite(enemy_y):
+                    enemy_centroids.append((enemy_x, enemy_y))
+            if len(current_unit_ids) < 6 or not enemy_centroids:
                 series.append(float("nan"))
                 observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
                 observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
@@ -1729,6 +3653,21 @@ def run_simulation(
             curr_ys_now = [current_positions[unit_id][1] for unit_id in current_unit_ids]
             centroid_x_now = sum(curr_xs_now) / float(len(curr_xs_now))
             centroid_y_now = sum(curr_ys_now) / float(len(curr_ys_now))
+            enemy_centroid_x = sum(item[0] for item in enemy_centroids) / float(len(enemy_centroids))
+            enemy_centroid_y = sum(item[1] for item in enemy_centroids) / float(len(enemy_centroids))
+            axis_dx = enemy_centroid_x - centroid_x_now
+            axis_dy = enemy_centroid_y - centroid_y_now
+            axis_norm = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
+            if axis_norm <= 1e-12:
+                series.append(float("nan"))
+                observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
+                observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
+                observer_telemetry["posture_persistence_time"][fleet_id].append(0.0)
+                posture_persistence_state[fleet_id]["sign"] = 0
+                posture_persistence_state[fleet_id]["length"] = 0
+                continue
+            axis_dir_x = axis_dx / axis_norm
+            axis_dir_y = axis_dy / axis_norm
 
             projected_units: list[tuple[float, float, str]] = []
             for unit_id in current_unit_ids:
@@ -1738,32 +3677,54 @@ def run_simulation(
                 projected_units.append((float(advance_now), abs(float(lateral_offset_now)), str(unit_id)))
 
             projected_units.sort(key=lambda item: item[0])
+            projected_units_by_width = sorted(
+                ((item[1], item[2]) for item in projected_units),
+                key=lambda item: item[0],
+            )
+            width_split_index = len(projected_units_by_width) // 2
+            center_unit_ids = {unit_id for _, unit_id in projected_units_by_width[:width_split_index]}
+            wing_unit_ids = {unit_id for _, unit_id in projected_units_by_width[width_split_index:]}
 
             if len(history) <= center_wing_interval_ticks:
                 series.append(float("nan"))
+                interval_parallel_share_gap = float("nan")
             else:
                 prev_positions = history[-(center_wing_interval_ticks + 1)]
                 common_unit_ids = [unit_id for unit_id in current_positions if unit_id in prev_positions]
                 if len(common_unit_ids) < 4:
                     series.append(float("nan"))
+                    interval_parallel_share_gap = float("nan")
                 else:
-                    ranked_units_interval: list[tuple[float, float]] = []
+                    center_advances: list[float] = []
+                    wing_advances: list[float] = []
+                    center_interval_total = 0.0
+                    wing_interval_total = 0.0
                     for unit_id in common_unit_ids:
                         curr_x, curr_y = current_positions[unit_id]
                         prev_x, prev_y = prev_positions[unit_id]
-                        lateral_offset = ((curr_x - centroid_x_now) * (-axis_dir_y)) + ((curr_y - centroid_y_now) * axis_dir_x)
                         advance = ((curr_x - prev_x) * axis_dir_x) + ((curr_y - prev_y) * axis_dir_y)
-                        ranked_units_interval.append((abs(lateral_offset), float(advance)))
-                    ranked_units_interval.sort(key=lambda item: item[0])
-                    split_index = len(ranked_units_interval) // 2
-                    center_band = ranked_units_interval[:split_index]
-                    wing_band = ranked_units_interval[split_index:]
+                        if unit_id in center_unit_ids:
+                            center_advances.append(float(advance))
+                            center_interval_total += advance
+                        elif unit_id in wing_unit_ids:
+                            wing_advances.append(float(advance))
+                            wing_interval_total += advance
+                    center_band = center_advances
+                    wing_band = wing_advances
                     if not center_band or not wing_band:
                         series.append(float("nan"))
+                        interval_parallel_share_gap = float("nan")
                     else:
-                        center_mean = sum(item[1] for item in center_band) / float(len(center_band))
-                        wing_mean = sum(item[1] for item in wing_band) / float(len(wing_band))
+                        center_mean = sum(center_band) / float(len(center_band))
+                        wing_mean = sum(wing_band) / float(len(wing_band))
                         series.append(0.5 * float(center_mean - wing_mean))
+                        interval_parallel_total = abs(center_interval_total) + abs(wing_interval_total)
+                        if interval_parallel_total > 1e-12:
+                            interval_parallel_share_gap = float(
+                                (center_interval_total - wing_interval_total) / interval_parallel_total
+                            )
+                        else:
+                            interval_parallel_share_gap = 0.0
 
             front_group_size = max(3, int(math.ceil(len(projected_units) * 0.30)))
             front_group = projected_units[-front_group_size:]
@@ -1778,14 +3739,6 @@ def run_simulation(
             else:
                 front_curvature_raw = float("nan")
             observer_telemetry["front_curvature_index"][fleet_id].append(front_curvature_raw)
-
-            projected_units_by_width = sorted(
-                ((item[1], item[2]) for item in projected_units),
-                key=lambda item: item[0],
-            )
-            width_split_index = len(projected_units_by_width) // 2
-            center_unit_ids = {unit_id for _, unit_id in projected_units_by_width[:width_split_index]}
-            wing_unit_ids = {unit_id for _, unit_id in projected_units_by_width[width_split_index:]}
             center_parallel_total = 0.0
             wing_parallel_total = 0.0
             for unit_id in current_unit_ids:
@@ -1796,19 +3749,21 @@ def run_simulation(
                     float(unit_state.velocity.x) * axis_dir_x
                     + float(unit_state.velocity.y) * axis_dir_y
                 )
-                if parallel_velocity < 0.0:
-                    parallel_velocity = 0.0
                 if unit_id in center_unit_ids:
                     center_parallel_total += parallel_velocity
                 elif unit_id in wing_unit_ids:
                     wing_parallel_total += parallel_velocity
-            total_parallel = center_parallel_total + wing_parallel_total
+            total_parallel = abs(center_parallel_total) + abs(wing_parallel_total)
             if total_parallel > 1e-12:
-                center_wing_parallel_share_gap = float(
+                instantaneous_parallel_share_gap = float(
                     (center_parallel_total - wing_parallel_total) / total_parallel
                 )
             else:
-                center_wing_parallel_share_gap = 0.0
+                instantaneous_parallel_share_gap = 0.0
+            if math.isfinite(interval_parallel_share_gap):
+                center_wing_parallel_share_gap = interval_parallel_share_gap
+            else:
+                center_wing_parallel_share_gap = instantaneous_parallel_share_gap
             observer_telemetry["center_wing_parallel_share"][fleet_id].append(center_wing_parallel_share_gap)
 
             posture_sign = 0
@@ -1941,7 +3896,7 @@ def run_simulation(
         if steps <= 0:
             if any_fleet_eliminated and elimination_tick is None:
                 elimination_tick = state.tick
-                post_elimination_stop_tick = min(999, elimination_tick + 10)
+                post_elimination_stop_tick = min(999, elimination_tick + post_elimination_extra_ticks)
             if post_elimination_stop_tick is not None and state.tick >= post_elimination_stop_tick:
                 break
         else:
@@ -2059,10 +4014,11 @@ def main() -> None:
     base_dir = Path(__file__).resolve().parent
     settings = load_json_file(base_dir / "test_run_v1_0.settings.json")
     viz_settings = load_json_file(base_dir / "test_run_v1_0.viz.settings.json")
+    post_elimination_extra_ticks = max(0, int(viz_settings.get("post_elimination_extra_ticks", 10)))
     archetypes = load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
     metatype_settings = load_metatype_settings(base_dir, settings)
     random_seed = int(get_run_control_setting(settings, "random_seed", -1))
-    metatype_random_seed = int(get_run_control_setting(settings, "metatype_random_seed", random_seed))
+    metatype_random_seed = int(get_runtime_metatype_setting(settings, "random_seed", random_seed))
     background_map_seed = int(get_battlefield_setting(settings, "background_map_seed", -1))
     effective_random_seed = resolve_effective_seed(random_seed)
     effective_metatype_random_seed = resolve_effective_seed(metatype_random_seed)
@@ -2083,10 +4039,9 @@ def main() -> None:
     )
     fleet_a_params = to_personality_parameters(fleet_a_data)
     fleet_b_params = to_personality_parameters(fleet_b_data)
-    fleet_a_color = to_plot_color(fleet_a_data, DEFAULT_PLOT_COLORS[0])
-    fleet_b_color = to_plot_color(fleet_b_data, DEFAULT_PLOT_COLORS[1])
+    fleet_a_color, fleet_b_color = resolve_fleet_plot_colors(fleet_a_data, fleet_b_data)
 
-    display_language = str(get_run_control_setting(settings, "display_language", "EN")).upper()
+    display_language = str(get_visualization_setting(settings, "display_language", "EN")).upper()
     if display_language not in ("EN", "ZH"):
         display_language = "EN"
     fleet_a_display_name = resolve_display_name(fleet_a_data, display_language)
@@ -2096,28 +4051,61 @@ def main() -> None:
     fleet_a_avatar = resolve_avatar_with_fallback(fleet_a_data, DEFAULT_AVATAR_A)
     fleet_b_avatar = resolve_avatar_with_fallback(fleet_b_data, DEFAULT_AVATAR_B)
 
-    fleet_size = int(get_fleet_setting(settings, "initial_fleet_size", 100))
-    aspect_ratio = float(get_fleet_setting(settings, "initial_fleet_aspect_ratio", 2.0))
+    fleet_a_size = int(get_fleet_setting(settings, "initial_fleet_a_size", 100))
+    fleet_b_size = int(get_fleet_setting(settings, "initial_fleet_b_size", 100))
+    fleet_a_aspect_ratio = float(get_fleet_setting(settings, "initial_fleet_a_aspect_ratio", 2.0))
+    fleet_b_aspect_ratio = float(get_fleet_setting(settings, "initial_fleet_b_aspect_ratio", 2.0))
     unit_spacing = float(get_runtime_setting(settings, "min_unit_spacing", 1.0))
-    if fleet_size < 1:
-        raise ValueError(f"initial_fleet_size must be >= 1, got {fleet_size}")
-    if aspect_ratio <= 0.0:
-        raise ValueError(f"initial_fleet_aspect_ratio must be > 0, got {aspect_ratio}")
+    arena_size = float(get_battlefield_setting(settings, "arena_size", 200.0))
+    spawn_margin = max(1.0, arena_size * DEFAULT_SPAWN_MARGIN_RATIO)
+    fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
+        settings,
+        array_key="initial_fleet_a_origin_xy",
+        x_key="initial_fleet_a_origin_x",
+        y_key="initial_fleet_a_origin_y",
+        default_x=spawn_margin,
+        default_y=spawn_margin,
+    )
+    fleet_b_origin_x, fleet_b_origin_y = _resolve_point_setting(
+        settings,
+        array_key="initial_fleet_b_origin_xy",
+        x_key="initial_fleet_b_origin_x",
+        y_key="initial_fleet_b_origin_y",
+        default_x=arena_size - spawn_margin,
+        default_y=arena_size - spawn_margin,
+    )
+    fleet_a_facing_angle_deg = float(get_fleet_setting(settings, "initial_fleet_a_facing_angle_deg", 45.0))
+    fleet_b_facing_angle_deg = float(get_fleet_setting(settings, "initial_fleet_b_facing_angle_deg", 225.0))
+    if fleet_a_size < 1:
+        raise ValueError(f"initial_fleet_a_size must be >= 1, got {fleet_a_size}")
+    if fleet_b_size < 1:
+        raise ValueError(f"initial_fleet_b_size must be >= 1, got {fleet_b_size}")
+    if fleet_a_aspect_ratio <= 0.0:
+        raise ValueError(f"initial_fleet_a_aspect_ratio must be > 0, got {fleet_a_aspect_ratio}")
+    if fleet_b_aspect_ratio <= 0.0:
+        raise ValueError(f"initial_fleet_b_aspect_ratio must be > 0, got {fleet_b_aspect_ratio}")
     if unit_spacing <= 0.0:
         raise ValueError(f"min_unit_spacing must be > 0, got {unit_spacing}")
 
     unit_speed = float(get_unit_setting(settings, "unit_speed", 1.0))
     unit_max_hit_points = float(get_unit_setting(settings, "unit_max_hit_points", 100.0))
-    arena_size = float(get_battlefield_setting(settings, "arena_size", 200.0))
     state = build_initial_state(
         fleet_a_params=fleet_a_params,
         fleet_b_params=fleet_b_params,
-        fleet_size=fleet_size,
-        aspect_ratio=aspect_ratio,
+        fleet_a_size=fleet_a_size,
+        fleet_b_size=fleet_b_size,
+        fleet_a_aspect_ratio=fleet_a_aspect_ratio,
+        fleet_b_aspect_ratio=fleet_b_aspect_ratio,
         unit_spacing=unit_spacing,
         unit_speed=unit_speed,
         unit_max_hit_points=unit_max_hit_points,
         arena_size=arena_size,
+        fleet_a_origin_x=fleet_a_origin_x,
+        fleet_a_origin_y=fleet_a_origin_y,
+        fleet_b_origin_x=fleet_b_origin_x,
+        fleet_b_origin_y=fleet_b_origin_y,
+        fleet_a_facing_angle_deg=fleet_a_facing_angle_deg,
+        fleet_b_facing_angle_deg=fleet_b_facing_angle_deg,
     )
 
     initial_fleet_sizes = {}
@@ -2128,7 +4116,7 @@ def main() -> None:
                 fleet_size_hp += max(0.0, float(state.units[unit_id].hit_points))
         initial_fleet_sizes[fleet_id] = fleet_size_hp
 
-    animate = bool(get_run_control_setting(settings, "animate", True))
+    animate = bool(get_visualization_setting(settings, "animate", True))
     visualization_section = get_visualization_section(settings)
     auto_zoom_2d = bool(get_visualization_setting(settings, "auto_zoom_2d", False))
     frame_stride = DEFAULT_FRAME_STRIDE
@@ -2148,19 +4136,151 @@ def main() -> None:
     movement_model_requested, movement_model_effective = resolve_movement_model(
         get_runtime_setting(settings, "movement_model", "baseline")
     )
-    movement_v3a_experiment_raw = str(get_runtime_setting(settings, "movement_v3a_experiment", "base")).strip().lower()
-    if movement_v3a_experiment_raw not in {"base", "exp_precontact_centroid_probe"}:
-        movement_v3a_experiment_raw = "base"
+    movement_v3a_experiment_raw = str(get_runtime_setting(settings, "movement_v3a_experiment", V3A_EXPERIMENT_BASE)).strip().lower()
+    if movement_v3a_experiment_raw not in V3A_EXPERIMENT_LABELS:
+        movement_v3a_experiment_raw = V3A_EXPERIMENT_BASE
     movement_v3a_experiment_effective = movement_v3a_experiment_raw
+    symmetric_movement_sync_enabled = bool(get_runtime_setting(settings, "symmetric_movement_sync_enabled", True))
+    hostile_contact_impedance_mode = str(
+        get_contact_model_test_setting(
+            settings,
+            ("active_mode",),
+            HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
+        )
+    ).strip().lower()
+    if hostile_contact_impedance_mode not in HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS:
+        hostile_contact_impedance_mode = HOSTILE_CONTACT_IMPEDANCE_MODE_OFF
+    hostile_contact_impedance_strength = max(
+        0.0,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("repulsion_v1", "strength"),
+                HOSTILE_CONTACT_IMPEDANCE_STRENGTH_DEFAULT,
+            )
+        ),
+    )
+    hostile_contact_impedance_radius_multiplier = max(
+        1e-6,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("repulsion_v1", "radius_multiplier"),
+                HOSTILE_CONTACT_IMPEDANCE_RADIUS_MULTIPLIER_DEFAULT,
+            )
+        ),
+    )
+    if hostile_contact_impedance_mode == HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2:
+        v2_branch = "damping_v2"
+    else:
+        v2_branch = "hybrid_v2"
+    hostile_contact_impedance_v2_radius_multiplier = max(
+        1e-6,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                (v2_branch, "radius_multiplier"),
+                HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+            )
+        ),
+    )
+    hostile_contact_impedance_v2_repulsion_max_disp_ratio = max(
+        0.0,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("hybrid_v2", "repulsion_max_disp_ratio"),
+                HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+            )
+        ),
+    )
+    hostile_contact_impedance_v2_forward_damping_strength = _clamp01(
+        float(
+            get_contact_model_test_setting(
+                settings,
+                (v2_branch, "forward_damping_strength"),
+                HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+            )
+        )
+    )
+    hostile_intent_unified_spacing_scale = max(
+        1e-6,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("intent_unified_spacing_v1", "scale"),
+                HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
+            )
+        ),
+    )
+    hostile_intent_unified_spacing_strength = _clamp01(
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("intent_unified_spacing_v1", "strength"),
+                HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
+            )
+        )
+    )
+    hostile_intent_occupancy_only_scale = max(
+        1e-6,
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("intent_occupancy_only_v1", "scale"),
+                HOSTILE_INTENT_OCCUPANCY_ONLY_SCALE_DEFAULT,
+            )
+        ),
+    )
+    hostile_intent_occupancy_only_strength = _clamp01(
+        float(
+            get_contact_model_test_setting(
+                settings,
+                ("intent_occupancy_only_v1", "strength"),
+                HOSTILE_INTENT_OCCUPANCY_ONLY_STRENGTH_DEFAULT,
+            )
+        )
+    )
     centroid_probe_scale = float(get_runtime_setting(settings, "centroid_probe_scale", 1.0))
+    pre_tl_target_substrate = str(
+        get_runtime_setting(settings, "pre_tl_target_substrate", PRE_TL_TARGET_SUBSTRATE_DEFAULT)
+    ).strip().lower()
+    if pre_tl_target_substrate not in PRE_TL_TARGET_SUBSTRATE_LABELS:
+        pre_tl_target_substrate = PRE_TL_TARGET_SUBSTRATE_DEFAULT
     if centroid_probe_scale < 0.0:
         centroid_probe_scale = 0.0
     elif centroid_probe_scale > 1.0:
         centroid_probe_scale = 1.0
-    if movement_model_effective != "v3a" or movement_v3a_experiment_effective != "exp_precontact_centroid_probe":
+    if movement_model_effective != "v3a" or movement_v3a_experiment_effective not in {
+        V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE,
+    }:
         centroid_probe_scale_effective = 1.0
     else:
         centroid_probe_scale_effective = centroid_probe_scale
+    continuous_fr_shaping_enabled = bool(get_runtime_setting(settings, "continuous_fr_shaping_enabled", False))
+    continuous_fr_shaping_mode = str(
+        get_runtime_setting(settings, "continuous_fr_shaping_mode", CONTINUOUS_FR_SHAPING_OFF)
+    ).strip().lower()
+    if continuous_fr_shaping_mode not in CONTINUOUS_FR_SHAPING_LABELS:
+        continuous_fr_shaping_mode = CONTINUOUS_FR_SHAPING_OFF
+    continuous_fr_shaping_a = max(0.0, float(get_runtime_setting(settings, "continuous_fr_shaping_a", 0.0)))
+    continuous_fr_shaping_sigma = max(
+        1e-6, float(get_runtime_setting(settings, "continuous_fr_shaping_sigma", 0.15))
+    )
+    continuous_fr_shaping_p = max(0.0, float(get_runtime_setting(settings, "continuous_fr_shaping_p", 1.0)))
+    continuous_fr_shaping_q = max(0.0, float(get_runtime_setting(settings, "continuous_fr_shaping_q", 1.0)))
+    continuous_fr_shaping_beta = max(0.0, float(get_runtime_setting(settings, "continuous_fr_shaping_beta", 0.0)))
+    continuous_fr_shaping_gamma = max(0.0, float(get_runtime_setting(settings, "continuous_fr_shaping_gamma", 0.0)))
+    continuous_fr_shaping_effective = (
+        movement_model_effective == "v3a"
+        and movement_v3a_experiment_effective == V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+        and continuous_fr_shaping_enabled
+        and continuous_fr_shaping_mode != CONTINUOUS_FR_SHAPING_OFF
+        and continuous_fr_shaping_a > 0.0
+    )
+    continuous_fr_shaping_mode_effective = (
+        continuous_fr_shaping_mode if continuous_fr_shaping_effective else CONTINUOUS_FR_SHAPING_OFF
+    )
     odw_posture_bias_enabled = bool(get_runtime_setting(settings, "odw_posture_bias_enabled", False))
     odw_posture_bias_k = float(get_runtime_setting(settings, "odw_posture_bias_k", 0.3))
     odw_posture_bias_clip_delta = float(get_runtime_setting(settings, "odw_posture_bias_clip_delta", 0.2))
@@ -2287,10 +4407,7 @@ def main() -> None:
         f"base_interval_ms={base_frame_interval_ms}, frame_interval_ms={frame_interval_ms}"
     )
     print(f"[mode] test_mode={test_mode} ({test_mode_name})")
-    print(f"[mode] plot_profile_requested={plot_profile_requested}")
     print(f"[mode] plot_profile_effective={plot_profile_effective}")
-    print(f"[mode] movement_model_requested={movement_model_requested}")
-    print(f"[mode] cohesion_decision_source_requested={runtime_decision_source_requested}")
     print(f"[mode] runtime_decision_source_effective={runtime_decision_source_effective}")
     if runtime_decision_source_effective == "v3_test":
         print(f"[runtime] v3_connect_radius_multiplier_effective={v3_connect_radius_multiplier_effective:.3f}")
@@ -2300,9 +4417,45 @@ def main() -> None:
     if movement_model_effective == "v3a":
         print(f"[mode] movement_v3a_experiment_effective={movement_v3a_experiment_effective}")
         print(f"[mode] centroid_probe_scale_effective={centroid_probe_scale_effective:.3f}")
-        print(f"[mode] odw_posture_bias_enabled_effective={odw_posture_bias_enabled_effective}")
-        print(f"[mode] odw_posture_bias_k_effective={odw_posture_bias_k_effective:.3f}")
-        print(f"[mode] odw_posture_bias_clip_delta_effective={odw_posture_bias_clip_delta_effective:.3f}")
+        print(f"[mode] pre_tl_target_substrate={pre_tl_target_substrate}")
+        if symmetric_movement_sync_enabled:
+            print(f"[mode] symmetric_movement_sync_enabled={symmetric_movement_sync_enabled}")
+        if hostile_contact_impedance_mode != "off" or hostile_contact_impedance_strength > 0.0:
+            print(f"[mode] hostile_contact_impedance_mode={hostile_contact_impedance_mode}")
+            print(f"[mode] hostile_contact_impedance_strength={hostile_contact_impedance_strength:.3f}")
+            print(
+                "[mode] hostile_contact_impedance_radius_multiplier="
+                f"{hostile_contact_impedance_radius_multiplier:.3f}"
+            )
+            print(
+                "[mode] hostile_contact_impedance_v2="
+                f"radius_multiplier={hostile_contact_impedance_v2_radius_multiplier:.3f}, "
+                f"repulsion_max_disp_ratio={hostile_contact_impedance_v2_repulsion_max_disp_ratio:.3f}, "
+                f"forward_damping_strength={hostile_contact_impedance_v2_forward_damping_strength:.3f}"
+            )
+        if hostile_intent_unified_spacing_strength > 0.0:
+            print(
+                "[mode] intent_unified_spacing_v1="
+                f"scale={hostile_intent_unified_spacing_scale:.3f}, "
+                f"strength={hostile_intent_unified_spacing_strength:.3f}"
+            )
+        if hostile_intent_occupancy_only_strength > 0.0:
+            print(
+                "[mode] intent_occupancy_only_v1="
+                f"scale={hostile_intent_occupancy_only_scale:.3f}, "
+                f"strength={hostile_intent_occupancy_only_strength:.3f}"
+            )
+        if continuous_fr_shaping_effective:
+            print(f"[mode] continuous_fr_shaping_mode_effective={continuous_fr_shaping_mode_effective}")
+            print(
+                "[mode] continuous_fr_shaping_params="
+                f"a={continuous_fr_shaping_a:.3f}, sigma={continuous_fr_shaping_sigma:.3f}, "
+                f"p={continuous_fr_shaping_p:.3f}, q={continuous_fr_shaping_q:.3f}, "
+                f"beta={continuous_fr_shaping_beta:.3f}, gamma={continuous_fr_shaping_gamma:.3f}"
+            )
+        if odw_posture_bias_enabled_effective:
+            print(f"[mode] odw_posture_bias_k_effective={odw_posture_bias_k_effective:.3f}")
+            print(f"[mode] odw_posture_bias_clip_delta_effective={odw_posture_bias_clip_delta_effective:.3f}")
     print(f"[viz] vector_display_mode={unit_direction_mode}")
     print(
         f"[runtime] boundary soft={boundary_enabled} "
@@ -2315,11 +4468,16 @@ def main() -> None:
     print(f"[report] enabled={export_battle_report}")
     run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
-    export_video_cfg = visualization_section.get("export_video", {})
+    export_video_cfg = viz_settings.get("export_video", {})
     if not isinstance(export_video_cfg, dict):
         export_video_cfg = {}
     else:
         export_video_cfg = dict(export_video_cfg)
+    export_video_enabled = bool(viz_settings.get("export_video_enabled", export_video_cfg.get("enabled", False)))
+    export_video_enabled_override = get_env_bool("LOGH_EXPORT_VIDEO_ENABLED")
+    if export_video_enabled_override is not None:
+        export_video_enabled = export_video_enabled_override
+    export_video_cfg["enabled"] = export_video_enabled
     raw_video_output_path = str(export_video_cfg.get("output_path", DEFAULT_VIDEO_EXPORT_DIR))
     resolved_video_output_path = resolve_timestamped_video_output_path(
         raw_video_output_path,
@@ -2375,22 +4533,53 @@ def main() -> None:
         plot_diagnostics_enabled=plot_diagnostics_enabled,
         movement_v3a_experiment=movement_v3a_experiment_effective,
         centroid_probe_scale=centroid_probe_scale_effective,
+        pre_tl_target_substrate=pre_tl_target_substrate,
+        symmetric_movement_sync_enabled=symmetric_movement_sync_enabled,
+        hostile_contact_impedance_mode=hostile_contact_impedance_mode,
+        hostile_contact_impedance_strength=hostile_contact_impedance_strength,
+        hostile_contact_impedance_radius_multiplier=hostile_contact_impedance_radius_multiplier,
+        hostile_contact_impedance_v2_radius_multiplier=hostile_contact_impedance_v2_radius_multiplier,
+        hostile_contact_impedance_v2_repulsion_max_disp_ratio=hostile_contact_impedance_v2_repulsion_max_disp_ratio,
+        hostile_contact_impedance_v2_forward_damping_strength=hostile_contact_impedance_v2_forward_damping_strength,
+        hostile_intent_unified_spacing_scale=hostile_intent_unified_spacing_scale,
+        hostile_intent_unified_spacing_strength=hostile_intent_unified_spacing_strength,
+        hostile_intent_occupancy_only_scale=hostile_intent_occupancy_only_scale,
+        hostile_intent_occupancy_only_strength=hostile_intent_occupancy_only_strength,
+        continuous_fr_shaping_enabled=continuous_fr_shaping_effective,
+        continuous_fr_shaping_mode=continuous_fr_shaping_mode_effective,
+        continuous_fr_shaping_a=continuous_fr_shaping_a,
+        continuous_fr_shaping_sigma=continuous_fr_shaping_sigma,
+        continuous_fr_shaping_p=continuous_fr_shaping_p,
+        continuous_fr_shaping_q=continuous_fr_shaping_q,
+        continuous_fr_shaping_beta=continuous_fr_shaping_beta,
+        continuous_fr_shaping_gamma=continuous_fr_shaping_gamma,
         odw_posture_bias_enabled=odw_posture_bias_enabled_effective,
         odw_posture_bias_k=odw_posture_bias_k_effective,
         odw_posture_bias_clip_delta=odw_posture_bias_clip_delta_effective,
         v3_connect_radius_multiplier=v3_connect_radius_multiplier_effective,
         v3_r_ref_radius_multiplier=v3_r_ref_radius_multiplier_effective,
+        post_elimination_extra_ticks=post_elimination_extra_ticks,
     )
     if not animate:
         position_frames = []
 
     max_time_steps_effective = int(final_state.tick)
     run_config_snapshot = {
-        "initial_units_per_side": int(fleet_size),
+        "initial_units_per_side": int(fleet_a_size) if fleet_a_size == fleet_b_size else int(max(fleet_a_size, fleet_b_size)),
+        "initial_units_a": int(fleet_a_size),
+        "initial_units_b": int(fleet_b_size),
+        "initial_fleet_a_aspect_ratio": fleet_a_aspect_ratio,
+        "initial_fleet_b_aspect_ratio": fleet_b_aspect_ratio,
+        "initial_fleet_a_origin_x": fleet_a_origin_x,
+        "initial_fleet_a_origin_y": fleet_a_origin_y,
+        "initial_fleet_b_origin_x": fleet_b_origin_x,
+        "initial_fleet_b_origin_y": fleet_b_origin_y,
+        "initial_fleet_a_facing_angle_deg": fleet_a_facing_angle_deg,
+        "initial_fleet_b_facing_angle_deg": fleet_b_facing_angle_deg,
         "test_mode": test_mode,
         "test_mode_label": test_mode_name,
         "metatype_settings_path": str(
-            get_run_control_setting(settings, "metatype_settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
+            get_runtime_metatype_setting(settings, "settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
         ),
         "random_seed_effective": int(effective_random_seed),
         "background_map_seed_effective": int(effective_background_map_seed),
@@ -2401,6 +4590,44 @@ def main() -> None:
         "movement_v3a_experiment_effective": movement_v3a_experiment_effective if movement_model_effective == "v3a" else "N/A",
         "centroid_probe_scale_effective": (
             centroid_probe_scale_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "pre_tl_target_substrate": pre_tl_target_substrate if movement_model_effective == "v3a" else "N/A",
+        "symmetric_movement_sync_enabled": (
+            symmetric_movement_sync_enabled if movement_model_effective == "v3a" else "N/A"
+        ),
+        "hostile_contact_impedance_mode": hostile_contact_impedance_mode,
+        "hostile_contact_impedance_strength": hostile_contact_impedance_strength,
+        "hostile_contact_impedance_radius_multiplier": hostile_contact_impedance_radius_multiplier,
+        "hostile_contact_impedance_v2_radius_multiplier": hostile_contact_impedance_v2_radius_multiplier,
+        "hostile_contact_impedance_v2_repulsion_max_disp_ratio": hostile_contact_impedance_v2_repulsion_max_disp_ratio,
+        "hostile_contact_impedance_v2_forward_damping_strength": hostile_contact_impedance_v2_forward_damping_strength,
+        "hostile_intent_unified_spacing_scale": hostile_intent_unified_spacing_scale,
+        "hostile_intent_unified_spacing_strength": hostile_intent_unified_spacing_strength,
+        "hostile_intent_occupancy_only_scale": hostile_intent_occupancy_only_scale,
+        "hostile_intent_occupancy_only_strength": hostile_intent_occupancy_only_strength,
+        "continuous_fr_shaping_enabled_effective": (
+            continuous_fr_shaping_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "continuous_fr_shaping_mode_effective": (
+            continuous_fr_shaping_mode_effective if movement_model_effective == "v3a" else "N/A"
+        ),
+        "continuous_fr_shaping_a_effective": (
+            continuous_fr_shaping_a if continuous_fr_shaping_effective else 0.0
+        ),
+        "continuous_fr_shaping_sigma_effective": (
+            continuous_fr_shaping_sigma if continuous_fr_shaping_effective else 0.0
+        ),
+        "continuous_fr_shaping_p_effective": (
+            continuous_fr_shaping_p if continuous_fr_shaping_effective else 0.0
+        ),
+        "continuous_fr_shaping_q_effective": (
+            continuous_fr_shaping_q if continuous_fr_shaping_effective else 0.0
+        ),
+        "continuous_fr_shaping_beta_effective": (
+            continuous_fr_shaping_beta if continuous_fr_shaping_effective else 0.0
+        ),
+        "continuous_fr_shaping_gamma_effective": (
+            continuous_fr_shaping_gamma if continuous_fr_shaping_effective else 0.0
         ),
         "odw_posture_bias_enabled_effective": (
             odw_posture_bias_enabled_effective if movement_model_effective == "v3a" else "N/A"
@@ -2444,7 +4671,22 @@ def main() -> None:
         "collapse_shadow_min_conditions": collapse_shadow_min_conditions,
     }
 
-    if export_battle_report:
+    remaining_units_a_final = int(alive_trajectory.get("A", [0])[-1]) if alive_trajectory.get("A") else 0
+    remaining_units_b_final = int(alive_trajectory.get("B", [0])[-1]) if alive_trajectory.get("B") else 0
+    winner_decided = ((remaining_units_a_final <= 0) != (remaining_units_b_final <= 0))
+    battle_report_export_allowed = bool(export_battle_report) and int(final_state.tick) >= 100 and winner_decided
+
+    if export_battle_report and not battle_report_export_allowed:
+        skip_reasons = []
+        if int(final_state.tick) < 100:
+            skip_reasons.append(f"ticks<{100} ({int(final_state.tick)})")
+        if not winner_decided:
+            skip_reasons.append(
+                f"winner_undecided (remaining A/B={remaining_units_a_final}/{remaining_units_b_final})"
+            )
+        print(f"[report] battle_report_skipped={'; '.join(skip_reasons)}")
+
+    if battle_report_export_allowed:
         report_markdown = build_battle_report_markdown(
             settings_source_path=str((base_dir / "test_run_v1_0.settings.json").as_posix()),
             display_language=display_language,
@@ -2528,6 +4770,10 @@ def main() -> None:
             "test_mode_label": TEST_MODE_LABELS.get(test_mode, "default"),
             "movement_model_effective": movement_model_effective,
             "cohesion_decision_source_effective": runtime_decision_source_effective,
+            "pre_tl_target_substrate": pre_tl_target_substrate,
+            "symmetric_movement_sync_enabled": symmetric_movement_sync_enabled,
+            "continuous_fr_shaping_effective": continuous_fr_shaping_effective,
+            "continuous_fr_shaping_mode_effective": continuous_fr_shaping_mode_effective,
             "odw_posture_bias_enabled_effective": odw_posture_bias_enabled_effective,
             "odw_posture_bias_k_effective": odw_posture_bias_k_effective,
             "odw_posture_bias_clip_delta_effective": odw_posture_bias_clip_delta_effective,

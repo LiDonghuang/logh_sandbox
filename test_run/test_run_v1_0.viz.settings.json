@@ -1,4 +1,16 @@
 {
+  "export_video_enabled": true,
+  "export_video": {
+    "enabled": true,
+    "full_plot": true,
+    "output_path": "analysis/exports/videos",
+    "fps": 5,
+    "codec": "libx264",
+    "bitrate_kbps": 2400,
+    "width_px": 1920,
+    "height_px": 1080,
+    "dpi": 110
+  },
   "_comment_figure_size": "figure_size: [width, height], matplotlib figure size in inches.",
   "figure_size": [
     20,
@@ -46,6 +58,8 @@
     "ring_radius": 1.0,
     "ring_color": "#ff0000"
   },
+  "_comment_post_elimination_extra_ticks": "post_elimination_extra_ticks: after a winner is decided in auto-run mode (max_time_steps<=0), keep capturing/animating this many extra ticks before stopping.",
+  "post_elimination_extra_ticks": 10,
   "_comment_shape_metric_clip": "shape_metric_clip: visualization-only clipping for AR/WedgeRatio to keep curves readable under late-tick singular peaks. shape_metric_alive_floor=0 keeps all ticks; set >0 only if you explicitly want low-alive masking.",
   "shape_metric_alive_floor": 0,
   "shape_metric_clip_enabled": true,
@@ -64,9 +78,10 @@
     1.0
   ],
 
-  "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
+  "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; start_delay_ticks=keep initial full 1x view before auto-zoom activates; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
   "auto_zoom": {
     "tick_interval": 5,
+    "start_delay_ticks": 20,
     "center_deadband": 0.5,
     "min_factor": 4.0,
     "offscreen_trigger_ratio": 0.1,
@@ -83,12 +98,12 @@
       0.5
     ],
     "angle_deg": 135.0,
-    "inner_size_ratio": 1.25,
-    "outer_inner_ratio": 2.0,
+    "inner_size_ratio": 1.35,
+    "outer_inner_ratio": 2.25,
     "axis_ratio": 0.25,
     "outer_color": "#d7deea",
     "inner_color": "#c7d3e5",
-    "outer_alpha": 0.2,
+    "outer_alpha": 0.15,
     "inner_alpha": 0.15
   },
 
@@ -117,20 +132,30 @@
     "secondary_min_separation_ratio": 0.7
   },
 
-  "_comment_background_orbits": "background_orbits: shared orbit controls for planet/belt system. orbit_radius_base_ratio=global orbit radius base (applies to both planets and belts); draw_extent_ratio_max=allowed draw domain expansion relative to arena (1.25 => [-0.25*arena,1.25*arena]); planet_orbit_gap_ratio_min=min shell gap for one-planet-per-orbit sampling; belt_planet_exclusion_gap_ratio=minimum shell distance between belt objects and planet shells; belt_belt_exclusion_scale=multiplier for belt-vs-belt shell spacing relative to belt_planet_exclusion_gap_ratio.",
+  "_comment_background_orbits": "background_orbits: shared orbit controls for the discrete orbit-pool planet/belt system. orbit_radius_base_ratio=global orbit radius base (applies to both planets and belts); orbit_count_range=sampled shared orbit slot count before auto-raising to fit requested objects; draw_orbits_enabled=draw visible orbit lines around the primary star for generated/shared orbit slots; orbit_line_color/alpha/width=orbit line style; draw_extent_ratio_max=allowed draw domain expansion relative to arena (1.25 => [-0.25*arena,1.25*arena]); eccentricity_near/eccentricity_far control how circular near orbits are and how elliptical far orbits become; planet_orbit_gap_ratio_min and belt_planet_exclusion_gap_ratio now act as soft shell-spacing hints during orbit-pool shaping; belt_belt_exclusion_scale remains a secondary soft-spacing modifier.",
   "background_orbits": {
     "orbit_radius_base_ratio": 0.7,
+    "orbit_count_range": [
+      8,
+      14
+    ],
+    "eccentricity_near": 0.0,
+    "eccentricity_far": 0.25,
+    "draw_orbits_enabled": true,
+    "orbit_line_color": "#778899",
+    "orbit_line_alpha": 0.25,
+    "orbit_line_width": 0.5,
     "draw_extent_ratio_max": 1.25,
-    "planet_orbit_gap_ratio_min": 0.01,
+    "planet_orbit_gap_ratio_min": 0.05,
     "belt_planet_exclusion_gap_ratio": 0.05,
     "belt_belt_exclusion_scale": 0.25
   },
 
-  "_comment_background_asteroids": "background_asteroids: count_range=[min,max] planet-like bodies; orbit_ratio_range controls relative orbit shell; angle_jitter_deg controls per-shell angular jitter; min_separation_ratio enforces spacing; small/mid zone ratios shape size-vs-distance relation; moons add random satellites for medium/large bodies; gas_giant_ring controls ring rendering.",
+  "_comment_background_asteroids": "background_asteroids: count_range=[min,max] planet-like bodies; orbit_ratio_range controls which shared orbit slots are eligible for planets; orbit_jitter_range now controls how much the discrete orbit slots are randomly expanded/compressed around an even spread; angle_jitter_deg controls per-orbit angular placement jitter; min_separation_ratio is retained as a soft local clearance term for visual placement; small/mid zone ratios shape size-vs-distance relation; moons add random satellites for medium/large bodies; gas_giant_ring controls ring rendering.",
   "background_asteroids": {
     "count_range": [
       2,
-      6
+      8
     ],
     "orbit_ratio_range": [
       0.25,
@@ -145,8 +170,8 @@
     "small_zone_max_ratio": 0.42,
     "mid_zone_max_ratio": 0.72,
     "radius_range": [
-      4.0,
-      8.0
+      3.0,
+      6.0
     ],
     "colors": [
       "#6f7f95",
@@ -177,14 +202,13 @@
     },
     "gas_giant_ring": {
       "enabled": true,
-      "trigger_percentile": 0.75,
       "diameter_scale_range": [
         1.5,
-        3.0
+        2.0
       ],
       "axis_ratio_range": [
-        0.5,
-        0.75
+        0.75,
+        1.0
       ],
       "angle_deg_range": [
         0.0,
@@ -195,7 +219,7 @@
     }
   },
 
-  "_comment_background_belts": "background_belts: cluster_count_range=number of belt objects (recommended 2~3); points_per_360_degree_range=[min,max] point density baseline for a full 360-degree arc (sampled per belt object); actual points per belt object are computed as sampled_points_per_360 * actual_arc_span_deg / 360; orbit_ratio_range controls mid/far orbital shells around primary star; thickness_ratio_range controls belt object thickness; arc_span_deg_range controls belt object arc size (larger => visually larger object); curve_strength_range controls small random inward/outward bow toward star; asteroid_radius_range=size; color/alpha=style. Cross-object exclusion now lives in background_orbits.",
+  "_comment_background_belts": "background_belts: cluster_count_range=number of belt objects (recommended 2~3); points_per_360_degree_range=[min,max] point density baseline for a full 360-degree arc (sampled per belt object); actual points per belt object are computed as sampled_points_per_360 * actual_arc_span_deg / 360; orbit_ratio_range controls which shared orbit slots are eligible for belts; thickness_ratio_range controls belt object thickness; arc_span_deg_range controls belt object arc size (larger => visually larger object); curve_strength_range controls small random inward/outward bow toward star; asteroid_radius_range=size; color/alpha=style. Cross-slot spacing hints live in background_orbits.",
   "background_belts": {
     "cluster_count_range": [
       2,
@@ -222,8 +246,8 @@
       0.1
     ],
     "asteroid_radius_range": [
-      0.1,
-      1.0
+      0.05,
+      0.5
     ],
     "color": "#595F68",
     "alpha": 0.4

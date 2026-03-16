@@ -51,6 +51,18 @@ No reinterpretation allowed.
 AGENTS must not duplicate detailed governance doctrine, reporting standards, or template-operational rules.
 Those belong in the authoritative canonical / governance / `_standards` documents.
 
+Baseline-replacement and experimental-candidate work must follow:
+
+- `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
+
+AGENTS should reference that protocol for:
+
+- experiment vs baseline-replacement distinction
+- paired comparison requirement
+- stable use of `test_mode`
+
+AGENTS must reference it without duplicating its detailed workflow.
+
 ---
 
 ## R-04 - No Silent Refactor
@@ -169,6 +181,42 @@ Codex must:
 Reason:
 
 - Ensure paths are directly usable in VS Code without browser redirection issues
+
+---
+
+## R-11 - Major Change Recording
+
+If a change is a `major item`, Codex must record it in a new independent document instead of rewriting historical `analysis`.
+
+`Major item` means a change that materially affects at least one of:
+
+- active mechanism availability
+- default experiment protocol or geometry baseline
+- runtime/observer interpretation boundary
+- public `test_run` configuration interface
+- formal retirement / freeze / deprecation status of a mechanism or parameter path
+
+Rules:
+
+- Do not back-edit old `analysis` to make it match later mechanism reality
+- Do not treat `LOCAL_CHANGES` as the only record for major items
+- Create or append a separate dated record document
+- State scope clearly:
+  - baseline/runtime
+  - test-only / harness-only
+  - protocol / policy only
+
+---
+
+## R-12 - DOE Batch Discipline
+
+For DOE or repeated experiment execution:
+
+- If total runs exceed `20`, execute in batches of at most `20`
+- The first batch may run in foreground
+- Remaining batches should run in background
+
+Detailed batch/checkpoint/reporting workflow belongs in the DOE `_standards`, not in AGENTS.
 
 ---
 

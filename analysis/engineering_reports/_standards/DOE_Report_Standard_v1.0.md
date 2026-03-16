@@ -98,6 +98,14 @@ For new mechanism-mapping and orthogonality studies, DOE design should prefer co
    isolation, anchor check, or interaction study.
 5. If asymmetrical fixed-opponent design is chosen, the summary should state why symmetric controlled design was not used.
 
+## 8B. Boundary Default Rule
+For DOE execution, `runtime.physical.boundary.enabled` should default to `false` unless boundary behavior itself is an explicit experimental factor.
+
+1. DOE defaults should use `boundary_enabled = false`.
+2. If boundary is enabled in a DOE, the objective and summary must state why.
+3. If boundary is itself a DOE factor, boundary-on and boundary-off results must be reported as a separate comparison axis.
+4. Boundary behavior must not be left implicitly on in mirrored or mechanism-isolation DOE runs.
+
 ## 9. Naming Convention
 DOE package should use a stable prefix in one folder.
 

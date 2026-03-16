@@ -311,16 +311,21 @@ def _render_header_section(
     *,
     fleet_a_data: dict,
     fleet_b_data: dict,
-    initial_units_per_side: int,
+    initial_units_a: int,
+    initial_units_b: int,
     report_date: str,
 ) -> list[str]:
+    if int(initial_units_a) == int(initial_units_b):
+        grid_descriptor = f"units_per_side={int(initial_units_a)}"
+    else:
+        grid_descriptor = f"units_A={int(initial_units_a)}, units_B={int(initial_units_b)}"
     return [
         "## 1. Header",
         "- Engine Version: v5.0-alpha5",
         (
             "- Grid Parameters: "
             f"A={fleet_a_data.get('name', 'A')} vs B={fleet_b_data.get('name', 'B')}, "
-            f"units_per_side={initial_units_per_side}"
+            f"{grid_descriptor}"
         ),
         "- Determinism Status: Not checked in this single-run export",
         f"- Date: {report_date}",
@@ -919,12 +924,14 @@ def _build_narrative_identity(
     fleet_b_en: str,
     initial_ships_a: int,
     initial_ships_b: int,
-    initial_units_per_side: int,
+    initial_units_a: int,
+    initial_units_b: int,
 ) -> dict[str, Any]:
     return {
         "seed_word": seed_word,
         "initial_ships": {"A": int(initial_ships_a), "B": int(initial_ships_b)},
-        "initial_units_per_side": int(initial_units_per_side),
+        "initial_units_per_side": int(initial_units_a) if int(initial_units_a) == int(initial_units_b) else int(max(initial_units_a, initial_units_b)),
+        "initial_units": {"A": int(initial_units_a), "B": int(initial_units_b)},
         "sides": {
             "A": {
                 "commander": {"ZH": commander_a_zh, "EN": commander_a_en},
@@ -1075,10 +1082,11 @@ def _build_outcome_slot(
     final_ships_b: int,
     final_units_a: int,
     final_units_b: int,
-    initial_units_per_side: int,
+    initial_units_a: int,
+    initial_units_b: int,
 ) -> dict[str, Any]:
-    def _victory_grade(side_units: int) -> str:
-        baseline = max(1, int(initial_units_per_side))
+    def _victory_grade(side_units: int, baseline_units: int) -> str:
+        baseline = max(1, int(baseline_units))
         ratio = float(side_units) / float(baseline)
         if ratio >= 0.30:
             return "大胜"
@@ -1086,8 +1094,8 @@ def _build_outcome_slot(
             return "胜利"
         return "惨胜"
 
-    def _victory_grade_en(side_units: int) -> str:
-        baseline = max(1, int(initial_units_per_side))
+    def _victory_grade_en(side_units: int, baseline_units: int) -> str:
+        baseline = max(1, int(baseline_units))
         ratio = float(side_units) / float(baseline)
         if ratio >= 0.30:
             return "decisive victory"
@@ -1103,8 +1111,8 @@ def _build_outcome_slot(
             loser_side="B",
             ships=final_ships_a,
             units=final_units_a,
-            victory_grade_zh=_victory_grade(final_units_a),
-            victory_grade_en=_victory_grade_en(final_units_a),
+            victory_grade_zh=_victory_grade(final_units_a, initial_units_a),
+            victory_grade_en=_victory_grade_en(final_units_a, initial_units_a),
         )
     if winner == "B":
         return _semantic_slot(
@@ -1114,8 +1122,8 @@ def _build_outcome_slot(
             loser_side="A",
             ships=final_ships_b,
             units=final_units_b,
-            victory_grade_zh=_victory_grade(final_units_b),
-            victory_grade_en=_victory_grade_en(final_units_b),
+            victory_grade_zh=_victory_grade(final_units_b, initial_units_b),
+            victory_grade_en=_victory_grade_en(final_units_b, initial_units_b),
         )
     return _semantic_slot(
         "outcome_draw",
@@ -1242,7 +1250,8 @@ def _render_narrative_headers(identity: dict[str, Any], language: str) -> list[s
             fleet_b=_fleet_name(identity, "B", language),
             initial_ships_a=identity["initial_ships"]["A"],
             initial_ships_b=identity["initial_ships"]["B"],
-            initial_units_per_side=identity["initial_units_per_side"],
+            initial_units_a=identity["initial_units"]["A"],
+            initial_units_b=identity["initial_units"]["B"],
         ),
     ]
 
@@ -1362,13 +1371,16 @@ def build_battle_report_markdown(
 
     names = _resolve_report_names(fleet_a_data, fleet_b_data)
 
+    initial_units_a = int(run_config_snapshot.get("initial_units_a", run_config_snapshot["initial_units_per_side"]))
+    initial_units_b = int(run_config_snapshot.get("initial_units_b", run_config_snapshot["initial_units_per_side"]))
+
     first_kill_tick = first_tick_true(
         ticks,
         lambda i: (
-            (alive_a[i - 1] < alive_a[i - 2]) if i > 1 else (alive_a[i - 1] < int(run_config_snapshot["initial_units_per_side"]))
+            (alive_a[i - 1] < alive_a[i - 2]) if i > 1 else (alive_a[i - 1] < initial_units_a)
         )
         or (
-            (alive_b[i - 1] < alive_b[i - 2]) if i > 1 else (alive_b[i - 1] < int(run_config_snapshot["initial_units_per_side"]))
+            (alive_b[i - 1] < alive_b[i - 2]) if i > 1 else (alive_b[i - 1] < initial_units_b)
         ),
     )
     size_diff = [float(a) - float(b) for a, b in zip(size_a, size_b)]
@@ -1431,7 +1443,6 @@ def build_battle_report_markdown(
     if collapse_first_tick_any is not None and isinstance(formation_cut_tick, int):
         collapse_aligned_with_cut = "Yes" if abs(int(collapse_first_tick_any) - int(formation_cut_tick)) <= 1 else "No"
 
-    initial_units_per_side = int(run_config_snapshot["initial_units_per_side"])
     identity = _build_narrative_identity(
         seed_word=seed_word_from_int(random_seed_effective, length=6),
         commander_a_zh=names["commander_a_zh"],
@@ -1444,7 +1455,8 @@ def build_battle_report_markdown(
         fleet_b_en=names["fleet_b_en"],
         initial_ships_a=to_ships_ceil(initial_hp_a),
         initial_ships_b=to_ships_ceil(initial_hp_b),
-        initial_units_per_side=initial_units_per_side,
+        initial_units_a=initial_units_a,
+        initial_units_b=initial_units_b,
     )
     structural_slots = _build_structural_readout_slots(
         precontact_geometry_summary,
@@ -1466,7 +1478,8 @@ def build_battle_report_markdown(
         final_ships_b=final_ships_b,
         final_units_a=final_units_a,
         final_units_b=final_units_b,
-        initial_units_per_side=initial_units_per_side,
+        initial_units_a=initial_units_a,
+        initial_units_b=initial_units_b,
     )
     narrative_model = _build_battle_narrative_semantics(
         identity=identity,
@@ -1488,7 +1501,8 @@ def build_battle_report_markdown(
         *_render_header_section(
             fleet_a_data=fleet_a_data,
             fleet_b_data=fleet_b_data,
-            initial_units_per_side=initial_units_per_side,
+            initial_units_a=initial_units_a,
+            initial_units_b=initial_units_b,
             report_date=datetime.now().strftime("%Y-%m-%d"),
         ),
         *_render_operational_timeline_section(

@@ -3,22 +3,23 @@
     "fleet": {
       "fleet_a_archetype_id": "Fleet A archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
       "fleet_b_archetype_id": "Fleet B archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
-      "initial_fleet_size": "Units per fleet.",
-      "initial_fleet_aspect_ratio": "Initial formation col/row ratio. Example: 2.0 means wider than tall."
+      "initial_fleet_a_size": "Initial unit count for fleet A.",
+      "initial_fleet_b_size": "Initial unit count for fleet B.",
+      "initial_fleet_a_aspect_ratio": "Fleet A formation col/row ratio. Example: 2.0 means wider than tall. Each row is centered by its actual row size, including the final partial row.",
+      "initial_fleet_b_aspect_ratio": "Fleet B formation col/row ratio. Example: 2.0 means wider than tall. Each row is centered by its actual row size, including the final partial row.",
+      "initial_fleet_a_origin_xy": "Preferred Fleet A initial formation center anchor as [x, y]. If present, overrides legacy initial_fleet_a_origin_x / initial_fleet_a_origin_y.",
+      "initial_fleet_b_origin_xy": "Preferred Fleet B initial formation center anchor as [x, y]. If present, overrides legacy initial_fleet_b_origin_x / initial_fleet_b_origin_y.",
+      "initial_fleet_a_origin_x": "Fleet A initial formation center anchor X coordinate.",
+      "initial_fleet_a_origin_y": "Fleet A initial formation center anchor Y coordinate.",
+      "initial_fleet_b_origin_x": "Fleet B initial formation center anchor X coordinate.",
+      "initial_fleet_b_origin_y": "Fleet B initial formation center anchor Y coordinate.",
+      "initial_fleet_a_facing_angle_deg": "Fleet A initial facing angle in degrees. 0=+X, 90=+Y.",
+      "initial_fleet_b_facing_angle_deg": "Fleet B initial facing angle in degrees. 0=+X, 90=+Y."
     },
     "visualization": {
+      "display_language": "Label language for plot names: 'EN' or 'ZH'.",
+      "animate": "Enable battlefield animation and frame capture.",
       "plot_profile": "Plot selector: auto | baseline | extended. auto follows the effective cohesion source: v3_test => v3 plots, v2 => v2 plots. Explicit extended is only valid when the effective source is v3_test.",
-      "export_video": {
-        "enabled": "Video export switch. false keeps current interactive-only behavior.",
-        "full_plot": "true=export full figure layout; false=export Battlefield-only square video (side=height_px).",
-        "output_path": "Output video root path or file prefix. Relative paths are resolved from workspace root; runtime appends timestamp automatically.",
-        "fps": "Export FPS for encoded video. Independent from simulation tick rate.",
-        "codec": "FFmpeg codec (recommended: libx264).",
-        "bitrate_kbps": "Target bitrate in kbps for encoded video.",
-        "width_px": "Output video width in pixels. Default 1920.",
-        "height_px": "Output video height in pixels. Default 1080.",
-        "dpi": "Render DPI used during animation export. width_px/dpi and height_px/dpi define figure size during export."
-      },
       "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
       "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
       "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
@@ -29,17 +30,27 @@
       "print_tick_summary": "Print per-tick summary logs to console."
     },
     "runtime": {
+      "metatype": {
+        "settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype).",
+        "random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to run_control.random_seed. If -1, use true randomness."
+      },
       "selectors": {
         "movement_model": "Runtime movement selector: baseline | v3a | v1. baseline follows current movement baseline; legacy v1 is remapped out of standard test runs.",
         "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
       },
       "movement": {
         "v3a": {
-          "experiment": "v3a selector: base | exp_precontact_centroid_probe.",
-          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe.",
-          "odw_posture_bias_enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. Default false.",
-          "odw_posture_bias_k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when odw_posture_bias_enabled=true.",
-          "odw_posture_bias_clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when odw_posture_bias_enabled=true."
+          "test_only": {
+            "experiment": "v3a selector: base | exp_precontact_centroid_probe.",
+            "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe.",
+            "pre_tl_target_substrate": "Pre-TL fleet-level enemy-reference substrate used by test_run target evaluation. Supported end-state set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster.",
+            "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
+            "odw_posture_bias": {
+              "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. Default false.",
+              "k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when enabled=true.",
+              "clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when enabled=true."
+            }
+          }
         }
       },
       "semantics": {
@@ -64,7 +75,33 @@
         },
         "contact_model": {
           "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
-          "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR."
+          "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR.",
+          "test_only": {
+            "hostile_contact_impedance": {
+              "active_mode": "Test-only hostile contact-impedance selector: off | repulsion_v1 | damping_v2 | hybrid_v2 | intent_unified_spacing_v1 | intent_occupancy_only_v1.",
+              "repulsion_v1": {
+                "strength": "Legacy v1 dimensionless repulsion gain. Recommended bounded reference range: 0.2..0.6.",
+                "radius_multiplier": "Legacy v1 hostile-contact radius as a multiplier of min_unit_spacing. Recommended bounded reference range: 1.25..2.0."
+              },
+              "damping_v2": {
+                "radius_multiplier": "v2 damping local influence radius as a multiplier of min_unit_spacing.",
+                "forward_damping_strength": "v2 damping fraction removable from positive forward displacement at full local hostile proximity."
+              },
+              "hybrid_v2": {
+                "radius_multiplier": "v2 hybrid local influence radius as a multiplier of min_unit_spacing.",
+                "repulsion_max_disp_ratio": "v2 hybrid-only per-tick max hostile-repulsion displacement as a ratio of min_unit_spacing.",
+                "forward_damping_strength": "v2 hybrid damping fraction removable from positive forward displacement at full local hostile proximity."
+              },
+              "intent_unified_spacing_v1": {
+                "scale": "Hostile occupancy / penetration-lookahead radius as a multiplier of min_unit_spacing for intent-layer penetration bias with unified final spacing resolution.",
+                "strength": "Continuous intent-layer penetration-bias strength applied before movement, with final spacing left to the unified baseline feasibility-resolution layer."
+              },
+              "intent_occupancy_only_v1": {
+                "scale": "Hostile occupancy radius as a multiplier of min_unit_spacing for the minimal intent-only occupancy-cost probe.",
+                "strength": "Continuous occupancy-cost strength applied at the movement intent layer without any additional local hostile correction."
+              }
+            }
+          }
         }
       },
       "observer": {
@@ -91,13 +128,9 @@
       }
     },
     "run_control": {
-      "display_language": "Label language for plot names: 'EN' or 'ZH'.",
       "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
       "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
-      "metatype_random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to random_seed. If -1, use true randomness.",
-      "animate": "Enable battlefield animation.",
-      "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted.",
-      "metatype_settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype)."
+      "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted."
     },
     "battlefield": {
       "arena_size": "Square battlefield size (0..arena_size).",
@@ -110,46 +143,61 @@
       "unit_speed": "Per-unit movement speed."
     }
   },
-  "fleet": {
-    "fleet_a_archetype_id": "grillparzer",
-    "fleet_b_archetype_id": "knappstein",
-    "initial_fleet_size": 100,
-    "initial_fleet_aspect_ratio": 2.0
+  "run_control": {
+    "max_time_steps": -1,
+    "random_seed": -1,
+    "test_mode": 2
   },
-  "visualization": {
-    "plot_profile": "auto",
-    "export_video": {
-      "enabled": true,
-      "full_plot": true,
-      "output_path": "analysis/exports/videos",
-      "fps": 5,
-      "codec": "libx264",
-      "bitrate_kbps": 2400,
-      "width_px": 1920,
-      "height_px": 1080,
-      "dpi": 110
-    },
-    "auto_zoom_2d": true,
-    "vector_display_mode": "composite",
-    "show_attack_target_lines": true,
-    "tick_plots_follow_battlefield_tick": false,
-    "plot_smoothing_ticks": 5,
-    "animation_play_speed": 1.0,
-    "animation_frame_interval_ms": 100,
-    "print_tick_summary": true
+  "battlefield": {
+    "arena_size": 200.0,
+    "background_map_seed": -1
+  },
+  "fleet": {
+    "fleet_a_archetype_id": "yang",
+    "fleet_b_archetype_id": "kircheis",
+    "initial_fleet_a_size": 80,
+    "initial_fleet_b_size": 100,
+    "initial_fleet_a_aspect_ratio": 2.0,
+    "initial_fleet_b_aspect_ratio": 2.0,
+    "initial_fleet_a_origin_xy": [
+      30.0,
+      30.0
+    ],
+    "initial_fleet_b_origin_xy": [
+      170.0,
+      170.0
+    ],
+    "initial_fleet_a_facing_angle_deg": 45.0,
+    "initial_fleet_b_facing_angle_deg": 225.0
+  },
+  "unit": {
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "unit_max_hit_points": 100.0,
+    "unit_speed": 1.0
   },
   "runtime": {
+    "metatype": {
+      "settings_path": "archetypes/metatype_settings.json",
+      "random_seed": -1
+    },
     "selectors": {
       "movement_model": "baseline",
       "cohesion_decision_source": "baseline"
     },
     "movement": {
       "v3a": {
-        "experiment": "exp_precontact_centroid_probe",
-        "centroid_probe_scale": 0.5,
-        "odw_posture_bias_enabled": true,
-        "odw_posture_bias_k": 0.5,
-        "odw_posture_bias_clip_delta": 0.4
+        "test_only": {
+          "experiment": "exp_precontact_centroid_probe",
+          "centroid_probe_scale": 0.5,
+          "pre_tl_target_substrate": "nearest5_centroid",
+          "symmetric_movement_sync_enabled": true,
+          "odw_posture_bias": {
+            "enabled": true,
+            "k": 0.5,
+            "clip_delta": 0.4
+          }
+        }
       }
     },
     "semantics": {
@@ -160,7 +208,7 @@
     },
     "physical": {
       "boundary": {
-        "enabled": true,
+        "enabled": false,
         "soft_strength": 0.1,
         "hard_enabled": false
       },
@@ -174,7 +222,33 @@
       },
       "contact_model": {
         "contact_hysteresis_h": 0.1,
-        "fsr_strength": 0.1
+          "fsr_strength": 0.1,
+          "test_only": {
+            "hostile_contact_impedance": {
+            "active_mode": "intent_unified_spacing_v1",
+            "repulsion_v1": {
+              "strength": 0.35,
+              "radius_multiplier": 1.5
+            },
+            "damping_v2": {
+              "radius_multiplier": 1.5,
+              "forward_damping_strength": 0.5
+            },
+            "hybrid_v2": {
+              "radius_multiplier": 1.25,
+              "repulsion_max_disp_ratio": 0.2,
+              "forward_damping_strength": 0.35
+            },
+            "intent_unified_spacing_v1": {
+              "scale": 1.5,
+              "strength": 1.0
+            },
+            "intent_occupancy_only_v1": {
+              "scale": 1.5,
+              "strength": 0.75
+            }
+          }
+        }
       }
     },
     "observer": {
@@ -200,23 +274,17 @@
       }
     }
   },
-  "run_control": {
+  "visualization": {
     "display_language": "ZH",
-    "max_time_steps": -1,
-    "random_seed": -1,
-    "metatype_random_seed": -1,
     "animate": true,
-    "test_mode": 2,
-    "metatype_settings_path": "archetypes/metatype_settings.json"
-  },
-  "battlefield": {
-    "arena_size": 200.0,
-    "background_map_seed": 897304369
-  },
-  "unit": {
-    "attack_range": 5.0,
-    "damage_per_tick": 1.0,
-    "unit_max_hit_points": 100.0,
-    "unit_speed": 1.0
+    "plot_profile": "auto",
+    "auto_zoom_2d": true,
+    "vector_display_mode": "composite",
+    "show_attack_target_lines": true,
+    "tick_plots_follow_battlefield_tick": false,
+    "plot_smoothing_ticks": 5,
+    "animation_play_speed": 1.0,
+    "animation_frame_interval_ms": 100,
+    "print_tick_summary": true
   }
 }

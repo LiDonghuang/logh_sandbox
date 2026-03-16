@@ -22,7 +22,7 @@ BRF_NARRATIVE_MESSAGES: dict[str, dict[str, str]] = {
     "ZH": {
         "title": "{seed_word} 星域会战",
         "header_matchup": "{commander_a}(A) 对 {commander_b}(B)",
-        "header_initial_forces": "{fleet_a}舰队: {initial_ships_a}艘 (A: {initial_units_per_side} units); {fleet_b}舰队: {initial_ships_b}艘 (B: {initial_units_per_side} units)",
+        "header_initial_forces": "{fleet_a}舰队: {initial_ships_a}艘 (A: {initial_units_a} units); {fleet_b}舰队: {initial_ships_b}艘 (B: {initial_units_b} units)",
         "body_no_effective_fire": "双方虽有对峙与机动，终未形成足以决定战局的有效交火。",
         "event_first_contact": "双方于标准时{time} (t={tick}) 首度接火，会战由此揭幕。",
         "event_advantage_inflection": "{phase_prefix}，战线于标准时{time} (t={tick}) 出现优势拐点，{advantaged_fleet}自此渐次夺取主动。",
@@ -51,7 +51,7 @@ BRF_NARRATIVE_MESSAGES: dict[str, dict[str, str]] = {
     "EN": {
         "title": "{seed_word} Starfield Engagement",
         "header_matchup": "{commander_a}(A) vs {commander_b}(B)",
-        "header_initial_forces": "{fleet_a} Fleet: {initial_ships_a} ships (A: {initial_units_per_side} units); {fleet_b} Fleet: {initial_ships_b} ships (B: {initial_units_per_side} units)",
+        "header_initial_forces": "{fleet_a} Fleet: {initial_ships_a} ships (A: {initial_units_a} units); {fleet_b} Fleet: {initial_ships_b} ships (B: {initial_units_b} units)",
         "body_no_effective_fire": "Though the fleets maneuvered and stood opposed, no effective exchange of fire sufficient to decide the battle was achieved.",
         "event_first_contact": "The fleets made first contact at ST {time} (t={tick}), and the engagement was thereby opened.",
         "event_advantage_inflection": "{phase_prefix}, the line showed an advantage inflection at ST {time} (t={tick}), after which {advantaged_force} gradually drew the initiative into its own hands.",

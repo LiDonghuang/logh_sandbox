@@ -1,0 +1,139 @@
+{
+  "_snapshot_note": "Saved diagnostic setting for low-level symmetry and contact-chain validation. Pair with test_run/test_run_v1_0_neutral_mirrored_close_contact.personality_snapshot.json to preserve the all-5 archetype state used when this snapshot was created.",
+  "run_control": {
+    "max_time_steps": -1,
+    "random_seed": -1,
+    "test_mode": 2
+  },
+  "battlefield": {
+    "arena_size": 200.0,
+    "background_map_seed": -1
+  },
+  "fleet": {
+    "fleet_a_archetype_id": "grillparzer",
+    "fleet_b_archetype_id": "knappstein",
+    "initial_fleet_a_size": 100,
+    "initial_fleet_b_size": 100,
+    "initial_fleet_a_aspect_ratio": 2.0,
+    "initial_fleet_b_aspect_ratio": 2.0,
+    "initial_fleet_a_origin_xy": [
+      80.0,
+      80.0
+    ],
+    "initial_fleet_b_origin_xy": [
+      120.0,
+      120.0
+    ],
+    "initial_fleet_a_facing_angle_deg": 45.0,
+    "initial_fleet_b_facing_angle_deg": 225.0
+  },
+  "unit": {
+    "attack_range": 5.0,
+    "damage_per_tick": 1.0,
+    "unit_max_hit_points": 100.0,
+    "unit_speed": 1.0
+  },
+  "runtime": {
+    "metatype": {
+      "settings_path": "archetypes/metatype_settings.json",
+      "random_seed": -1
+    },
+    "selectors": {
+      "movement_model": "baseline",
+      "cohesion_decision_source": "baseline"
+    },
+    "movement": {
+      "v3a": {
+        "test_only": {
+          "experiment": "exp_precontact_centroid_probe",
+          "centroid_probe_scale": 0.5,
+          "pre_tl_target_substrate": "nearest5_centroid",
+          "symmetric_movement_sync_enabled": true,
+          "odw_posture_bias": {
+            "enabled": true,
+            "k": 0.5,
+            "clip_delta": 0.4
+          }
+        }
+      }
+    },
+    "semantics": {
+      "collapse_signal": {
+        "v3_connect_radius_multiplier": 1.1,
+        "v3_r_ref_radius_multiplier": 1.0
+      }
+    },
+    "physical": {
+      "boundary": {
+        "enabled": true,
+        "soft_strength": 0.1,
+        "hard_enabled": false
+      },
+      "movement_low_level": {
+        "min_unit_spacing": 2.0,
+        "alpha_sep": 0.6
+      },
+      "fire_control": {
+        "fire_quality_alpha": 0.1,
+        "alpha_safe_max": 0.15
+      },
+      "contact_model": {
+        "contact_hysteresis_h": 0.1,
+        "fsr_strength": 0.1,
+        "test_only": {
+          "hostile_contact_impedance": {
+            "active_mode": "off",
+            "repulsion_v1": {
+              "strength": 0.35,
+              "radius_multiplier": 1.5
+            },
+            "damping_v2": {
+              "radius_multiplier": 1.5,
+              "forward_damping_strength": 0.5
+            },
+            "hybrid_v2": {
+              "radius_multiplier": 1.25,
+              "repulsion_max_disp_ratio": 0.2,
+              "forward_damping_strength": 0.35
+            }
+          }
+        }
+      }
+    },
+    "observer": {
+      "event_bridge": {
+        "theta_split": 1.7,
+        "theta_env": 0.5,
+        "sustain_ticks": 20
+      },
+      "collapse_shadow": {
+        "theta_conn_default": 0.1,
+        "theta_coh_default": 0.98,
+        "theta_force_default": 0.95,
+        "theta_attr_default": 0.1,
+        "attrition_window": 20,
+        "sustain_ticks": 10,
+        "min_conditions": 2
+      },
+      "report_inference": {
+        "strategic_inflection_sustain_ticks": 12,
+        "tactical_swing_sustain_ticks": 8,
+        "tactical_swing_min_amplitude": 2.0,
+        "tactical_swing_min_gap_ticks": 10
+      }
+    }
+  },
+  "visualization": {
+    "display_language": "ZH",
+    "animate": true,
+    "plot_profile": "auto",
+    "auto_zoom_2d": true,
+    "vector_display_mode": "composite",
+    "show_attack_target_lines": true,
+    "tick_plots_follow_battlefield_tick": false,
+    "plot_smoothing_ticks": 5,
+    "animation_play_speed": 1.0,
+    "animation_frame_interval_ms": 100,
+    "print_tick_summary": true
+  }
+}

@@ -2,26 +2,28 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "test_run_v1.0 (Terminal)",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      },
-      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
-    },
-    {
-      "name": "test_run_v1.0 (InternalConsole Fallback)",
+      "name": "test_run_v1.0",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}"
+        "PYTHONPATH": "${workspaceFolder}",
+        "LOGH_EXPORT_VIDEO_ENABLED": "0"
+      },
+      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
+    },
+    {
+      "name": "test_run_v1.0 (Export Video)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "LOGH_EXPORT_VIDEO_ENABLED": "1"
       },
       "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
     }
