@@ -181,6 +181,33 @@ If remote push fails, Codex must report exact failure and stop.
 
 ---
 
+## R-10 - Subtraction-First Cleanup Rule
+
+For cleanup / simplification work, Codex must prefer:
+
+- deletion over additive indirection
+- direct shrinkage of the human-facing entrypoint over redistribution of weight
+- interface narrowing over parameter shuttling
+- quiet default stdout over explanatory narration
+- explicit failure over tolerant launcher-side continuation
+
+The following do **not** count as simplification unless explicitly requested and clearly justified:
+
+- adding single-use passthrough wrappers
+- adding builder/helper layers whose main role is parameter transfer
+- moving logic into more helper functions without materially shrinking the caller
+- converting direct code into orchestration scaffolding while total reading burden stays flat or increases
+- adding compatibility / fallback branches during a cleanup turn
+
+When claiming simplification, Codex must be able to state concretely:
+
+- what visibly became smaller
+- what interface became narrower
+- what default stdout became quieter
+- what fallback / indirection was actually removed
+
+---
+
 ## R-11 - Major Change Recording
 
 If a change is a `major item`, Codex must record it in a new independent document instead of rewriting historical `analysis`.
@@ -233,6 +260,51 @@ Update scope for these two files is strictly high-level and path-oriented:
 Do not place governance doctrine details, report templates, or execution standards into these files.
 
 If no meaningful repo-structure/mechanism change happened in the scoped push, Codex must explicitly confirm they were reviewed and no update was needed.
+
+---
+
+## R-14 - Local Rule Precedence
+
+If a subdirectory contains its own `AGENTS.md`, Codex must obey both:
+
+- the root `AGENTS.md`
+- the local `AGENTS.md`
+
+Within that local directory, the more specific local rule takes precedence if there is no direct conflict with frozen-layer or governance protections.
+
+Local rules are intended to:
+
+- tighten scope
+- define directory identity
+- prevent recurring local failure modes
+
+They must not override frozen-layer protection, canonical authority, or governance boundaries.
+
+---
+
+## R-15 - Work Mode Discipline
+
+For structural cleanup or architecture-adjacent tasks, Codex must default to the following sequence:
+
+1. Inspect
+2. Plan
+3. Small Edit
+4. Review
+
+Codex must not jump directly from vague cleanup intent to broad autonomous rewrite.
+
+During cleanup work, Codex should prefer:
+
+- small explicit edits
+- visible subtraction
+- local reasoning
+- scoped validation
+
+over:
+
+- broad speculative restructuring
+- pattern-driven helper proliferation
+- large unsupervised multi-file rewrites
 
 ---
 

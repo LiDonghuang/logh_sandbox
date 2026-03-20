@@ -23,10 +23,28 @@ from runtime.engine_skeleton import EngineTickSkeleton
 # Core keeps only the settings helpers it uses directly. Launcher/report/
 # experiment wiring now imports its own modules explicitly.
 from test_run.settings_accessor import (
+    get_battlefield_setting,
+    get_collapse_shadow_setting,
+    get_event_bridge_setting,
     get_fleet_setting,
+    get_run_control_setting,
+    get_runtime_setting,
     get_runtime_metatype_setting,
+    get_unit_setting,
     load_json_file,
     resolve_optional_json_path,
+)
+from test_run.battle_report_builder import compute_bridge_event_ticks
+from test_run.test_run_experiments import (
+    SimulationBoundaryConfig,
+    SimulationContactConfig,
+    SimulationExecutionConfig,
+    SimulationMovementConfig,
+    SimulationObserverConfig,
+    SimulationRuntimeConfig,
+    build_initial_state,
+    compute_formation_snapshot_metrics,
+    run_simulation,
 )
 
 

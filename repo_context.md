@@ -18,6 +18,26 @@ Authority: Reference only, not canonical semantics authority
 
 Current emphasis is not personality expansion.
 
+## Key Entry Documents
+
+- `README.md`
+  - top-level project identity, repo layout, baseline/runtime status, and practical entry guidance
+- `AGENTS.md`
+  - execution contract for scoped AI assistance, frozen layers, TS migration, no-silent-fallback, and commit discipline
+
+## Key Governance / Architecture Documents
+
+- `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
+  - governs experiment vs baseline-replacement boundary and replacement recording discipline
+- `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md`
+  - phase activation / expansion governance framework and gate structure
+- `docs/architecture/Canonical_Authority_Alignment_v1.2.md`
+  - engineering reference priority and canonical authority alignment guidance
+- `docs/architecture/LOGH_Analytical_Stack_Architecture_v1.0.md`
+  - observer/report analytical stack layers and L0-L3 boundary map
+- `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
+  - top-level phase ordering and current Phase A positioning
+
 ## Runtime Core Paths
 
 - `runtime/runtime_v0_1.py`
@@ -33,6 +53,8 @@ Current emphasis is not personality expansion.
   - launcher / orchestration entry
 - `test_run/test_run_experiments.py`
   - simulation execution and telemetry collection
+- `test_run/test_run_anchor_regression.py`
+  - fixed routine 3-run anchor regression entry
 - `test_run/settings_accessor.py`
   - layered settings loading/access
 

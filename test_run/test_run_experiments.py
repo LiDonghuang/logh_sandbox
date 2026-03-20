@@ -26,12 +26,29 @@ CONTINUOUS_FR_SHAPING_OFF = "off"
 BRIDGE_EPSILON = 1e-9
 
 
+# Grouped public harness configs stay semantic, but plain mappings keep the
+# launcher surface lighter than the short-lived dataclass layer.
+SimulationExecutionConfig = dict
+SimulationMovementConfig = dict
+SimulationContactConfig = dict
+SimulationBoundaryConfig = dict
+SimulationRuntimeConfig = dict
+SimulationObserverConfig = dict
+
+
 def _clamp01(value: float) -> float:
     if value < 0.0:
         return 0.0
     if value > 1.0:
         return 1.0
     return value
+
+
+def _require_mapping(cfg: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    section = cfg.get(key)
+    if not isinstance(section, Mapping):
+        raise TypeError(f"run_simulation requires '{key}' to be a mapping, got {type(section).__name__}")
+    return section
 
 def _compute_hostile_intermix_metrics(
     state: BattleState,
@@ -731,120 +748,117 @@ def build_initial_state(
 
 def run_simulation(
     initial_state: BattleState,
-    steps: int,
-    capture_positions: bool,
-    observer_enabled: bool,
-    runtime_decision_source: str,
-    movement_model: str,
-    bridge_theta_split: float,
-    bridge_theta_env: float,
-    bridge_sustain_ticks: int,
-    collapse_shadow_theta_conn_default: float,
-    collapse_shadow_theta_coh_default: float,
-    collapse_shadow_theta_force_default: float,
-    collapse_shadow_theta_attr_default: float,
-    collapse_shadow_attrition_window: int,
-    collapse_shadow_sustain_ticks: int,
-    collapse_shadow_min_conditions: int,
-    frame_stride: int,
-    attack_range: float,
-    damage_per_tick: float,
-    separation_radius: float,
-    fire_quality_alpha: float,
-    contact_hysteresis_h: float,
-    ch_enabled: bool,
-    fsr_enabled: bool,
-    fsr_strength: float,
-    boundary_enabled: bool,
-    boundary_hard_enabled: bool,
-    include_target_lines: bool,
-    print_tick_summary: bool,
-    plot_diagnostics_enabled: bool,
-    boundary_soft_strength: float = 1.0,
-    alpha_sep: float = 0.6,
-    movement_v3a_experiment: str = "base",
-    centroid_probe_scale: float = 1.0,
-    pre_tl_target_substrate: str = PRE_TL_TARGET_SUBSTRATE_DEFAULT,
-    odw_posture_bias_enabled: bool = False,
-    odw_posture_bias_k: float = 0.3,
-    odw_posture_bias_clip_delta: float = 0.2,
-    symmetric_movement_sync_enabled: bool = True,
-    hostile_contact_impedance_mode: str = HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
-    hostile_contact_impedance_v2_radius_multiplier: float = HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
-    hostile_contact_impedance_v2_repulsion_max_disp_ratio: float = HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
-    hostile_contact_impedance_v2_forward_damping_strength: float = HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
-    hostile_intent_unified_spacing_scale: float = HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
-    hostile_intent_unified_spacing_strength: float = HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
-    continuous_fr_shaping_enabled: bool = False,
-    continuous_fr_shaping_mode: str = CONTINUOUS_FR_SHAPING_OFF,
-    continuous_fr_shaping_a: float = 0.0,
-    continuous_fr_shaping_sigma: float = 0.15,
-    continuous_fr_shaping_p: float = 1.0,
-    continuous_fr_shaping_q: float = 1.0,
-    continuous_fr_shaping_beta: float = 0.0,
-    continuous_fr_shaping_gamma: float = 0.0,
-    v2_connect_radius_multiplier: float = 1.0,
-    v3_connect_radius_multiplier: float = 1.0,
-    v3_r_ref_radius_multiplier: float = 1.0,
-    runtime_diag_enabled: bool = False,
-    post_elimination_extra_ticks: int = 10,
-    engine_cls: Any | None = None,
+    *,
+    engine_cls: Any | None,
+    execution_cfg: Mapping[str, Any],
+    runtime_cfg: Mapping[str, Any],
+    observer_cfg: Mapping[str, Any],
 ):
     if engine_cls is None:
         raise ValueError("run_simulation requires an explicit engine_cls")
 
-    post_elimination_extra_ticks = max(0, int(post_elimination_extra_ticks))
+    movement_cfg = _require_mapping(runtime_cfg, "movement")
+    contact_cfg = _require_mapping(runtime_cfg, "contact")
+    boundary_cfg = _require_mapping(runtime_cfg, "boundary")
+    bridge_cfg = _require_mapping(observer_cfg, "bridge")
+    collapse_shadow_cfg = _require_mapping(observer_cfg, "collapse_shadow")
+    continuous_fr_shaping_cfg = movement_cfg.get("continuous_fr_shaping", {})
+    if not isinstance(continuous_fr_shaping_cfg, Mapping):
+        continuous_fr_shaping_cfg = {}
+    odw_posture_bias_cfg = movement_cfg.get("odw_posture_bias", {})
+    if not isinstance(odw_posture_bias_cfg, Mapping):
+        odw_posture_bias_cfg = {}
+    hybrid_v2_cfg = contact_cfg.get("hybrid_v2", {})
+    if not isinstance(hybrid_v2_cfg, Mapping):
+        hybrid_v2_cfg = {}
+    intent_unified_spacing_cfg = contact_cfg.get("intent_unified_spacing_v1", {})
+    if not isinstance(intent_unified_spacing_cfg, Mapping):
+        intent_unified_spacing_cfg = {}
+    steps = int(execution_cfg["steps"])
+    capture_positions = bool(execution_cfg["capture_positions"])
+    frame_stride = int(execution_cfg["frame_stride"])
+    include_target_lines = bool(execution_cfg["include_target_lines"])
+    print_tick_summary = bool(execution_cfg["print_tick_summary"])
+    observer_enabled = bool(observer_cfg["enabled"])
+    post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
     engine = engine_cls(
-        attack_range=attack_range,
-        damage_per_tick=damage_per_tick,
-        separation_radius=separation_radius,
+        attack_range=float(contact_cfg["attack_range"]),
+        damage_per_tick=float(contact_cfg["damage_per_tick"]),
+        separation_radius=float(contact_cfg["separation_radius"]),
     )
-    engine.COHESION_DECISION_SOURCE = str(runtime_decision_source).strip().lower() or "v2"
-    engine.MOVEMENT_MODEL = str(movement_model).strip().lower() or "v3a"
-    engine.MOVEMENT_V3A_EXPERIMENT = str(movement_v3a_experiment).strip().lower() or "base"
-    engine.CENTROID_PROBE_SCALE = float(centroid_probe_scale)
-    engine.PRE_TL_TARGET_SUBSTRATE = str(pre_tl_target_substrate).strip().lower() or PRE_TL_TARGET_SUBSTRATE_DEFAULT
-    engine.ODW_POSTURE_BIAS_ENABLED = bool(odw_posture_bias_enabled)
-    engine.ODW_POSTURE_BIAS_K = max(0.0, float(odw_posture_bias_k))
-    engine.ODW_POSTURE_BIAS_CLIP_DELTA = max(0.0, float(odw_posture_bias_clip_delta))
-    engine.SYMMETRIC_MOVEMENT_SYNC_ENABLED = bool(symmetric_movement_sync_enabled)
-    engine.HOSTILE_CONTACT_IMPEDANCE_MODE = (
-        str(hostile_contact_impedance_mode).strip().lower() or HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT
-    )
-    engine.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER = max(
-        1e-6, float(hostile_contact_impedance_v2_radius_multiplier)
-    )
-    engine.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO = max(
-        0.0, float(hostile_contact_impedance_v2_repulsion_max_disp_ratio)
-    )
-    engine.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH = _clamp01(
-        float(hostile_contact_impedance_v2_forward_damping_strength)
-    )
-    engine.HOSTILE_INTENT_UNIFIED_SPACING_SCALE = max(1e-6, float(hostile_intent_unified_spacing_scale))
-    engine.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH = _clamp01(float(hostile_intent_unified_spacing_strength))
-    engine.CONTINUOUS_FR_SHAPING_ENABLED = bool(continuous_fr_shaping_enabled)
-    engine.CONTINUOUS_FR_SHAPING_MODE = str(continuous_fr_shaping_mode).strip().lower() or CONTINUOUS_FR_SHAPING_OFF
-    engine.CONTINUOUS_FR_SHAPING_A = max(0.0, float(continuous_fr_shaping_a))
-    engine.CONTINUOUS_FR_SHAPING_SIGMA = max(1e-6, float(continuous_fr_shaping_sigma))
-    engine.CONTINUOUS_FR_SHAPING_P = max(0.0, float(continuous_fr_shaping_p))
-    engine.CONTINUOUS_FR_SHAPING_Q = max(0.0, float(continuous_fr_shaping_q))
-    engine.CONTINUOUS_FR_SHAPING_BETA = max(0.0, float(continuous_fr_shaping_beta))
-    engine.CONTINUOUS_FR_SHAPING_GAMMA = max(0.0, float(continuous_fr_shaping_gamma))
-    engine.V2_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v2_connect_radius_multiplier))
-    engine.V3_CONNECT_RADIUS_MULTIPLIER = max(1e-12, float(v3_connect_radius_multiplier))
-    engine.V3_R_REF_RADIUS_MULTIPLIER = max(1e-12, float(v3_r_ref_radius_multiplier))
-    engine.fire_quality_alpha = float(fire_quality_alpha)
-    engine.contact_hysteresis_h = float(contact_hysteresis_h)
-    engine.CH_ENABLED = bool(ch_enabled)
-    engine.FSR_ENABLED = bool(fsr_enabled)
-    engine.fsr_strength = float(fsr_strength)
-    engine.BOUNDARY_SOFT_ENABLED = bool(boundary_enabled)
-    engine.BOUNDARY_HARD_ENABLED = bool(boundary_enabled) and bool(boundary_hard_enabled)
-    engine.boundary_soft_strength = max(0.0, float(boundary_soft_strength))
-    engine.alpha_sep = max(0.0, float(alpha_sep))
+    for attr, value in (
+        ("COHESION_DECISION_SOURCE", str(runtime_cfg["decision_source"]).strip().lower() or "v2"),
+        ("MOVEMENT_MODEL", str(runtime_cfg["movement_model"]).strip().lower() or "v3a"),
+        ("MOVEMENT_V3A_EXPERIMENT", str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"),
+        ("CENTROID_PROBE_SCALE", float(movement_cfg.get("centroid_probe_scale_effective", 1.0))),
+        (
+            "PRE_TL_TARGET_SUBSTRATE",
+            str(movement_cfg.get("pre_tl_target_substrate", PRE_TL_TARGET_SUBSTRATE_DEFAULT)).strip().lower()
+            or PRE_TL_TARGET_SUBSTRATE_DEFAULT,
+        ),
+        ("ODW_POSTURE_BIAS_ENABLED", bool(odw_posture_bias_cfg.get("enabled_effective", False))),
+        ("ODW_POSTURE_BIAS_K", max(0.0, float(odw_posture_bias_cfg.get("k_effective", 0.0)))),
+        ("ODW_POSTURE_BIAS_CLIP_DELTA", max(0.0, float(odw_posture_bias_cfg.get("clip_delta_effective", 0.2)))),
+        ("SYMMETRIC_MOVEMENT_SYNC_ENABLED", bool(movement_cfg.get("symmetric_movement_sync_enabled", True))),
+        (
+            "HOSTILE_CONTACT_IMPEDANCE_MODE",
+            str(contact_cfg.get("hostile_contact_impedance_mode", HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT)).strip().lower()
+            or HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
+        ),
+        (
+            "HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER",
+            max(1e-6, float(hybrid_v2_cfg.get("radius_multiplier", HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT))),
+        ),
+        (
+            "HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO",
+            max(
+                0.0,
+                float(hybrid_v2_cfg.get("repulsion_max_disp_ratio", HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT)),
+            ),
+        ),
+        (
+            "HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH",
+            _clamp01(
+                float(hybrid_v2_cfg.get("forward_damping_strength", HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT))
+            ),
+        ),
+        (
+            "HOSTILE_INTENT_UNIFIED_SPACING_SCALE",
+            max(1e-6, float(intent_unified_spacing_cfg.get("scale", HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT))),
+        ),
+        (
+            "HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH",
+            _clamp01(float(intent_unified_spacing_cfg.get("strength", HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT))),
+        ),
+        ("CONTINUOUS_FR_SHAPING_ENABLED", bool(continuous_fr_shaping_cfg.get("effective", False))),
+        (
+            "CONTINUOUS_FR_SHAPING_MODE",
+            str(continuous_fr_shaping_cfg.get("mode_effective", CONTINUOUS_FR_SHAPING_OFF)).strip().lower()
+            or CONTINUOUS_FR_SHAPING_OFF,
+        ),
+        ("CONTINUOUS_FR_SHAPING_A", max(0.0, float(continuous_fr_shaping_cfg.get("a", 0.0)))),
+        ("CONTINUOUS_FR_SHAPING_SIGMA", max(1e-6, float(continuous_fr_shaping_cfg.get("sigma", 0.15)))),
+        ("CONTINUOUS_FR_SHAPING_P", max(0.0, float(continuous_fr_shaping_cfg.get("p", 1.0)))),
+        ("CONTINUOUS_FR_SHAPING_Q", max(0.0, float(continuous_fr_shaping_cfg.get("q", 1.0)))),
+        ("CONTINUOUS_FR_SHAPING_BETA", max(0.0, float(continuous_fr_shaping_cfg.get("beta", 0.0)))),
+        ("CONTINUOUS_FR_SHAPING_GAMMA", max(0.0, float(continuous_fr_shaping_cfg.get("gamma", 0.0)))),
+        ("V2_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v2_connect_radius_multiplier", 1.0)))),
+        ("V3_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_connect_radius_multiplier_effective", 1.0)))),
+        ("V3_R_REF_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_r_ref_radius_multiplier_effective", 1.0)))),
+        ("fire_quality_alpha", float(contact_cfg["fire_quality_alpha"])),
+        ("contact_hysteresis_h", float(contact_cfg["contact_hysteresis_h"])),
+        ("CH_ENABLED", bool(contact_cfg["ch_enabled"])),
+        ("FSR_ENABLED", bool(contact_cfg["fsr_enabled"])),
+        ("fsr_strength", float(contact_cfg["fsr_strength"])),
+        ("BOUNDARY_SOFT_ENABLED", bool(boundary_cfg["enabled"])),
+        ("BOUNDARY_HARD_ENABLED", bool(boundary_cfg["enabled"]) and bool(boundary_cfg["hard_enabled"])),
+        ("boundary_soft_strength", max(0.0, float(boundary_cfg["soft_strength"]))),
+        ("alpha_sep", max(0.0, float(contact_cfg["alpha_sep"]))),
+    ):
+        setattr(engine, attr, value)
     # Plot/runtime diagnostics can be enabled without observer/export pipeline.
-    diagnostics_enabled = bool(observer_enabled) or bool(plot_diagnostics_enabled)
-    observer_active = bool(diagnostics_enabled) and (bool(capture_positions) or bool(runtime_diag_enabled))
+    diagnostics_enabled = bool(observer_enabled) or bool(execution_cfg["plot_diagnostics_enabled"])
+    observer_active = bool(diagnostics_enabled) and (bool(capture_positions) or bool(observer_cfg.get("runtime_diag_enabled", False)))
     # Visualization debug panel consumes these runtime diagnostics per frame.
     engine.debug_fsr_diag_enabled = observer_active
     engine.debug_diag4_enabled = observer_active
@@ -863,23 +877,33 @@ def run_simulation(
         },
     )
 
-    trajectory = {fleet_id: [] for fleet_id in state.fleets}
-    alive_trajectory = {fleet_id: [] for fleet_id in state.fleets}
-    fleet_size_trajectory = {fleet_id: [] for fleet_id in state.fleets}
+    fleet_ids = tuple(state.fleets)
+
+    def _per_fleet_series() -> dict[str, list]:
+        return {fleet_id: [] for fleet_id in fleet_ids}
+
+    trajectory = _per_fleet_series()
+    alive_trajectory = _per_fleet_series()
+    fleet_size_trajectory = _per_fleet_series()
     observer_telemetry = {
-        "cohesion_v3": {fleet_id: [] for fleet_id in state.fleets},
-        "c_conn": {fleet_id: [] for fleet_id in state.fleets},
-        "c_scale": {fleet_id: [] for fleet_id in state.fleets},
-        "rho": {fleet_id: [] for fleet_id in state.fleets},
-        "centroid_x": {fleet_id: [] for fleet_id in state.fleets},
-        "centroid_y": {fleet_id: [] for fleet_id in state.fleets},
+        **{
+            key: _per_fleet_series()
+            for key in (
+                "cohesion_v3",
+                "c_conn",
+                "c_scale",
+                "rho",
+                "centroid_x",
+                "centroid_y",
+                "center_wing_advance_gap",
+                "front_curvature_index",
+                "center_wing_parallel_share",
+                "posture_persistence_time",
+            )
+        },
         "net_axis_push": {"net": []},
         "net_axis_push_interval_ticks": 10,
-        "center_wing_advance_gap": {fleet_id: [] for fleet_id in state.fleets},
         "center_wing_advance_gap_interval_ticks": 10,
-        "front_curvature_index": {fleet_id: [] for fleet_id in state.fleets},
-        "center_wing_parallel_share": {fleet_id: [] for fleet_id in state.fleets},
-        "posture_persistence_time": {fleet_id: [] for fleet_id in state.fleets},
         "hostile_overlap_pairs": [],
         "hostile_deep_pairs": [],
         "hostile_deep_intermix_ratio": [],
@@ -894,31 +918,41 @@ def run_simulation(
         "max_outlier_persistence": [],
     }
     bridge_telemetry = {
-        "theta_split": float(bridge_theta_split),
-        "theta_env": float(bridge_theta_env),
-        "sustain_ticks": int(bridge_sustain_ticks),
-        "AR": {fleet_id: [] for fleet_id in state.fleets},
-        "wedge_ratio": {fleet_id: [] for fleet_id in state.fleets},
-        "split_separation": {fleet_id: [] for fleet_id in state.fleets},
-        "angle_coverage": {fleet_id: [] for fleet_id in state.fleets},
-        "split_cond": {fleet_id: [] for fleet_id in state.fleets},
-        "env_cond": {fleet_id: [] for fleet_id in state.fleets},
-        "split_sustain_counter": {fleet_id: [] for fleet_id in state.fleets},
-        "env_sustain_counter": {fleet_id: [] for fleet_id in state.fleets},
-        "bridge_event_cut": {fleet_id: [] for fleet_id in state.fleets},
-        "bridge_event_pocket": {fleet_id: [] for fleet_id in state.fleets},
-        "first_tick_split_sustain": {fleet_id: None for fleet_id in state.fleets},
-        "first_tick_env_sustain": {fleet_id: None for fleet_id in state.fleets},
+        "theta_split": float(bridge_cfg["theta_split"]),
+        "theta_env": float(bridge_cfg["theta_env"]),
+        "sustain_ticks": int(bridge_cfg["sustain_ticks"]),
+        **{
+            key: _per_fleet_series()
+            for key in (
+                "AR",
+                "wedge_ratio",
+                "split_separation",
+                "angle_coverage",
+                "split_cond",
+                "env_cond",
+                "split_sustain_counter",
+                "env_sustain_counter",
+                "bridge_event_cut",
+                "bridge_event_pocket",
+            )
+        },
+        "first_tick_split_sustain": {fleet_id: None for fleet_id in fleet_ids},
+        "first_tick_env_sustain": {fleet_id: None for fleet_id in fleet_ids},
     }
-    split_counter_state = {fleet_id: 0 for fleet_id in state.fleets}
-    env_counter_state = {fleet_id: 0 for fleet_id in state.fleets}
+    split_counter_state = {fleet_id: 0 for fleet_id in fleet_ids}
+    env_counter_state = {fleet_id: 0 for fleet_id in fleet_ids}
     position_frames = []
     center_wing_interval_ticks = int(observer_telemetry.get("center_wing_advance_gap_interval_ticks", 10))
-    center_wing_position_history = {fleet_id: [] for fleet_id in state.fleets}
-    posture_persistence_state = {
-        fleet_id: {"sign": 0, "length": 0}
-        for fleet_id in state.fleets
-    }
+    center_wing_position_history = _per_fleet_series()
+    posture_persistence_state = {fleet_id: {"sign": 0, "length": 0} for fleet_id in fleet_ids}
+
+    def _append_empty_shape_metrics(fleet_id: str, series: list[float]) -> None:
+        series.append(float("nan"))
+        observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
+        observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
+        observer_telemetry["posture_persistence_time"][fleet_id].append(0.0)
+        posture_persistence_state[fleet_id]["sign"] = 0
+        posture_persistence_state[fleet_id]["length"] = 0
     if steps <= 0:
         tick_limit = 999
         elimination_tick = None
@@ -980,22 +1014,15 @@ def run_simulation(
             else:
                 observer_telemetry["centroid_x"][fleet_id].append(float("nan"))
                 observer_telemetry["centroid_y"][fleet_id].append(float("nan"))
-        hostile_intermix_metrics = _compute_hostile_intermix_metrics(state, float(separation_radius))
-        observer_telemetry["hostile_overlap_pairs"].append(
-            float(hostile_intermix_metrics.get("hostile_overlap_pairs", 0.0))
-        )
-        observer_telemetry["hostile_deep_pairs"].append(
-            float(hostile_intermix_metrics.get("hostile_deep_pairs", 0.0))
-        )
-        observer_telemetry["hostile_deep_intermix_ratio"].append(
-            float(hostile_intermix_metrics.get("hostile_deep_intermix_ratio", 0.0))
-        )
-        observer_telemetry["hostile_intermix_severity"].append(
-            float(hostile_intermix_metrics.get("hostile_intermix_severity", 0.0))
-        )
-        observer_telemetry["hostile_intermix_coverage"].append(
-            float(hostile_intermix_metrics.get("hostile_intermix_coverage", 0.0))
-        )
+        hostile_intermix_metrics = _compute_hostile_intermix_metrics(state, float(contact_cfg["separation_radius"]))
+        for metric_key in (
+            "hostile_overlap_pairs",
+            "hostile_deep_pairs",
+            "hostile_deep_intermix_ratio",
+            "hostile_intermix_severity",
+            "hostile_intermix_coverage",
+        ):
+            observer_telemetry[metric_key].append(float(hostile_intermix_metrics.get(metric_key, 0.0)))
         for fleet_id in state.fleets:
             series = observer_telemetry["center_wing_advance_gap"][fleet_id]
             history = center_wing_position_history.get(fleet_id, [])
@@ -1010,12 +1037,7 @@ def run_simulation(
                 if math.isfinite(enemy_x) and math.isfinite(enemy_y):
                     enemy_centroids.append((enemy_x, enemy_y))
             if len(current_unit_ids) < 6 or not enemy_centroids:
-                series.append(float("nan"))
-                observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
-                observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
-                observer_telemetry["posture_persistence_time"][fleet_id].append(0.0)
-                posture_persistence_state[fleet_id]["sign"] = 0
-                posture_persistence_state[fleet_id]["length"] = 0
+                _append_empty_shape_metrics(fleet_id, series)
                 continue
 
             curr_xs_now = [current_positions[unit_id][0] for unit_id in current_unit_ids]
@@ -1028,12 +1050,7 @@ def run_simulation(
             axis_dy = enemy_centroid_y - centroid_y_now
             axis_norm = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
             if axis_norm <= 1e-12:
-                series.append(float("nan"))
-                observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
-                observer_telemetry["center_wing_parallel_share"][fleet_id].append(float("nan"))
-                observer_telemetry["posture_persistence_time"][fleet_id].append(0.0)
-                posture_persistence_state[fleet_id]["sign"] = 0
-                posture_persistence_state[fleet_id]["length"] = 0
+                _append_empty_shape_metrics(fleet_id, series)
                 continue
             axis_dir_x = axis_dx / axis_norm
             axis_dir_y = axis_dy / axis_norm
@@ -1137,7 +1154,7 @@ def run_simulation(
 
             posture_sign = 0
             if math.isfinite(front_curvature_raw):
-                front_curvature_norm = float(front_curvature_raw) / max(float(separation_radius), 1e-12)
+                front_curvature_norm = float(front_curvature_raw) / max(float(contact_cfg["separation_radius"]), 1e-12)
                 if front_curvature_norm >= 0.10 and center_wing_parallel_share_gap >= 0.05:
                     posture_sign = 1
                 elif front_curvature_norm <= -0.10 and center_wing_parallel_share_gap <= -0.05:
@@ -1182,10 +1199,10 @@ def run_simulation(
                 split_value = float(metric.get("split_separation", 0.0))
                 env_value = float(metric.get("angle_coverage", 0.0))
                 split_cond = bool(
-                    state.tick >= 1 and contact_active_tick and split_value >= float(bridge_theta_split)
+                    state.tick >= 1 and contact_active_tick and split_value >= float(bridge_cfg["theta_split"])
                 )
                 env_cond = bool(
-                    state.tick >= 1 and contact_active_tick and env_value >= float(bridge_theta_env)
+                    state.tick >= 1 and contact_active_tick and env_value >= float(bridge_cfg["theta_env"])
                 )
             else:
                 ar_value = float("nan")
@@ -1207,28 +1224,31 @@ def run_simulation(
             cut_event_tick = False
             pocket_event_tick = False
             if (
-                split_counter_state[fleet_id] >= int(bridge_sustain_ticks)
+                split_counter_state[fleet_id] >= int(bridge_cfg["sustain_ticks"])
                 and bridge_telemetry["first_tick_split_sustain"].get(fleet_id) is None
             ):
                 bridge_telemetry["first_tick_split_sustain"][fleet_id] = int(state.tick)
                 cut_event_tick = True
             if (
-                env_counter_state[fleet_id] >= int(bridge_sustain_ticks)
+                env_counter_state[fleet_id] >= int(bridge_cfg["sustain_ticks"])
                 and bridge_telemetry["first_tick_env_sustain"].get(fleet_id) is None
             ):
                 bridge_telemetry["first_tick_env_sustain"][fleet_id] = int(state.tick)
                 pocket_event_tick = True
 
-            bridge_telemetry["AR"][fleet_id].append(ar_value)
-            bridge_telemetry["wedge_ratio"][fleet_id].append(wedge_value)
-            bridge_telemetry["split_separation"][fleet_id].append(split_value)
-            bridge_telemetry["angle_coverage"][fleet_id].append(env_value)
-            bridge_telemetry["split_cond"][fleet_id].append(bool(split_cond))
-            bridge_telemetry["env_cond"][fleet_id].append(bool(env_cond))
-            bridge_telemetry["split_sustain_counter"][fleet_id].append(int(split_counter_state[fleet_id]))
-            bridge_telemetry["env_sustain_counter"][fleet_id].append(int(env_counter_state[fleet_id]))
-            bridge_telemetry["bridge_event_cut"][fleet_id].append(bool(cut_event_tick))
-            bridge_telemetry["bridge_event_pocket"][fleet_id].append(bool(pocket_event_tick))
+            for metric_key, metric_value in (
+                ("AR", ar_value),
+                ("wedge_ratio", wedge_value),
+                ("split_separation", split_value),
+                ("angle_coverage", env_value),
+                ("split_cond", bool(split_cond)),
+                ("env_cond", bool(env_cond)),
+                ("split_sustain_counter", int(split_counter_state[fleet_id])),
+                ("env_sustain_counter", int(env_counter_state[fleet_id])),
+                ("bridge_event_cut", bool(cut_event_tick)),
+                ("bridge_event_pocket", bool(pocket_event_tick)),
+            ):
+                bridge_telemetry[metric_key][fleet_id].append(metric_value)
 
         if capture_positions and frame_stride > 0 and state.tick % frame_stride == 0:
             frame = {"tick": state.tick}
@@ -1291,7 +1311,14 @@ def run_simulation(
     center_wing_normalization_scale = float(max_unit_speed) * float(center_wing_interval_ticks)
     if center_wing_normalization_scale <= 0.0 or not math.isfinite(center_wing_normalization_scale):
         center_wing_normalization_scale = 1.0
-    front_curvature_normalization_scale = max(float(separation_radius), 1e-12)
+    front_curvature_normalization_scale = max(float(contact_cfg["separation_radius"]), 1e-12)
+
+    def _normalize_series(values: list[float], scale: float) -> list[float]:
+        return [
+            (float(raw_value) / scale) if math.isfinite(float(raw_value)) else float("nan")
+            for raw_value in values
+        ]
+
     centroid_x_a = observer_telemetry.get("centroid_x", {}).get("A", [])
     centroid_y_a = observer_telemetry.get("centroid_y", {}).get("A", [])
     centroid_x_b = observer_telemetry.get("centroid_x", {}).get("B", [])
@@ -1335,21 +1362,15 @@ def run_simulation(
         net_axis_push_series.append(float(net_axis_push_value / net_axis_push_normalization_scale))
     observer_telemetry["net_axis_push"]["net"] = net_axis_push_series
     observer_telemetry["net_axis_push_normalization_scale"] = net_axis_push_normalization_scale
-    for fleet_id in state.fleets:
-        normalized_gap_series: list[float] = []
-        for raw_value in observer_telemetry["center_wing_advance_gap"][fleet_id]:
-            if math.isfinite(float(raw_value)):
-                normalized_gap_series.append(float(raw_value) / center_wing_normalization_scale)
-            else:
-                normalized_gap_series.append(float("nan"))
-        observer_telemetry["center_wing_advance_gap"][fleet_id] = normalized_gap_series
-        normalized_front_curvature_series: list[float] = []
-        for raw_value in observer_telemetry["front_curvature_index"][fleet_id]:
-            if math.isfinite(float(raw_value)):
-                normalized_front_curvature_series.append(float(raw_value) / front_curvature_normalization_scale)
-            else:
-                normalized_front_curvature_series.append(float("nan"))
-        observer_telemetry["front_curvature_index"][fleet_id] = normalized_front_curvature_series
+    for fleet_id in fleet_ids:
+        observer_telemetry["center_wing_advance_gap"][fleet_id] = _normalize_series(
+            observer_telemetry["center_wing_advance_gap"][fleet_id],
+            center_wing_normalization_scale,
+        )
+        observer_telemetry["front_curvature_index"][fleet_id] = _normalize_series(
+            observer_telemetry["front_curvature_index"][fleet_id],
+            front_curvature_normalization_scale,
+        )
     observer_telemetry["center_wing_advance_gap_normalization_scale"] = center_wing_normalization_scale
     observer_telemetry["front_curvature_index_normalization_scale"] = front_curvature_normalization_scale
 
@@ -1357,13 +1378,13 @@ def run_simulation(
         observer_enabled=diagnostics_enabled,
         observer_telemetry=observer_telemetry,
         alive_trajectory=alive_trajectory,
-        theta_conn_default=float(collapse_shadow_theta_conn_default),
-        theta_coh_default=float(collapse_shadow_theta_coh_default),
-        theta_force_default=float(collapse_shadow_theta_force_default),
-        theta_attr_default=float(collapse_shadow_theta_attr_default),
-        attrition_window=int(collapse_shadow_attrition_window),
-        sustain_ticks=int(collapse_shadow_sustain_ticks),
-        min_conditions=int(collapse_shadow_min_conditions),
+        theta_conn_default=float(collapse_shadow_cfg["theta_conn_default"]),
+        theta_coh_default=float(collapse_shadow_cfg["theta_coh_default"]),
+        theta_force_default=float(collapse_shadow_cfg["theta_force_default"]),
+        theta_attr_default=float(collapse_shadow_cfg["theta_attr_default"]),
+        attrition_window=int(collapse_shadow_cfg["attrition_window"]),
+        sustain_ticks=int(collapse_shadow_cfg["sustain_ticks"]),
+        min_conditions=int(collapse_shadow_cfg["min_conditions"]),
     )
 
     return (
