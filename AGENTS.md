@@ -22,6 +22,11 @@ Codex must:
 - Request clarification
 - Not proceed automatically
 
+If a policy violation is observed, or a request is refused/pushed back, Codex must report:
+
+- `Violated rule: R-xx - <rule name>`
+- `Reason: <short concrete reason>`
+
 ---
 
 ## R-02 - Minimal Generation Rule
@@ -143,12 +148,19 @@ Default persistence requirement for migration:
 
 ---
 
-## R-08 - Violation Reporting
+## R-08 - No Silent Fall Back Rule
 
-If a policy violation is observed, or a request is refused/pushed back, Codex must report:
+Codex must not silently hide invalid input, invalid intermediate values, or illegal configuration by auto-falling back to defaults.
 
-- `Violated rule: R-xx - <rule name>`
-- `Reason: <short concrete reason>`
+If a value is invalid and the request/spec does not explicitly authorize fallback behavior, Codex must:
+
+- Expose the invalid value clearly
+- Prefer failing fast over silently continuing
+- Explain the impact if the process is allowed to continue
+
+Allowed exception:
+
+- Explicitly bounded normalization/clamping that is already part of the requested/runtime semantics
 
 ---
 
@@ -166,21 +178,6 @@ Codex must:
 - Never force-push or amend unless explicitly requested
 
 If remote push fails, Codex must report exact failure and stop.
-
----
-
-## R-10 - VS Code Path Presentation
-
-Codex must:
-
-- Prefer plain text local paths in chat (workspace-relative), wrapped in backticks
-- Avoid markdown hyperlinks for local files unless explicitly requested by human
-- When line references are needed, use `path:line` plain text format
-- For report packs, provide one folder path first, then a flat filename list
-
-Reason:
-
-- Ensure paths are directly usable in VS Code without browser redirection issues
 
 ---
 
@@ -217,6 +214,25 @@ For DOE or repeated experiment execution:
 - Remaining batches should run in background
 
 Detailed batch/checkpoint/reporting workflow belongs in the DOE `_standards`, not in AGENTS.
+
+---
+
+## R-13 - Repo Context Sync on Remote Push
+
+Before any remote push, Codex must update:
+
+- `repo_context.md`
+- `system_map.md`
+
+Update scope for these two files is strictly high-level and path-oriented:
+
+- key features / subsystem purpose (brief)
+- key code paths / entry files / config files
+- current mechanism availability status at high level
+
+Do not place governance doctrine details, report templates, or execution standards into these files.
+
+If no meaningful repo-structure/mechanism change happened in the scoped push, Codex must explicitly confirm they were reviewed and no update was needed.
 
 ---
 
