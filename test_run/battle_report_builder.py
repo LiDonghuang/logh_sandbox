@@ -800,12 +800,6 @@ def _message(language: str, key: str, **params: Any) -> str:
     template = BRF_NARRATIVE_MESSAGES[language_key][key]
     return template.format(**params)
 
-
-def _message_exists(language: str, key: str) -> bool:
-    language_key = "ZH" if str(language).upper() == "ZH" else "EN"
-    return key in BRF_NARRATIVE_MESSAGES[language_key]
-
-
 def _fleet_name(identity: dict[str, Any], side: str, language: str) -> str:
     return str(identity["sides"][side]["fleet"][language])
 
@@ -1019,33 +1013,6 @@ def _build_outcome_slot(
     )
 
 
-def _build_battle_narrative_semantics(
-    *,
-    identity: dict[str, Any],
-    event_slots: list[dict[str, Any]],
-    structural_slots: list[dict[str, Any]],
-    outcome_slot: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        "identity": identity,
-        "opening_state": None if event_slots else _semantic_slot("body_no_effective_fire"),
-        "events": event_slots,
-        "structural_notes": structural_slots,
-        "outcome_summary": outcome_slot,
-    }
-
-
-def _sort_narrative_slots(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    ordered_slots = list(slots)
-    ordered_slots.sort(
-        key=lambda item: (
-            int(item.get("priority", 999)),
-            int(item.get("params", {}).get("tick", item.get("params", {}).get("tick_start", 10**9))),
-        )
-    )
-    return ordered_slots
-
-
 def _build_narrative_body_segments(
     *,
     model: dict[str, Any],
@@ -1058,7 +1025,13 @@ def _build_narrative_body_segments(
 
     body_segments: list[str] = []
     prev_priority: int | None = None
-    ordered_slots = _sort_narrative_slots(list(model.get("structural_notes", [])) + list(model.get("events", [])))
+    ordered_slots = sorted(
+        list(model.get("structural_notes", [])) + list(model.get("events", [])),
+        key=lambda item: (
+            int(item.get("priority", 999)),
+            int(item.get("params", {}).get("tick", item.get("params", {}).get("tick_start", 10**9))),
+        ),
+    )
     for slot in ordered_slots:
         current_priority = int(slot.get("priority", 999))
         compact = prev_priority == current_priority
@@ -1114,7 +1087,8 @@ def _render_narrative_slot(slot_data: dict[str, Any], identity: dict[str, Any], 
     elif slot == "outcome_draw":
         rendered_params["time"] = tick_to_std_time(int(params["tick"]))
     compact_key = f"{slot}_compact"
-    message_key = compact_key if compact and _message_exists(language, compact_key) else slot
+    language_key = "ZH" if str(language).upper() == "ZH" else "EN"
+    message_key = compact_key if compact and compact_key in BRF_NARRATIVE_MESSAGES[language_key] else slot
     return _message(language, message_key, **rendered_params)
 
 
@@ -1334,12 +1308,13 @@ def build_battle_report_markdown(
         initial_units_a=initial_units_a,
         initial_units_b=initial_units_b,
     )
-    narrative_model = _build_battle_narrative_semantics(
-        identity=identity,
-        event_slots=event_slots,
-        structural_slots=structural_slots,
-        outcome_slot=outcome_slot,
-    )
+    narrative_model = {
+        "identity": identity,
+        "opening_state": None if event_slots else _semantic_slot("body_no_effective_fire"),
+        "events": event_slots,
+        "structural_notes": structural_slots,
+        "outcome_summary": outcome_slot,
+    }
     tactical_narrative_zh = _render_battle_narrative(narrative_model, "ZH")
     tactical_narrative_en = _render_battle_narrative(narrative_model, "EN")
     if int(initial_units_a) == int(initial_units_b):

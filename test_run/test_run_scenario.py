@@ -1,4 +1,5 @@
 import random
+import re
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -13,11 +14,354 @@ from runtime.runtime_v0_1 import (
 )
 
 from test_run import settings_accessor as settings_api
+from test_run import test_run_execution as execution
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DT = 1.0
 DEFAULT_SPAWN_MARGIN_RATIO = 0.05
 ACTIVE_POST_ELIMINATION_EXTRA_TICKS = 10
+DEFAULT_PLOT_COLORS = ("#1f77b4", "#ff7f0e")
+TEST_MODE_LABELS = {
+    0: "default",
+    1: "observe",
+    2: "test",
+}
+COHESION_DECISION_SOURCE_LABELS = {
+    "baseline": "baseline",
+    "v2": "v2",
+    "v3_test": "v3_test",
+}
+BASELINE_COHESION_DECISION_SOURCE = "v3_test"
+PERSONALITY_PARAM_KEYS = (
+    "force_concentration_ratio",
+    "mobility_bias",
+    "offense_defense_weight",
+    "risk_appetite",
+    "time_preference",
+    "targeting_logic",
+    "formation_rigidity",
+    "perception_radius",
+    "pursuit_drive",
+    "retreat_threshold",
+)
+DEFAULT_METATYPE_SETTINGS_PATH = "archetypes/metatype_settings.json"
+
+
+def load_metatype_settings(base_dir: Path, settings: dict) -> dict:
+    configured_path = str(
+        settings_api.get_runtime_metatype_setting(settings, "settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
+    )
+    metatype_path = settings_api.resolve_optional_json_path(
+        base_dir,
+        configured_path,
+        DEFAULT_METATYPE_SETTINGS_PATH,
+    )
+    if not metatype_path.exists():
+        return {}
+    data = settings_api.load_json_file(metatype_path)
+    if isinstance(data, dict):
+        return data
+    return {}
+
+
+def resolve_archetype(archetypes: dict, archetype_ref: str) -> dict:
+    if archetype_ref == "default":
+        return {
+            "name": "default",
+            "disp_name_EN": "Default",
+            "disp_name_ZH": "榛樿",
+            "full_name_EN": "Default Archetype",
+            "full_name_ZH": "榛樿鍘熷瀷",
+            "force_concentration_ratio": 5.0,
+            "mobility_bias": 5.0,
+            "offense_defense_weight": 5.0,
+            "risk_appetite": 5.0,
+            "time_preference": 5.0,
+            "targeting_logic": 5.0,
+            "formation_rigidity": 5.0,
+            "perception_radius": 5.0,
+            "pursuit_drive": 5.0,
+            "retreat_threshold": 5.0,
+        }
+    if archetype_ref in archetypes:
+        return dict(archetypes[archetype_ref])
+    raise KeyError(archetype_ref)
+
+
+def _personality_value_from_data(data: dict, key: str) -> float:
+    if key not in data:
+        raise KeyError(key)
+    return float(data[key])
+
+
+def _select_yang_source_ids(archetypes: dict, configured_source_ids: list[str] | None = None) -> list[str]:
+    selected_ids = configured_source_ids if configured_source_ids else []
+    source_ids = [archetype_id for archetype_id in selected_ids if archetype_id in archetypes]
+    if source_ids:
+        return source_ids
+
+    fallback_ids = []
+    for archetype_id, data in archetypes.items():
+        normalized = str(archetype_id).strip().lower()
+        if normalized in {"yang", "default"}:
+            continue
+        try:
+            for key in PERSONALITY_PARAM_KEYS:
+                _personality_value_from_data(data, key)
+        except KeyError:
+            continue
+        fallback_ids.append(str(archetype_id))
+        if len(fallback_ids) >= 6:
+            break
+    if fallback_ids:
+        return fallback_ids
+    raise ValueError("No valid source archetypes available for dynamic yang parameter generation.")
+
+
+def generate_yang_parameters(
+    archetypes: dict,
+    yang_template: dict,
+    rng: random.Random | None = None,
+    source_ids: list[str] | None = None,
+    jitter: int = 1,
+    value_min: float = 1.0,
+    value_max: float = 9.0,
+) -> dict:
+    generator = rng if rng is not None else random.Random(resolve_effective_seed(-1))
+    candidate_ids = _select_yang_source_ids(archetypes, configured_source_ids=source_ids)
+    source_id = generator.choice(candidate_ids)
+    source_data = archetypes[source_id]
+
+    generated = dict(yang_template)
+    generated["name"] = str(yang_template.get("name", "yang") or "yang")
+    jitter = max(0, int(jitter))
+    lo = float(min(value_min, value_max))
+    hi = float(max(value_min, value_max))
+    for key in PERSONALITY_PARAM_KEYS:
+        base_value = _personality_value_from_data(source_data, key)
+        jitter_delta = generator.randint(-jitter, jitter) if jitter > 0 else 0
+        jittered_value = base_value + float(jitter_delta)
+        generated[key] = float(clamp(jittered_value, lo, hi))
+    return generated
+
+
+def resolve_fleet_archetype_data(
+    archetypes: dict,
+    metatype_settings: dict | None,
+    archetype_ref: str,
+    rng: random.Random | None = None,
+) -> dict:
+    ref = str(archetype_ref).strip()
+    if ref.lower() != "yang":
+        return resolve_archetype(archetypes, ref)
+
+    yang_meta = {}
+    if isinstance(metatype_settings, dict):
+        candidate_meta = metatype_settings.get("yang", {})
+        if isinstance(candidate_meta, dict):
+            yang_meta = candidate_meta
+    generation_cfg = yang_meta.get("generation", {}) if isinstance(yang_meta.get("generation", {}), dict) else {}
+    template_cfg = yang_meta.get("template", {}) if isinstance(yang_meta.get("template", {}), dict) else {}
+    archetype_template = {}
+    if isinstance(archetypes.get("yang"), dict):
+        archetype_template = dict(archetypes["yang"])
+
+    source_ids_raw = generation_cfg.get("source_archetype_ids")
+    source_ids = []
+    if isinstance(source_ids_raw, list):
+        source_ids = [str(v).strip() for v in source_ids_raw if str(v).strip()]
+
+    jitter = int(generation_cfg.get("jitter", 1))
+    value_min = float(generation_cfg.get("param_min", 1.0))
+    value_max = float(generation_cfg.get("param_max", 9.0))
+
+    yang_template = {
+        "name": str(template_cfg.get("name", archetype_template.get("name", "yang"))),
+        "disp_name_EN": str(
+            template_cfg.get(
+                "disp_name_EN",
+                archetype_template.get("disp_name_EN", "Yang"),
+            )
+        ),
+        "disp_name_ZH": str(
+            template_cfg.get(
+                "disp_name_ZH",
+                archetype_template.get("disp_name_ZH", "Yang"),
+            )
+        ),
+        "full_name_EN": str(
+            template_cfg.get(
+                "full_name_EN",
+                archetype_template.get("full_name_EN", "Yang Wen-li"),
+            )
+        ),
+        "full_name_ZH": str(
+            template_cfg.get(
+                "full_name_ZH",
+                archetype_template.get("full_name_ZH", "Yang Wen-li"),
+            )
+        ),
+        "avatar": str(
+            template_cfg.get("avatar", archetype_template.get("avatar", "avatar_yang"))
+        ),
+        "color_code": str(
+            template_cfg.get(
+                "color_code",
+                archetype_template.get("color_code", "008080"),
+            )
+        ),
+    }
+    return generate_yang_parameters(
+        archetypes=archetypes,
+        yang_template=yang_template,
+        rng=rng,
+        source_ids=source_ids,
+        jitter=jitter,
+        value_min=value_min,
+        value_max=value_max,
+    )
+
+
+def to_personality_parameters(data: dict) -> PersonalityParameters:
+    return PersonalityParameters(
+        archetype_id=data["name"],
+        force_concentration_ratio=float(data["force_concentration_ratio"]),
+        mobility_bias=float(data["mobility_bias"]),
+        offense_defense_weight=float(data["offense_defense_weight"]),
+        risk_appetite=float(data["risk_appetite"]),
+        time_preference=float(data["time_preference"]),
+        targeting_logic=float(data["targeting_logic"]),
+        formation_rigidity=float(data["formation_rigidity"]),
+        perception_radius=float(data["perception_radius"]),
+        pursuit_drive=float(data["pursuit_drive"]),
+        retreat_threshold=float(data["retreat_threshold"]),
+    )
+
+
+def to_plot_color(data: dict, fallback: str) -> str:
+    code = str(data.get("color_code", "")).strip()
+    if not code:
+        code = fallback
+    if code.startswith("#"):
+        return code
+    return f"#{code}"
+
+
+def _hex_color_to_rgb(color: str) -> tuple[int, int, int] | None:
+    normalized = str(color).strip()
+    if normalized.startswith("#"):
+        normalized = normalized[1:]
+    if re.fullmatch(r"[0-9A-Fa-f]{6}", normalized) is None:
+        return None
+    return (
+        int(normalized[0:2], 16),
+        int(normalized[2:4], 16),
+        int(normalized[4:6], 16),
+    )
+
+
+def _color_distance_sq(color_a: str, color_b: str) -> float:
+    rgb_a = _hex_color_to_rgb(color_a)
+    rgb_b = _hex_color_to_rgb(color_b)
+    if rgb_a is None or rgb_b is None:
+        return -1.0
+    dr = float(rgb_a[0] - rgb_b[0])
+    dg = float(rgb_a[1] - rgb_b[1])
+    db = float(rgb_a[2] - rgb_b[2])
+    return (dr * dr) + (dg * dg) + (db * db)
+
+
+def choose_max_contrast_default_color(reference_color: str, candidates: Sequence[str]) -> str:
+    best_color = str(candidates[0])
+    best_distance = _color_distance_sq(reference_color, best_color)
+    for candidate in candidates[1:]:
+        distance = _color_distance_sq(reference_color, str(candidate))
+        if distance > best_distance:
+            best_color = str(candidate)
+            best_distance = distance
+    return best_color
+
+
+def resolve_fleet_plot_colors(fleet_a_data: dict, fleet_b_data: dict) -> tuple[str, str]:
+    fleet_a_has_explicit = bool(str(fleet_a_data.get("color_code", "")).strip())
+    fleet_b_has_explicit = bool(str(fleet_b_data.get("color_code", "")).strip())
+    fleet_a_color = to_plot_color(fleet_a_data, DEFAULT_PLOT_COLORS[0])
+    fleet_b_color = to_plot_color(fleet_b_data, DEFAULT_PLOT_COLORS[1])
+    if fleet_a_has_explicit and (not fleet_b_has_explicit):
+        fleet_b_color = choose_max_contrast_default_color(fleet_a_color, DEFAULT_PLOT_COLORS)
+    elif fleet_b_has_explicit and (not fleet_a_has_explicit):
+        fleet_a_color = choose_max_contrast_default_color(fleet_b_color, DEFAULT_PLOT_COLORS)
+    return fleet_a_color, fleet_b_color
+
+
+def resolve_display_name(data: dict, language: str) -> str:
+    value = data.get("disp_name_ZH") if language == "ZH" else data.get("disp_name_EN")
+    if value:
+        return str(value)
+    if data.get("name"):
+        return str(data["name"])
+    return ""
+
+
+def resolve_avatar_with_fallback(side_data: dict, fallback_avatar: str) -> str:
+    value = side_data.get("avatar")
+    if value is not None:
+        avatar_id = str(value).strip()
+        if avatar_id:
+            return avatar_id
+    return fallback_avatar
+
+
+def parse_test_mode(raw_value) -> int:
+    if isinstance(raw_value, str):
+        value_str = raw_value.strip().lower()
+        if value_str in TEST_MODE_LABELS.values():
+            for code, label in TEST_MODE_LABELS.items():
+                if label == value_str:
+                    return code
+        if value_str.isdigit():
+            raw_value = int(value_str)
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return 0
+    if parsed not in TEST_MODE_LABELS:
+        return 0
+    return parsed
+
+
+def test_mode_label(mode_code: int) -> str:
+    return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
+
+
+def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in COHESION_DECISION_SOURCE_LABELS:
+        requested = "baseline"
+    baseline_source = BASELINE_COHESION_DECISION_SOURCE
+    effective = baseline_source if requested == "baseline" else requested
+    if int(test_mode) < 2 and effective != baseline_source:
+        print(
+            f"[mode] cohesion_decision_source={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_source}"
+        )
+        effective = baseline_source
+    return requested, effective
+
+
+def resolve_movement_model(raw_value) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in {"baseline", "v1", "v3a"}:
+        requested = "baseline"
+    baseline_model = "v3a"
+    if requested == "baseline":
+        effective = baseline_model
+    elif requested == "v1":
+        print("[mode] movement_model=v1 requested in standard test run; remapping to v3a after baseline activation")
+        effective = baseline_model
+    else:
+        effective = requested
+    return requested, effective
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -197,8 +541,6 @@ def build_initial_state(
 
 
 def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = None) -> dict:
-    from test_run import test_run_v1_0 as core
-
     settings = (
         settings_override
         if settings_override is not None
@@ -214,8 +556,8 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
     get_unit = partial(settings_api.get_unit_setting, settings)
 
-    archetypes = settings_api.load_json_file(core.PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
-    metatype_settings = core.load_metatype_settings(base_dir, settings)
+    archetypes = settings_api.load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
+    metatype_settings = load_metatype_settings(base_dir, settings)
     random_seed = int(get_run("random_seed", -1))
     metatype_random_seed = int(get_runtime_metatype("random_seed", random_seed))
     background_map_seed = int(get_battlefield("background_map_seed", -1))
@@ -224,26 +566,26 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     effective_background_map_seed = resolve_effective_seed(background_map_seed)
 
     archetype_rng = random.Random(int(effective_metatype_random_seed))
-    fleet_a_data = core.resolve_fleet_archetype_data(
+    fleet_a_data = resolve_fleet_archetype_data(
         archetypes,
         metatype_settings,
         get_fleet("fleet_a_archetype_id", "default"),
         rng=archetype_rng,
     )
-    fleet_b_data = core.resolve_fleet_archetype_data(
+    fleet_b_data = resolve_fleet_archetype_data(
         archetypes,
         metatype_settings,
         get_fleet("fleet_b_archetype_id", "default"),
         rng=archetype_rng,
     )
-    fleet_a_params = core.to_personality_parameters(fleet_a_data)
-    fleet_b_params = core.to_personality_parameters(fleet_b_data)
+    fleet_a_params = to_personality_parameters(fleet_a_data)
+    fleet_b_params = to_personality_parameters(fleet_b_data)
 
     battlefield_cfg = {
         "arena_size": float(get_battlefield("arena_size", 200.0)),
         "effective_background_map_seed": effective_background_map_seed,
     }
-    spawn_margin = max(1.0, battlefield_cfg["arena_size"] * core.DEFAULT_SPAWN_MARGIN_RATIO)
+    spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
         settings,
         array_key="initial_fleet_a_origin_xy",
@@ -321,22 +663,22 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
             "runtime.test_only.hostile_contact_impedance.active_mode",
-            get_contact_model(("active_mode",), core.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
-            core.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
+            get_contact_model(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
+            execution.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
         ),
         "hybrid_v2": {
             key: float(get_contact_model(("hybrid_v2", key), default))
             for key, default in {
-                "radius_multiplier": core.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
-                "repulsion_max_disp_ratio": core.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
-                "forward_damping_strength": core.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+                "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+                "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+                "forward_damping_strength": execution.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
             }.items()
         },
         "intent_unified_spacing_v1": {
             key: float(get_contact_model(("intent_unified_spacing_v1", key), default))
             for key, default in {
-                "scale": core.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
-                "strength": core.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
+                "scale": execution.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
+                "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
             }.items()
         },
     }
@@ -344,25 +686,25 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     contact_cfg["fsr_enabled"] = contact_cfg["fsr_strength"] > 0.0
 
     movement_cfg = {
-        "model_effective": core.resolve_movement_model(get_runtime("movement_model", "baseline"))[1],
+        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"))[1],
         "experiment_effective": _require_choice(
             "runtime.movement_v3a_experiment",
-            get_runtime("movement_v3a_experiment", core.V3A_EXPERIMENT_BASE),
-            core.V3A_EXPERIMENT_LABELS,
+            get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
+            execution.V3A_EXPERIMENT_LABELS,
         ),
         "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
         "pre_tl_target_substrate": _require_choice(
             "runtime.pre_tl_target_substrate",
-            get_runtime("pre_tl_target_substrate", core.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
-            core.PRE_TL_TARGET_SUBSTRATE_LABELS,
+            get_runtime("pre_tl_target_substrate", execution.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
+            execution.PRE_TL_TARGET_SUBSTRATE_LABELS,
         ),
         "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
         "continuous_fr_shaping": {
             "enabled": bool(get_runtime("continuous_fr_shaping_enabled", False)),
             "mode": _require_choice(
                 "runtime.continuous_fr_shaping_mode",
-                get_runtime("continuous_fr_shaping_mode", core.CONTINUOUS_FR_SHAPING_OFF),
-                core.CONTINUOUS_FR_SHAPING_LABELS,
+                get_runtime("continuous_fr_shaping_mode", execution.CONTINUOUS_FR_SHAPING_OFF),
+                execution.CONTINUOUS_FR_SHAPING_LABELS,
             ),
             **{
                 key: float(get_runtime(f"continuous_fr_shaping_{key}", default))
@@ -385,20 +727,20 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
         if movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == core.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
         else 1.0
     )
     movement_cfg["continuous_fr_shaping"]["effective"] = (
         movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == core.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
         and movement_cfg["continuous_fr_shaping"]["enabled"]
-        and movement_cfg["continuous_fr_shaping"]["mode"] != core.CONTINUOUS_FR_SHAPING_OFF
+        and movement_cfg["continuous_fr_shaping"]["mode"] != execution.CONTINUOUS_FR_SHAPING_OFF
         and movement_cfg["continuous_fr_shaping"]["a"] > 0.0
     )
     movement_cfg["continuous_fr_shaping"]["mode_effective"] = (
         movement_cfg["continuous_fr_shaping"]["mode"]
         if movement_cfg["continuous_fr_shaping"]["effective"]
-        else core.CONTINUOUS_FR_SHAPING_OFF
+        else execution.CONTINUOUS_FR_SHAPING_OFF
     )
     movement_cfg["odw_posture_bias"]["enabled_effective"] = (
         movement_cfg["model_effective"] == "v3a"
@@ -417,20 +759,20 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
 
     observer_cfg = {
         "bridge": {
-            "theta_split": float(get_event_bridge("theta_split", core.BRIDGE_THETA_SPLIT_DEFAULT)),
-            "theta_env": float(get_event_bridge("theta_env", core.BRIDGE_THETA_ENV_DEFAULT)),
-            "sustain_ticks": int(get_event_bridge("sustain_ticks", core.BRIDGE_SUSTAIN_TICKS_DEFAULT)),
+            "theta_split": float(get_event_bridge("theta_split", execution.BRIDGE_THETA_SPLIT_DEFAULT)),
+            "theta_env": float(get_event_bridge("theta_env", execution.BRIDGE_THETA_ENV_DEFAULT)),
+            "sustain_ticks": int(get_event_bridge("sustain_ticks", execution.BRIDGE_SUSTAIN_TICKS_DEFAULT)),
         },
         "collapse_shadow": {
             key: cast(get_collapse_shadow(key, default))
             for key, (cast, default) in {
-                "theta_conn_default": (float, core.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT),
-                "theta_coh_default": (float, core.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT),
-                "theta_force_default": (float, core.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT),
-                "theta_attr_default": (float, core.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT),
-                "attrition_window": (int, core.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT),
-                "sustain_ticks": (int, core.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT),
-                "min_conditions": (int, core.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT),
+                "theta_conn_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT),
+                "theta_coh_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT),
+                "theta_force_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT),
+                "theta_attr_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT),
+                "attrition_window": (int, execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT),
+                "sustain_ticks": (int, execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT),
+                "min_conditions": (int, execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT),
             }.items()
         },
     }
@@ -443,26 +785,26 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
 
     run_cfg = {
         "max_time_steps": int(get_run("max_time_steps", -1)),
-        "test_mode": core.parse_test_mode(get_run("test_mode", 0)),
+        "test_mode": parse_test_mode(get_run("test_mode", 0)),
     }
-    run_cfg["test_mode_name"] = core.test_mode_label(run_cfg["test_mode"])
+    run_cfg["test_mode_name"] = test_mode_label(run_cfg["test_mode"])
     run_cfg["observer_enabled"] = run_cfg["test_mode"] >= 1
     run_cfg["export_battle_report"] = False
     (
         run_cfg["runtime_decision_source_requested"],
         run_cfg["runtime_decision_source_effective"],
-    ) = core.resolve_runtime_decision_source(
+    ) = resolve_runtime_decision_source(
         get_runtime("cohesion_decision_source", "baseline"),
         run_cfg["test_mode"],
     )
     movement_cfg["v2_connect_radius_multiplier"] = 1.0
     movement_cfg["v3_connect_radius_multiplier_effective"] = (
-        float(get_runtime("v3_connect_radius_multiplier", core.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
+        float(get_runtime("v3_connect_radius_multiplier", execution.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
         if run_cfg["runtime_decision_source_effective"] == "v3_test"
         else 1.0
     )
     movement_cfg["v3_r_ref_radius_multiplier_effective"] = (
-        float(get_runtime("v3_r_ref_radius_multiplier", core.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
+        float(get_runtime("v3_r_ref_radius_multiplier", execution.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
         if run_cfg["runtime_decision_source_effective"] == "v3_test"
         else 1.0
     )
@@ -470,7 +812,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
         "capture_positions": False,
-        "frame_stride": core.DEFAULT_FRAME_STRIDE,
+        "frame_stride": execution.DEFAULT_FRAME_STRIDE,
         "include_target_lines": False,
         "print_tick_summary": False,
         "plot_diagnostics_enabled": run_cfg["observer_enabled"],
@@ -495,15 +837,19 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
 
     return {
         "initial_state": initial_state,
-        "engine_cls": core.TestModeEngineTickSkeleton,
+        "engine_cls": execution.TestModeEngineTickSkeleton,
         "execution_cfg": execution_cfg,
         "runtime_cfg": simulation_runtime_cfg,
         "observer_cfg": simulation_observer_cfg,
+        "fleet_a_data": fleet_a_data,
+        "fleet_b_data": fleet_b_data,
         "summary": {
             "effective_random_seed": effective_random_seed,
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
+            "test_mode": run_cfg["test_mode"],
             "test_mode_name": run_cfg["test_mode_name"],
+            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],

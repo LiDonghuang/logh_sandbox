@@ -32,22 +32,18 @@ Authority: Reference only, not canonical semantics authority
   - thin maintained launcher ground truth
   - routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
-  - settings resolution and initial scenario build
+  - settings resolution, archetype/build helper surface, and initial scenario build
 - `test_run/test_run_execution.py`
-  - battle execution host and maintained outputs
+  - battle execution host, maintained outputs, and engine-adjacent harness skeleton host
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
 
-### 4. Legacy / Transitional Harness Layer
+### 4. Harness Support Layer
 
-- `test_run/test_run_v1_0.py`
-  - transitional helper host and historical launcher shim
-- `test_run/test_run_experiments.py`
-  - transitional shell over the maintained spine
 - `test_run/settings_accessor.py`
   - layered settings load and access
 
-### 5. Optional Report / Visualization Layer
+### 5. Active Auxiliary Surface
 
 - `test_run/battle_report_builder.py`
   - battle report markdown assembly
@@ -71,17 +67,19 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Structural Tension
 
-The current reset target is now concentrated in one remaining helper host plus optional heavy paths:
+The current maintained launcher path no longer depends on old launcher shells.
 
-- `test_run/test_run_v1_0.py` still sits under the maintained spine as a helper anchor
-- BRF and viz paths remain physically present and callable from the maintained launcher
-- the maintained spine is smaller, but the historical helper surface has not been fully retired yet
+Current remaining burden centers are:
+
+- active auxiliary BRF / viz weight
+- large maintained execution host weight
+- frozen runtime skeleton weight outside the harness scope
 
 ## Practical Interpretation Rule
 
 Read the current maintained path as:
 
-schema -> engine -> maintained harness spine -> optional report/viz surfaces
+schema -> engine -> maintained harness spine -> active auxiliary surface
 
 Do not read observer wording as runtime ontology.
 Do not read test-only selectors as canonical semantics.

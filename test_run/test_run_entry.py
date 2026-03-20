@@ -1,4 +1,4 @@
-import random
+import os
 import sys
 from datetime import datetime
 from functools import partial
@@ -12,7 +12,19 @@ from test_run import battle_report_builder as report_builder
 from test_run import settings_accessor as settings_api
 from test_run import test_run_execution as execution
 from test_run import test_run_scenario as scenario
-from test_run import test_run_v1_0 as core
+
+
+DEFAULT_BATTLE_REPORT_TOPIC = "test_run_v1_0"
+DEFAULT_BATTLE_REPORT_EXPORT_DIR = "analysis/exports/battle_reports"
+DEFAULT_VIDEO_EXPORT_DIR = "analysis/exports/videos"
+DEFAULT_VIDEO_EXPORT_TOPIC = "test_run_v1_0"
+DEFAULT_AVATAR_A = "avatar_reinhard"
+DEFAULT_AVATAR_B = "avatar_yang"
+PLOT_PROFILE_LABELS = {
+    "auto": "auto",
+    "baseline": "baseline",
+    "extended": "extended",
+}
 
 
 def _require_choice(name: str, raw_value, allowed: set[str]) -> str:
@@ -21,6 +33,62 @@ def _require_choice(name: str, raw_value, allowed: set[str]) -> str:
         allowed_text = ", ".join(sorted(allowed))
         raise ValueError(f"{name} must be one of {{{allowed_text}}}, got {raw_value!r}")
     return value
+
+
+def _get_env_bool(name: str) -> bool | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _resolve_timestamped_video_output_path(
+    raw_output_path: str,
+    base_dir: Path,
+    *,
+    export_stem: str | None = None,
+) -> Path:
+    candidate = Path(str(raw_output_path).strip()) if str(raw_output_path).strip() else Path(DEFAULT_VIDEO_EXPORT_DIR)
+    if not candidate.is_absolute():
+        candidate = (base_dir.parent / candidate).resolve()
+    if candidate.suffix:
+        target_dir = candidate.parent
+        suffix = candidate.suffix
+    else:
+        target_dir = candidate
+        suffix = ".mp4"
+    final_stem = str(export_stem).strip() if export_stem else DEFAULT_VIDEO_EXPORT_TOPIC
+    return (target_dir / f"{final_stem}{suffix}").resolve()
+
+
+def _resolve_plot_profile(
+    raw_value,
+    test_mode: int,
+    cohesion_decision_source_requested: str,
+    cohesion_decision_source_effective: str,
+) -> tuple[str, str]:
+    requested = str(raw_value).strip().lower()
+    if requested not in PLOT_PROFILE_LABELS:
+        requested = "auto"
+    requested_cohesion = str(cohesion_decision_source_requested).strip().lower()
+    effective_cohesion = str(cohesion_decision_source_effective).strip().lower()
+    v3_plot_permitted = effective_cohesion == "v3_test"
+    if requested == "auto":
+        effective = "extended" if v3_plot_permitted else "baseline"
+    elif requested == "extended" and not v3_plot_permitted:
+        effective = "baseline"
+    else:
+        effective = requested
+    if requested == "extended" and effective != "extended":
+        print(
+            f"[mode] plot_profile={requested} requested but test_mode={test_mode} with cohesion_decision_source={requested_cohesion} only permits baseline plots; remapping to baseline"
+        )
+    return requested, effective
 
 
 def _print_run_summary(
@@ -35,6 +103,7 @@ def _print_run_summary(
     animate: bool,
     observer_enabled: bool,
     export_battle_report: bool,
+    **_ignored,
 ) -> None:
     print(
         f"[run] mode={test_mode_name} "
@@ -52,15 +121,15 @@ def _prepare_export_video_cfg(viz_settings: dict, base_dir: Path, run_export_ste
     export_video_enabled = bool(
         export_video_cfg.get("enabled", viz_settings.get("export_video_enabled", False))
     )
-    export_video_enabled_override = core.get_env_bool("LOGH_EXPORT_VIDEO_ENABLED")
+    export_video_enabled_override = _get_env_bool("LOGH_EXPORT_VIDEO_ENABLED")
     if export_video_enabled_override is not None:
         export_video_enabled = export_video_enabled_override
 
-    raw_video_output_path = str(export_video_cfg.get("output_path", core.DEFAULT_VIDEO_EXPORT_DIR))
+    raw_video_output_path = str(export_video_cfg.get("output_path", DEFAULT_VIDEO_EXPORT_DIR))
     export_video_cfg.update(
         enabled=export_video_enabled,
         output_path=str(
-            core.resolve_timestamped_video_output_path(
+            _resolve_timestamped_video_output_path(
                 raw_video_output_path,
                 base_dir=base_dir,
                 export_stem=f"{run_export_stem}_video",
@@ -95,7 +164,7 @@ def _maybe_export_battle_report(
     )
     report_date_dir = run_export_timestamp[:8]
     report_export_dir = (
-        base_dir.parent / core.DEFAULT_BATTLE_REPORT_EXPORT_DIR / report_date_dir
+        base_dir.parent / DEFAULT_BATTLE_REPORT_EXPORT_DIR / report_date_dir
     ).resolve()
     report_export_dir.mkdir(parents=True, exist_ok=True)
     report_output_path = report_export_dir / f"{run_export_stem}_Battle_Report_Framework_v1.0.md"
@@ -203,36 +272,19 @@ def main() -> None:
     summary = prepared["summary"]
     runtime_cfg = prepared["runtime_cfg"]
     initial_state = prepared["initial_state"]
+    fleet_a_data = prepared["fleet_a_data"]
+    fleet_b_data = prepared["fleet_b_data"]
 
-    get_fleet = partial(settings_api.get_fleet_setting, settings)
-    get_run = partial(settings_api.get_run_control_setting, settings)
-    get_runtime = partial(settings_api.get_runtime_setting, settings)
     get_viz = partial(settings_api.get_visualization_setting, settings)
 
     effective_random_seed = int(summary["effective_random_seed"])
     effective_metatype_random_seed = int(summary["effective_metatype_random_seed"])
     effective_background_map_seed = int(summary["effective_background_map_seed"])
-
-    archetypes = settings_api.load_json_file(core.PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
-    metatype_settings = core.load_metatype_settings(base_dir, settings)
-    archetype_rng = random.Random(int(effective_metatype_random_seed))
-    fleet_a_data = core.resolve_fleet_archetype_data(
-        archetypes,
-        metatype_settings,
-        get_fleet("fleet_a_archetype_id", "default"),
-        rng=archetype_rng,
-    )
-    fleet_b_data = core.resolve_fleet_archetype_data(
-        archetypes,
-        metatype_settings,
-        get_fleet("fleet_b_archetype_id", "default"),
-        rng=archetype_rng,
-    )
-    fleet_a_color, fleet_b_color = core.resolve_fleet_plot_colors(fleet_a_data, fleet_b_data)
+    fleet_a_color, fleet_b_color = scenario.resolve_fleet_plot_colors(fleet_a_data, fleet_b_data)
     display_language = str(get_viz("display_language", "EN")).upper()
     display_language = display_language if display_language in {"EN", "ZH"} else "EN"
-    fleet_a_label = core.resolve_display_name(fleet_a_data, display_language)
-    fleet_b_label = core.resolve_display_name(fleet_b_data, display_language)
+    fleet_a_label = scenario.resolve_display_name(fleet_a_data, display_language)
+    fleet_b_label = scenario.resolve_display_name(fleet_b_data, display_language)
     fleet_a_full_name = report_builder.resolve_name_with_fallback(
         fleet_a_data,
         display_language,
@@ -245,13 +297,13 @@ def main() -> None:
         True,
         "B",
     )
-    fleet_a_avatar = core.resolve_avatar_with_fallback(fleet_a_data, core.DEFAULT_AVATAR_A)
-    fleet_b_avatar = core.resolve_avatar_with_fallback(fleet_b_data, core.DEFAULT_AVATAR_B)
+    fleet_a_avatar = scenario.resolve_avatar_with_fallback(fleet_a_data, DEFAULT_AVATAR_A)
+    fleet_b_avatar = scenario.resolve_avatar_with_fallback(fleet_b_data, DEFAULT_AVATAR_B)
 
     viz_cfg = {
         "animate_requested": bool(get_viz("animate", True)),
         "auto_zoom_2d": bool(get_viz("auto_zoom_2d", False)),
-        "frame_stride": core.DEFAULT_FRAME_STRIDE,
+        "frame_stride": execution.DEFAULT_FRAME_STRIDE,
         "base_frame_interval_ms": int(get_viz("animation_frame_interval_ms", 100)),
         "animation_play_speed": float(get_viz("animation_play_speed", 1.0)),
         "unit_direction_mode": _require_choice(
@@ -279,19 +331,15 @@ def main() -> None:
     )
 
     run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_export_stem = f"{core.DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
+    run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
     export_video_cfg = _prepare_export_video_cfg(viz_settings, base_dir, run_export_stem)
     viz_cfg["animate"] = bool(viz_cfg["animate_requested"] or export_video_cfg["enabled"])
     viz_cfg["plot_diagnostics_enabled"] = bool(viz_cfg["animate"] or summary["observer_enabled"])
 
-    test_mode = core.parse_test_mode(get_run("test_mode", 0))
-    runtime_decision_source_requested, runtime_decision_source_effective = (
-        core.resolve_runtime_decision_source(
-            get_runtime("cohesion_decision_source", "baseline"),
-            test_mode,
-        )
-    )
-    _, viz_cfg["plot_profile"] = core.resolve_plot_profile(
+    test_mode = int(summary["test_mode"])
+    runtime_decision_source_requested = str(summary["runtime_decision_source_requested"])
+    runtime_decision_source_effective = str(summary["runtime_decision_source_effective"])
+    _, viz_cfg["plot_profile"] = _resolve_plot_profile(
         viz_cfg["plot_profile_requested"],
         test_mode,
         runtime_decision_source_requested,

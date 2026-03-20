@@ -14,7 +14,7 @@ Authority: Reference only, not canonical semantics authority
 - Phase A: cleanup and structural simplification
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
-- A5 `test_run` harness simplification in progress
+- A5 `test_run` structural reset in progress
 
 Current emphasis is not personality expansion.
 
@@ -50,15 +50,11 @@ Current emphasis is not personality expansion.
 - `test_run/test_run_entry.py`
   - maintained launcher ground truth for routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
-  - scenario build and grouped config preparation
+  - scenario build, archetype resolution, and maintained harness helper surface
 - `test_run/test_run_execution.py`
-  - maintained battle execution host
+  - maintained battle execution host and engine-adjacent test harness skeleton host
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
-- `test_run/test_run_v1_0.py`
-  - transitional helper host and historical launcher shim
-- `test_run/test_run_experiments.py`
-  - transitional compatibility shell over the maintained spine
 - `test_run/test_run_anchor_regression.py`
   - fixed routine 3-run anchor regression on the maintained spine
 - `test_run/settings_accessor.py`
@@ -67,11 +63,11 @@ Current emphasis is not personality expansion.
 ## Report / Viz Paths
 
 - `test_run/battle_report_builder.py`
-  - BRF markdown assembly used by the maintained launcher path
+  - active auxiliary BRF markdown assembly used by the maintained launcher path
 - `test_run/brf_narrative_messages.py`
-  - BRF narrative message library kept stable during current cleanup rounds
+  - active auxiliary BRF narrative message library
 - `test_run/test_run_v1_0_viz.py`
-  - rendering, plots, animation/export display layer
+  - active auxiliary renderer, plots, and animation/export display layer
 
 ## Settings Paths
 
@@ -100,6 +96,10 @@ Current emphasis is not personality expansion.
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_active_surface_reset_round1_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_governance_followup_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_governance_request_brf_and_runtime_followup_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/brf_internal_subtraction_followup_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_v1_0_exit_report_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_split_validation_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/runtime_engine_skeleton_burden_inventory_20260320.md`
 
 ## Reading Order
 
@@ -109,6 +109,6 @@ Current emphasis is not personality expansion.
 4. `test_run/test_run_scenario.py`
 5. `test_run/test_run_execution.py`
 6. `test_run/test_run_telemetry.py`
-7. `test_run/test_run_v1_0.py`
-8. `test_run/battle_report_builder.py`
-9. `test_run/test_run_v1_0_viz.py`
+7. `test_run/battle_report_builder.py`
+8. `test_run/test_run_v1_0_viz.py`
+9. `runtime/engine_skeleton.py`
