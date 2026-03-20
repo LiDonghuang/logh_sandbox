@@ -26,23 +26,27 @@ Authority: Reference only, not canonical semantics authority
   - `integrate_movement`
   - `resolve_combat`
 
-### 3. Harness Core Layer
+### 3. Maintained Harness Spine
 
-- `test_run/test_run_v1_0.py`
-- Role:
-  - engine-facing harness core
-  - shared helper surface for launcher/harness
+- `test_run/test_run_entry.py`
+  - thin maintained entry
+- `test_run/test_run_scenario.py`
+  - settings resolution and initial scenario build
+- `test_run/test_run_execution.py`
+  - battle execution host and maintained outputs
+- `test_run/test_run_telemetry.py`
+  - observer / bridge / collapse-shadow collection
 
-### 4. Launcher / Experiment Layer
+### 4. Legacy / Transitional Harness Layer
 
 - `test_run/test_run_main.py`
-  - run orchestration
+  - legacy full launcher orchestration
   - settings interpretation
   - export / viz handoff
+- `test_run/test_run_v1_0.py`
+  - historical launcher target shell
 - `test_run/test_run_experiments.py`
-  - build initial state
-  - execute simulation
-  - collect observer/combat telemetry
+  - transitional shell over the maintained spine
 - `test_run/settings_accessor.py`
   - layered settings load and access
 
@@ -65,17 +69,17 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Structural Tension
 
-The current simplification target is mostly inside the harness layer:
+The current reset target is now split across the legacy layer and optional heavy paths:
 
-- `test_run/test_run_main.py` is still too large and too parameter-heavy
-- launcher/core boundaries are cleaner than before, but not yet minimal
-- default stdout has been reduced, but interface width remains high
+- `test_run/test_run_main.py` still carries the old full-launcher weight
+- legacy viz / report paths remain physically present
+- the maintained spine is smaller, but the old tree has not been fully retired yet
 
 ## Practical Interpretation Rule
 
 Read the system as:
 
-schema -> engine -> harness core -> launcher/experiments -> viz/observer
+schema -> engine -> maintained harness spine -> legacy launcher shell -> viz/observer
 
 Do not read observer wording as runtime ontology.
 Do not read test-only selectors as canonical semantics.

@@ -4,18 +4,25 @@ import json
 import math
 import sys
 from pathlib import Path
-from unittest.mock import patch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from test_run import settings_accessor
-from test_run import test_run_main as main_mod
+from test_run import test_run_entry as entry_mod
 
 
 TEST_RUN_DIR = PROJECT_ROOT / "test_run"
-ANCHOR_PATH = PROJECT_ROOT / "docs" / "a5_iteration0_baseline_anchor_20260318.json"
+ANCHOR_PATH = (
+    PROJECT_ROOT
+    / "analysis"
+    / "engineering_reports"
+    / "developments"
+    / "20260318"
+    / "structural_cleanup"
+    / "a5_iteration0_baseline_anchor_20260318.json"
+)
 ROUTINE_FIXTURE_ID = "neutral_close_100v100"
 ROUTINE_ROW_COUNT = 3
 ROUTINE_RANDOM_SEED = 12345
@@ -154,32 +161,14 @@ def _float_metric_equal(expected, actual) -> bool:
 
 
 def _run_case(base_settings: dict, fixture: dict, steps: int, contact_mode: str) -> dict:
-    original_run_simulation = main_mod.experiments.run_simulation
-    captured: dict[str, object] = {}
-
-    def _capture_run_simulation(*args, **kwargs):
-        result = original_run_simulation(*args, **kwargs)
-        captured["final_state"] = result[0]
-        captured["observer_telemetry"] = result[4]
-        captured["combat_telemetry"] = result[5]
-        return result
-
-    with (
-        patch.object(
-            main_mod.settings_api,
-            "load_layered_test_run_settings",
-            side_effect=lambda _: _build_routine_settings(base_settings, fixture, steps, contact_mode),
-        ),
-        patch.object(main_mod, "_print_run_summary", lambda **_: None),
-        patch.object(main_mod, "_maybe_export_battle_report", lambda **_: None),
-        patch.object(main_mod, "_render_animation", lambda **_: None),
-        patch.object(main_mod.experiments, "run_simulation", side_effect=_capture_run_simulation),
-    ):
-        main_mod.main()
-
-    final_state = captured["final_state"]
-    observer_telemetry = captured["observer_telemetry"]
-    combat_telemetry = captured["combat_telemetry"]
+    result = entry_mod.run_active_surface(
+        base_dir=TEST_RUN_DIR,
+        settings_override=_build_routine_settings(base_settings, fixture, steps, contact_mode),
+        emit_summary=False,
+    )
+    final_state = result["final_state"]
+    observer_telemetry = result["observer_telemetry"]
+    combat_telemetry = result["combat_telemetry"]
 
     return {
         "final_tick": int(final_state.tick),
@@ -208,11 +197,7 @@ def _run_case(base_settings: dict, fixture: dict, steps: int, contact_mode: str)
 def main() -> int:
     anchor = json.loads(ANCHOR_PATH.read_text(encoding="utf-8"))
     fixture = anchor["fixtures"][ROUTINE_FIXTURE_ID]
-    routine_rows = [
-        row
-        for row in anchor["rows"]
-        if row["fixture"] == ROUTINE_FIXTURE_ID
-    ][:ROUTINE_ROW_COUNT]
+    routine_rows = [row for row in anchor["rows"] if row["fixture"] == ROUTINE_FIXTURE_ID][:ROUTINE_ROW_COUNT]
     if len(routine_rows) != ROUTINE_ROW_COUNT:
         raise ValueError(
             f"expected {ROUTINE_ROW_COUNT} routine rows for fixture {ROUTINE_FIXTURE_ID}, got {len(routine_rows)}"

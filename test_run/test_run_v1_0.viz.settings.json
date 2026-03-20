@@ -1,7 +1,7 @@
 {
-  "export_video_enabled": true,
+  "export_video_enabled": false,
   "export_video": {
-    "enabled": true,
+    "enabled": false,
     "full_plot": true,
     "output_path": "analysis/exports/videos",
     "fps": 5,
@@ -80,7 +80,7 @@
 
   "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; start_delay_ticks=keep initial full 1x view before auto-zoom activates; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
   "auto_zoom": {
-    "tick_interval": 5,
+    "tick_interval": 10,
     "start_delay_ticks": 20,
     "center_deadband": 0.5,
     "min_factor": 4.0,
@@ -186,7 +186,7 @@
         0.5
       ],
       "orbit_scale_range": [
-        1.5,
+        2.0,
         2.5
       ],
       "count_range_medium": [

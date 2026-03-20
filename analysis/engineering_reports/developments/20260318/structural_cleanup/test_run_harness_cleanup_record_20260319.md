@@ -22,10 +22,10 @@ Changes made:
 ## Validation
 
 - `python -m py_compile test_run/test_run_v1_0.py test_run/test_run_main.py test_run/test_run_experiments.py test_run/settings_accessor.py`
-- 9-run A5 baseline anchor regression against `docs/a5_iteration0_baseline_anchor_20260318.json`
+- 9-run A5 baseline anchor regression against `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
   - Result: `mismatch_count=0`
 - Default routine regression policy has now been reduced to a 3-run smoke set.
-  - See `docs/test_run_anchor_regression_policy_20260319.md`
+  - See `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_anchor_regression_policy_20260319.md`
 
 ## Notes
 

@@ -85,7 +85,7 @@ This removed the previous failure mode where engineering had to keep rebuilding 
 
 The fixed routine behavior now is:
 
-- load `docs/a5_iteration0_baseline_anchor_20260318.json`
+- load `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
 - use the first three rows for fixture `neutral_close_100v100`
 - compare the established routine modes:
   - `off`
@@ -194,11 +194,11 @@ Governance review is requested on the following points:
 
 ### Current A5 Validation / Records
 
-- `docs/a5_iteration0_baseline_anchor_20260318.md`
-- `docs/a5_iteration0_baseline_anchor_20260318.json`
-- `docs/test_run_anchor_regression_policy_20260319.md`
-- `docs/test_run_harness_cleanup_record_20260319.md`
-- `docs/test_run_a5_governance_request_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_anchor_regression_policy_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_harness_cleanup_record_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_a5_governance_request_20260320.md`
 
 ### Current Working Files
 

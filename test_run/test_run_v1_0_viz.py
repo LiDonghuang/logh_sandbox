@@ -12,7 +12,7 @@ import numpy as np
 from matplotlib.collections import LineCollection
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
-from matplotlib.patches import Circle, Ellipse, PathPatch, Rectangle
+from matplotlib.patches import Circle, Ellipse, Rectangle
 
 from runtime.runtime_v0_1 import BattleState
 
@@ -75,206 +75,6 @@ def _seed_word_from_int(seed_value: int, length: int = 6) -> str:
     return "".join(rng.choice(letters) for _ in range(max(1, length)))
 
 
-def _mean_xy(points: Sequence[tuple[float, float]]) -> tuple[float, float]:
-    if not points:
-        return (0.0, 0.0)
-    sx = 0.0
-    sy = 0.0
-    for x, y in points:
-        sx += float(x)
-        sy += float(y)
-    n = float(len(points))
-    return (sx / n, sy / n)
-
-
-def _std_population(values: Sequence[float]) -> float:
-    if not values:
-        return 0.0
-    mean = sum(float(v) for v in values) / float(len(values))
-    var = sum((float(v) - mean) ** 2 for v in values) / float(len(values))
-    if var < 0.0:
-        var = 0.0
-    return math.sqrt(var)
-
-
-def _deterministic_kmeans_1d(values: Sequence[float], max_iters: int = 12) -> tuple[list[float], list[float]]:
-    if len(values) <= 1:
-        return (list(values), [])
-    c1 = min(values)
-    c2 = max(values)
-    if abs(c2 - c1) <= 1e-9:
-        ordered = sorted(values)
-        mid = max(1, len(ordered) // 2)
-        return (ordered[:mid], ordered[mid:])
-    group1: list[float] = []
-    group2: list[float] = []
-    for _ in range(max_iters):
-        group1 = []
-        group2 = []
-        for v in values:
-            d1 = abs(v - c1)
-            d2 = abs(v - c2)
-            if d1 <= d2:
-                group1.append(float(v))
-            else:
-                group2.append(float(v))
-        if not group1 or not group2:
-            ordered = sorted(values)
-            mid = max(1, len(ordered) // 2)
-            return (ordered[:mid], ordered[mid:])
-        nc1 = sum(group1) / float(len(group1))
-        nc2 = sum(group2) / float(len(group2))
-        if abs(nc1 - c1) <= 1e-9 and abs(nc2 - c2) <= 1e-9:
-            break
-        c1 = nc1
-        c2 = nc2
-    return (group1, group2)
-
-
-def _compute_formation_metrics_xy(
-    side_points: Sequence[tuple[float, float]],
-    enemy_points: Sequence[tuple[float, float]],
-    angle_bins: int = 12,
-) -> dict[str, float]:
-    out = {
-        "AR": 1.0,
-        "AR_forward": 1.0,
-        "major_axis_alignment": 0.0,
-        "wedge_ratio": 1.0,
-        "split_separation": 0.0,
-        "angle_coverage": 0.0,
-    }
-    if not side_points:
-        return out
-    cx, cy = _mean_xy(side_points)
-    if len(side_points) == 1:
-        return out
-
-    n = float(len(side_points))
-    var_x = 0.0
-    var_y = 0.0
-    cov_xy = 0.0
-    for x, y in side_points:
-        dx = float(x) - cx
-        dy = float(y) - cy
-        var_x += dx * dx
-        var_y += dy * dy
-        cov_xy += dx * dy
-    var_x /= n
-    var_y /= n
-    cov_xy /= n
-
-    trace = var_x + var_y
-    delta_sq = (var_x - var_y) ** 2 + 4.0 * (cov_xy ** 2)
-    delta = math.sqrt(max(0.0, delta_sq))
-    lam1 = max(0.0, 0.5 * (trace + delta))
-    lam2 = max(0.0, 0.5 * (trace - delta))
-
-    if abs(cov_xy) > 1e-9 or abs(lam1 - var_y) > 1e-9:
-        evx = lam1 - var_y
-        evy = cov_xy
-    else:
-        evx = 1.0
-        evy = 0.0
-    norm = math.sqrt(evx * evx + evy * evy)
-    if norm <= 1e-9:
-        ux = 1.0
-        uy = 0.0
-    else:
-        ux = evx / norm
-        uy = evy / norm
-    vx = -uy
-    vy = ux
-
-    sigma1 = math.sqrt(lam1)
-    sigma2 = math.sqrt(lam2)
-    out["AR"] = sigma1 / (sigma2 + 1e-9)
-
-    u_values: list[float] = []
-    v_values: list[float] = []
-    for x, y in side_points:
-        dx = float(x) - cx
-        dy = float(y) - cy
-        u = (dx * ux) + (dy * uy)
-        v = (dx * vx) + (dy * vy)
-        u_values.append(float(u))
-        v_values.append(float(v))
-
-    g1, g2 = _deterministic_kmeans_1d(u_values)
-    if g1 and g2:
-        mean1 = sum(g1) / float(len(g1))
-        mean2 = sum(g2) / float(len(g2))
-        std_u = _std_population(u_values)
-        out["split_separation"] = abs(mean1 - mean2) / (std_u + 1e-9)
-
-    if enemy_points and angle_bins > 0:
-        ex, ey = _mean_xy(enemy_points)
-        occupied = set()
-        full = 2.0 * math.pi
-        for x, y in side_points:
-            phi = math.atan2(float(y) - ey, float(x) - ex)
-            if phi < 0.0:
-                phi += full
-            idx = int((phi / full) * angle_bins)
-            if idx < 0:
-                idx = 0
-            if idx >= angle_bins:
-                idx = angle_bins - 1
-            occupied.add(idx)
-        out["angle_coverage"] = float(len(occupied)) / float(angle_bins)
-
-    if enemy_points:
-        ex, ey = _mean_xy(enemy_points)
-        fx = ex - cx
-        fy = ey - cy
-        fn = math.sqrt((fx * fx) + (fy * fy))
-        if fn > 1e-9:
-            fx /= fn
-            fy /= fn
-            lx = -fy
-            ly = fx
-            forward_values = []
-            lateral_values = []
-            for x, y in side_points:
-                dx = float(x) - cx
-                dy = float(y) - cy
-                forward_values.append((dx * fx) + (dy * fy))
-                lateral_values.append((dx * lx) + (dy * ly))
-            sigma_forward = _std_population(forward_values)
-            sigma_lateral = _std_population(lateral_values)
-            out["AR_forward"] = sigma_forward / (sigma_lateral + 1e-9)
-            out["major_axis_alignment"] = abs((ux * fx) + (uy * fy))
-
-    n_units = len(side_points)
-    if n_units > 0 and enemy_points:
-        group_size = max(1, int(math.ceil(0.3 * float(n_units))))
-        ex, ey = _mean_xy(enemy_points)
-        fx = ex - cx
-        fy = ey - cy
-        fn = math.sqrt((fx * fx) + (fy * fy))
-        if fn > 1e-9:
-            fx /= fn
-            fy /= fn
-            lx = -fy
-            ly = fx
-            forward_values = []
-            lateral_values = []
-            for x, y in side_points:
-                dx = float(x) - cx
-                dy = float(y) - cy
-                forward_values.append((dx * fx) + (dy * fy))
-                lateral_values.append((dx * lx) + (dy * ly))
-            sorted_idx = sorted(range(n_units), key=lambda i: forward_values[i])
-            rear_idx = sorted_idx[:group_size]
-            front_idx = sorted_idx[-group_size:]
-            lateral_rear = [lateral_values[i] for i in rear_idx]
-            lateral_front = [lateral_values[i] for i in front_idx]
-            width_front = _std_population(lateral_front)
-            width_back = _std_population(lateral_rear)
-            out["wedge_ratio"] = width_front / (width_back + 1e-9)
-    return out
-
-
 def render_test_run(
     arena_size: float,
     trajectory: Mapping[str, Sequence[float]],
@@ -300,6 +100,7 @@ def render_test_run(
     unit_direction_mode: str = "effective",
     show_attack_target_lines: bool = False,
     observer_telemetry: Mapping[str, Any] | None = None,
+    bridge_telemetry: Mapping[str, Any] | None = None,
     observer_enabled: bool = True,
     plot_profile: str = "extended",
     plot_smoothing_ticks: int = 5,
@@ -438,54 +239,32 @@ def render_test_run(
             pass
 
     def apply_window_maximize_and_sync() -> None:
-        if export_video_enabled_layout:
+        if export_video_enabled_layout or fig_manager is None:
             return
-        if fig_manager is None:
-            return
-        effective_window_width_px = None
-        effective_window_height_px = None
-        manager_window = None
         try:
             manager_window = getattr(fig_manager, "window", None)
-            if manager_window is not None:
-                # Maximize at figure creation stage.
-                if hasattr(manager_window, "state"):
-                    manager_window.state("zoomed")
-                elif hasattr(manager_window, "showMaximized"):
-                    manager_window.showMaximized()
-                if hasattr(manager_window, "update_idletasks"):
-                    manager_window.update_idletasks()
-                # Tk path.
-                if hasattr(manager_window, "winfo_width") and hasattr(manager_window, "winfo_height"):
-                    ww = int(manager_window.winfo_width())
-                    hh = int(manager_window.winfo_height())
-                    if ww > 100 and hh > 100:
-                        effective_window_width_px = ww
-                        effective_window_height_px = hh
-                # Qt path.
-                if (
-                    (effective_window_width_px is None or effective_window_height_px is None)
-                    and hasattr(manager_window, "size")
-                ):
-                    qsize = manager_window.size()
-                    if qsize is not None and hasattr(qsize, "width") and hasattr(qsize, "height"):
-                        ww = int(qsize.width())
-                        hh = int(qsize.height())
-                        if ww > 100 and hh > 100:
-                            effective_window_width_px = ww
-                            effective_window_height_px = hh
+            if manager_window is None:
+                return
+            if hasattr(manager_window, "state"):
+                manager_window.state("zoomed")
+            elif hasattr(manager_window, "showMaximized"):
+                manager_window.showMaximized()
+            if hasattr(manager_window, "update_idletasks"):
+                manager_window.update_idletasks()
+            window_sizes = []
+            if hasattr(manager_window, "winfo_width") and hasattr(manager_window, "winfo_height"):
+                window_sizes.append((int(manager_window.winfo_width()), int(manager_window.winfo_height())))
+            if hasattr(manager_window, "size"):
+                qsize = manager_window.size()
+                if qsize is not None and hasattr(qsize, "width") and hasattr(qsize, "height"):
+                    window_sizes.append((int(qsize.width()), int(qsize.height())))
+            for ww, hh in window_sizes:
+                if ww > 100 and hh > 100:
+                    figure_dpi = max(72.0, float(fig.get_dpi()))
+                    fig.set_size_inches(ww / figure_dpi, hh / figure_dpi, forward=True)
+                    return
         except Exception:
             pass
-        if effective_window_width_px is not None and effective_window_height_px is not None:
-            try:
-                figure_dpi = max(72.0, float(fig.get_dpi()))
-                fig.set_size_inches(
-                    effective_window_width_px / figure_dpi,
-                    effective_window_height_px / figure_dpi,
-                    forward=True,
-                )
-            except Exception:
-                pass
     apply_window_maximize_and_sync()
 
     outer_grid = fig.add_gridspec(
@@ -575,885 +354,345 @@ def render_test_run(
         )
 
     def draw_space_background(ax, size: float, rng: random.Random) -> dict[str, int]:
-        # 1) Galaxy haze fixed at battlefield center, fixed size, fixed 135deg.
-        haze_center_ratio = _cfg(haze_cfg, "center_ratio", [0.5, 0.5])
-        haze_center_x = size * float(haze_center_ratio[0])
-        haze_center_y = size * float(haze_center_ratio[1])
-        haze_angle = float(_cfg(haze_cfg, "angle_deg", 135.0))
-        # Haze sizing model:
-        # - inner_size_ratio controls inner major-axis scale
-        # - outer_inner_ratio controls outer/inner size ratio
-        # - axis_ratio controls minor/major shape ratio
-        haze_inner_size_ratio = float(_cfg(haze_cfg, "inner_size_ratio", 0.735))
-        haze_outer_inner_ratio = float(_cfg(haze_cfg, "outer_inner_ratio", 1.3333333333))
-        haze_axis_ratio = float(_cfg(haze_cfg, "axis_ratio", 0.3061224489))
-        if haze_inner_size_ratio <= 0.0:
-            haze_inner_size_ratio = 0.735
-        if haze_outer_inner_ratio <= 0.0:
-            haze_outer_inner_ratio = 1.3333333333
-        if haze_axis_ratio <= 0.0:
-            haze_axis_ratio = 0.3061224489
-        inner_major = size * haze_inner_size_ratio
-        inner_minor = inner_major * haze_axis_ratio
-        outer_major = inner_major * haze_outer_inner_ratio
-        outer_minor = inner_minor * haze_outer_inner_ratio
-        haze_outer_color = str(_cfg(haze_cfg, "outer_color", "#d7deea"))
-        haze_inner_color = str(_cfg(haze_cfg, "inner_color", "#c7d3e5"))
-        haze_outer_alpha = float(_cfg(haze_cfg, "outer_alpha", 0.13))
-        haze_inner_alpha = float(_cfg(haze_cfg, "inner_alpha", 0.10))
-        ax.add_patch(
-            Ellipse(
-                (haze_center_x, haze_center_y),
-                outer_major,
-                outer_minor,
-                angle=haze_angle,
-                color=haze_outer_color,
-                alpha=haze_outer_alpha,
-                zorder=0.02,
-            )
-        )
-        ax.add_patch(
-            Ellipse(
-                (haze_center_x, haze_center_y),
-                inner_major,
-                inner_minor,
-                angle=haze_angle,
-                color=haze_inner_color,
-                alpha=haze_inner_alpha,
-                zorder=0.03,
-            )
-        )
-        # 2) Primary major star.
-        major_star_radius_range = _cfg(major_star_cfg, "radius_range", [30.0, 45.0])
-        major_star_colors = _cfg(major_star_cfg, "colors", ["#fff9dc", "#ffe38a", "#ff9a7a"])
-        major_star_glow_scale = float(_cfg(major_star_cfg, "glow_scale", 1.22))
-        major_star_glow_alpha = float(_cfg(major_star_cfg, "glow_alpha", 0.10))
-        major_star_core_alpha = float(_cfg(major_star_cfg, "core_alpha", 0.36))
-        major_star_x = rng.uniform(0.0, size)
-        major_star_y = rng.uniform(0.0, size)
-        major_star_r = rng.uniform(float(major_star_radius_range[0]), float(major_star_radius_range[1]))
-        major_star_color = str(rng.choice(major_star_colors))
-        primary_visual_r = major_star_r * major_star_glow_scale
-        ax.add_patch(
-            Circle(
-                (major_star_x, major_star_y),
-                primary_visual_r,
-                color=major_star_color,
-                alpha=major_star_glow_alpha,
-                zorder=0.074,
-            )
-        )
-        ax.add_patch(
-            Circle(
-                (major_star_x, major_star_y),
-                major_star_r,
-                color=major_star_color,
-                alpha=major_star_core_alpha,
-                zorder=0.075,
-            )
-        )
-        occupied_celestial_fields: list[tuple[float, float, float]] = [
-            (major_star_x, major_star_y, primary_visual_r),
-        ]
+        def float_range(raw: Any, default: Sequence[float]) -> tuple[float, float]:
+            if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+                low = float(raw[0])
+                high = float(raw[1])
+            else:
+                low = float(default[0])
+                high = float(default[1])
+            if high < low:
+                low, high = high, low
+            return low, high
 
-        def register_celestial_occupancy(x: float, y: float, radius: float) -> None:
+        def int_range(raw: Any, default: Sequence[int]) -> tuple[int, int]:
+            low, high = float_range(raw, default)
+            return int(round(low)), int(round(high))
+
+        def clamp(value: Any, low: float, high: float, default: float) -> float:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                numeric = default
+            return max(low, min(high, numeric))
+
+        def sample_float(raw: Any, default: Sequence[float]) -> float:
+            low, high = float_range(raw, default)
+            return rng.uniform(low, high)
+
+        def sample_int(raw: Any, default: Sequence[int]) -> int:
+            low, high = int_range(raw, default)
+            return rng.randint(low, high)
+
+        def add_circle(x: float, y: float, radius: float, color: str, alpha: float, zorder: float) -> None:
             if radius <= 0.0:
                 return
-            occupied_celestial_fields.append((x, y, radius))
+            ax.add_patch(Circle((x, y), radius, color=color, alpha=alpha, zorder=zorder))
 
-        secondary_star_count_range = _cfg(major_star_cfg, "secondary_count_range", [0, 2])
-        secondary_scale_raw = _cfg(major_star_cfg, "secondary_scale", 0.5)
-        if isinstance(secondary_scale_raw, (list, tuple)) and len(secondary_scale_raw) >= 2:
-            secondary_scale_low = float(secondary_scale_raw[0])
-            secondary_scale_high = float(secondary_scale_raw[1])
-            if secondary_scale_high < secondary_scale_low:
-                secondary_scale_low, secondary_scale_high = secondary_scale_high, secondary_scale_low
-            secondary_scale_low = max(0.01, secondary_scale_low)
-            secondary_scale_high = max(secondary_scale_low, secondary_scale_high)
-            secondary_star_scale = rng.uniform(secondary_scale_low, secondary_scale_high)
-        else:
-            secondary_star_scale = float(secondary_scale_raw)
-        if secondary_star_scale <= 0.0:
-            secondary_star_scale = 0.5
-        secondary_min_sep_ratio = float(_cfg(major_star_cfg, "secondary_min_separation_ratio", 0.55))
-        # Secondary stars are constrained to far-distance orbits from primary star.
-        if secondary_min_sep_ratio < 0.45:
-            secondary_min_sep_ratio = 0.45
-        secondary_glow_alpha_scale = float(_cfg(major_star_cfg, "secondary_glow_alpha_scale", 0.85))
-        secondary_core_alpha_scale = float(_cfg(major_star_cfg, "secondary_core_alpha_scale", 0.85))
-        secondary_count = rng.randint(int(secondary_star_count_range[0]), int(secondary_star_count_range[1]))
-        secondary_min_sep = size * secondary_min_sep_ratio
-        secondary_non_overlap_margin = size * 0.03
-        secondary_star_fields: list[tuple[float, float, float]] = []
+        haze_center_ratio = _cfg(haze_cfg, 'center_ratio', [0.5, 0.5])
+        haze_center_x = size * float(haze_center_ratio[0])
+        haze_center_y = size * float(haze_center_ratio[1])
+        haze_angle = float(_cfg(haze_cfg, 'angle_deg', 135.0))
+        inner_major = size * max(0.05, float(_cfg(haze_cfg, 'inner_size_ratio', 0.735)))
+        outer_major = inner_major * max(1.0, float(_cfg(haze_cfg, 'outer_inner_ratio', 1.3333333333)))
+        axis_ratio = max(0.05, float(_cfg(haze_cfg, 'axis_ratio', 0.3061224489)))
+        for major, color, alpha, zorder in (
+            (outer_major, str(_cfg(haze_cfg, 'outer_color', '#d7deea')), float(_cfg(haze_cfg, 'outer_alpha', 0.13)), 0.02),
+            (inner_major, str(_cfg(haze_cfg, 'inner_color', '#c7d3e5')), float(_cfg(haze_cfg, 'inner_alpha', 0.10)), 0.03),
+        ):
+            ax.add_patch(
+                Ellipse(
+                    (haze_center_x, haze_center_y),
+                    major,
+                    major * axis_ratio,
+                    angle=haze_angle,
+                    color=color,
+                    alpha=alpha,
+                    zorder=zorder,
+                )
+            )
 
-        # 3) Planet-like bodies: size correlates with primary-star relative distance.
-        asteroid_count_range = _cfg(asteroids_cfg, "count_range", [0, 3])
-        asteroid_radius_range = _cfg(asteroids_cfg, "radius_range", [5.0, 10.0])
-        asteroid_colors = _cfg(asteroids_cfg, "colors", ["#8f969f", "#9aa1ab", "#8a939c"])
-        asteroid_alpha = float(_cfg(asteroids_cfg, "alpha", 0.72))
-        orbit_ratio_range = _cfg(asteroids_cfg, "orbit_ratio_range", [0.18, 0.95])
-        orbit_jitter_range = _cfg(asteroids_cfg, "orbit_jitter_range", [0.92, 1.08])
-        orbit_radius_base_ratio = float(_cfg(orbit_cfg, "orbit_radius_base_ratio", 0.5))
-        draw_orbits_enabled = bool(_cfg(orbit_cfg, "draw_orbits_enabled", False))
-        orbit_line_color = str(_cfg(orbit_cfg, "orbit_line_color", "#6f7784"))
-        orbit_line_alpha = float(_cfg(orbit_cfg, "orbit_line_alpha", 0.22))
-        orbit_line_width = float(_cfg(orbit_cfg, "orbit_line_width", 0.55))
-        orbital_draw_ratio_max = float(_cfg(orbit_cfg, "draw_extent_ratio_max", 1.25))
-        planet_orbit_gap_ratio_min = float(_cfg(orbit_cfg, "planet_orbit_gap_ratio_min", 0.01))
-        angle_jitter_deg = float(_cfg(asteroids_cfg, "angle_jitter_deg", 12.0))
-        min_separation_ratio = float(_cfg(asteroids_cfg, "min_separation_ratio", 0.11))
-        small_zone_max_ratio = float(_cfg(asteroids_cfg, "small_zone_max_ratio", 0.42))
-        mid_zone_max_ratio = float(_cfg(asteroids_cfg, "mid_zone_max_ratio", 0.72))
-        if small_zone_max_ratio < 0.0:
-            small_zone_max_ratio = 0.0
-        if mid_zone_max_ratio < small_zone_max_ratio:
-            mid_zone_max_ratio = small_zone_max_ratio
-        if mid_zone_max_ratio > 1.0:
-            mid_zone_max_ratio = 1.0
-        moon_cfg = _cfg(asteroids_cfg, "moons", {})
-        moon_enabled = bool(_cfg(moon_cfg, "enabled", True))
-        moon_size_ratio_range = _cfg(moon_cfg, "size_ratio_range", [0.1, 0.2])
-        moon_orbit_scale_range = _cfg(moon_cfg, "orbit_scale_range", [2.2, 4.5])
-        moon_count_range_medium = _cfg(moon_cfg, "count_range_medium", [0, 1])
-        moon_count_range_large = _cfg(moon_cfg, "count_range_large", [1, 2])
-        moon_color = str(_cfg(moon_cfg, "color", "#cfd5df"))
-        moon_alpha = float(_cfg(moon_cfg, "alpha", 0.75))
-        # Orbital celestial objects are allowed to extend slightly beyond map border.
-        # Domain with draw_extent_ratio_max=1.25: [-0.25*arena, 1.25*arena] on both axes.
-        orbital_draw_ratio_max = max(1.0, min(2.0, orbital_draw_ratio_max))
+        major_star_colors = list(_cfg(major_star_cfg, 'colors', ['#fff9dc', '#ffe38a', '#ff9a7a']))
+        major_star_radius = sample_float(_cfg(major_star_cfg, 'radius_range', [30.0, 45.0]), [30.0, 45.0])
+        major_star_color = str(rng.choice(major_star_colors))
+        major_star_glow_scale = max(1.0, float(_cfg(major_star_cfg, 'glow_scale', 1.22)))
+        major_star_glow_alpha = clamp(_cfg(major_star_cfg, 'glow_alpha', 0.10), 0.0, 1.0, 0.10)
+        major_star_core_alpha = clamp(_cfg(major_star_cfg, 'core_alpha', 0.36), 0.0, 1.0, 0.36)
+        major_star_x = rng.uniform(0.0, size)
+        major_star_y = rng.uniform(0.0, size)
+        primary_visual_r = major_star_radius * major_star_glow_scale
+        add_circle(major_star_x, major_star_y, primary_visual_r, major_star_color, major_star_glow_alpha, 0.074)
+        add_circle(major_star_x, major_star_y, major_star_radius, major_star_color, major_star_core_alpha, 0.075)
+
+        orbital_draw_ratio_max = clamp(_cfg(orbit_cfg, 'draw_extent_ratio_max', 1.25), 1.0, 2.0, 1.25)
         orbital_draw_min = size * (1.0 - orbital_draw_ratio_max)
         orbital_draw_max = size * orbital_draw_ratio_max
+        occupied_fields: list[tuple[float, float, float]] = [(major_star_x, major_star_y, primary_visual_r)]
 
-        def in_orbital_draw_bounds(x: float, y: float) -> bool:
-            return (orbital_draw_min <= x <= orbital_draw_max) and (orbital_draw_min <= y <= orbital_draw_max)
+        def in_draw_bounds(x: float, y: float) -> bool:
+            return orbital_draw_min <= x <= orbital_draw_max and orbital_draw_min <= y <= orbital_draw_max
 
-        def in_canvas_bounds(x: float, y: float) -> bool:
-            return (0.0 <= x <= size) and (0.0 <= y <= size)
+        def in_canvas_bounds(x: float, y: float, margin: float = 0.0) -> bool:
+            return margin <= x <= (size - margin) and margin <= y <= (size - margin)
 
-        def draw_orbit_path(orbit_shell: Mapping[str, float]) -> None:
-            orbit_semi_major = float(orbit_shell.get("semi_major", 0.0))
-            orbit_semi_minor = float(orbit_shell.get("semi_minor", 0.0))
-            orbit_center_x = float(orbit_shell.get("center_x", major_star_x))
-            orbit_center_y = float(orbit_shell.get("center_y", major_star_y))
-            orbit_angle_deg = float(orbit_shell.get("angle_deg", 0.0))
-            if (not draw_orbits_enabled) or orbit_semi_major <= 1e-9 or orbit_semi_minor <= 1e-9:
+        def register_occupied(x: float, y: float, radius: float) -> None:
+            if radius > 0.0:
+                occupied_fields.append((x, y, radius))
+
+        def overlaps_occupied(x: float, y: float, radius: float, pad: float = 0.0) -> bool:
+            return any(math.hypot(x - ox, y - oy) < (radius + oradius + pad) for ox, oy, oradius in occupied_fields)
+
+        orbit_radius_base_ratio = clamp(_cfg(orbit_cfg, 'orbit_radius_base_ratio', 0.5), 0.05, 1.2, 0.5)
+        orbit_radius_base = size * orbit_radius_base_ratio * math.sqrt(2.0)
+        draw_orbits_enabled = bool(_cfg(orbit_cfg, 'draw_orbits_enabled', False))
+        orbit_line_color = str(_cfg(orbit_cfg, 'orbit_line_color', '#6f7784'))
+        orbit_line_alpha = clamp(_cfg(orbit_cfg, 'orbit_line_alpha', 0.22), 0.0, 1.0, 0.22)
+        orbit_line_width = max(0.1, float(_cfg(orbit_cfg, 'orbit_line_width', 0.55)))
+        orbit_eccentricity_near = clamp(_cfg(orbit_cfg, 'eccentricity_near', 0.02), 0.0, 0.85, 0.02)
+        orbit_eccentricity_far = clamp(_cfg(orbit_cfg, 'eccentricity_far', 0.24), orbit_eccentricity_near, 0.85, orbit_eccentricity_near)
+        orbit_axis_angle_deg = rng.uniform(0.0, 180.0)
+        orbit_axis_angle_rad = math.radians(orbit_axis_angle_deg)
+        orbit_axis_cos = math.cos(orbit_axis_angle_rad)
+        orbit_axis_sin = math.sin(orbit_axis_angle_rad)
+        belt_gap_ratio = clamp(_cfg(orbit_cfg, 'belt_planet_exclusion_gap_ratio', 0.06), 0.0, 1.0, 0.06)
+        belt_belt_gap_scale = clamp(_cfg(orbit_cfg, 'belt_belt_exclusion_scale', 0.5), 0.0, 2.0, 0.5)
+
+        def build_orbit_shell(orbit_ratio: float) -> dict[str, float]:
+            progress = clamp(orbit_ratio, 0.0, 1.0, orbit_ratio)
+            eccentricity = orbit_eccentricity_near + ((orbit_eccentricity_far - orbit_eccentricity_near) * progress)
+            semi_major = max(1.0, orbit_radius_base * orbit_ratio)
+            semi_minor = semi_major * math.sqrt(max(0.05, 1.0 - (eccentricity * eccentricity)))
+            center_offset = semi_major * eccentricity
+            return {
+                'semi_major': semi_major,
+                'semi_minor': semi_minor,
+                'center_x': major_star_x - (center_offset * orbit_axis_cos),
+                'center_y': major_star_y - (center_offset * orbit_axis_sin),
+                'angle_deg': orbit_axis_angle_deg,
+            }
+
+        def draw_orbit_path(shell: Mapping[str, float]) -> None:
+            if not draw_orbits_enabled:
                 return
             ax.add_patch(
                 Ellipse(
-                    (orbit_center_x, orbit_center_y),
-                    2.0 * orbit_semi_major,
-                    2.0 * orbit_semi_minor,
-                    angle=orbit_angle_deg,
+                    (float(shell['center_x']), float(shell['center_y'])),
+                    2.0 * float(shell['semi_major']),
+                    2.0 * float(shell['semi_minor']),
+                    angle=float(shell['angle_deg']),
                     fill=False,
                     edgecolor=orbit_line_color,
-                    linewidth=max(0.1, orbit_line_width),
-                    linestyle="--",
-                    alpha=max(0.0, min(1.0, orbit_line_alpha)),
+                    linewidth=orbit_line_width,
+                    linestyle='--',
+                    alpha=orbit_line_alpha,
                     zorder=0.076,
                 )
             )
 
-        gas_giant_ring_cfg = _cfg(asteroids_cfg, "gas_giant_ring", {})
-        ring_enabled = bool(_cfg(gas_giant_ring_cfg, "enabled", True))
-        ring_diameter_scale_range = _cfg(gas_giant_ring_cfg, "diameter_scale_range", [2.1, 3.4])
-        ring_axis_ratio_range = _cfg(gas_giant_ring_cfg, "axis_ratio_range", [0.2, 0.55])
-        ring_angle_deg_range = _cfg(gas_giant_ring_cfg, "angle_deg_range", [0.0, 180.0])
-        ring_color = str(_cfg(gas_giant_ring_cfg, "color", "#c6ccd6"))
-        ring_alpha = float(_cfg(gas_giant_ring_cfg, "alpha", 0.65))
-        ring_band_width_ratio = 0.24
-        asteroid_r_min = float(asteroid_radius_range[0])
-        asteroid_r_max = float(asteroid_radius_range[1])
-        if asteroid_r_max < asteroid_r_min:
-            asteroid_r_min, asteroid_r_max = asteroid_r_max, asteroid_r_min
-        asteroid_r_span = max(0.0, asteroid_r_max - asteroid_r_min)
-        orbit_radius_base_ratio = max(0.05, min(1.2, orbit_radius_base_ratio))
-        orbit_radius_base = size * orbit_radius_base_ratio * math.sqrt(2.0)
-        planet_orbit_gap_ratio_min = max(0.0, min(1.0, planet_orbit_gap_ratio_min))
-        orbit_ratio_low = max(0.0, min(1.0, float(orbit_ratio_range[0])))
-        orbit_ratio_high = max(0.0, min(1.0, float(orbit_ratio_range[1])))
-        if orbit_ratio_high < orbit_ratio_low:
-            orbit_ratio_low, orbit_ratio_high = orbit_ratio_high, orbit_ratio_low
-        if orbit_ratio_high - orbit_ratio_low < 1e-9:
-            orbit_ratio_high = min(1.0, orbit_ratio_low + 0.01)
-        angle_jitter_rad = math.radians(max(0.0, angle_jitter_deg))
-        min_planet_sep = max(0.0, orbit_radius_base * min_separation_ratio)
-        asteroid_count = rng.randint(int(asteroid_count_range[0]), int(asteroid_count_range[1]))
-        planet_orbit_ratios: list[float] = []
-        planet_orbit_thetas: list[float] = []
-        planet_target_angle_gap_rad = (2.0 * math.pi) / float(max(8, asteroid_count * 2))
-
-        def classify_planet_size_band(orbit_ratio: float) -> tuple[float, str]:
-            if asteroid_r_span <= 1e-9:
-                return (asteroid_r_min, "small")
-            if orbit_ratio < small_zone_max_ratio:
-                small_max = asteroid_r_min + (0.45 * asteroid_r_span)
-                return (rng.uniform(asteroid_r_min, small_max), "small")
-            if orbit_ratio < mid_zone_max_ratio:
-                medium_min = asteroid_r_min + (0.30 * asteroid_r_span)
-                medium_max = asteroid_r_min + (0.75 * asteroid_r_span)
-                return (rng.uniform(medium_min, medium_max), "medium")
-            large_min = asteroid_r_min + (0.55 * asteroid_r_span)
-            return (rng.uniform(large_min, asteroid_r_max), "large")
-
-        def draw_planet_ring_band(
-            asteroid_x: float,
-            asteroid_y: float,
-            ring_major_diameter: float,
-            ring_minor_diameter: float,
-            ring_angle: float,
-        ) -> None:
-            def sample_ellipse_points(
-                major_diameter: float,
-                minor_diameter: float,
-                angle_deg: float,
-                point_count: int,
-                reverse: bool = False,
-            ) -> list[tuple[float, float]]:
-                if point_count < 8:
-                    point_count = 8
-                angle_rad = math.radians(angle_deg)
-                cos_a = math.cos(angle_rad)
-                sin_a = math.sin(angle_rad)
-                rx = 0.5 * major_diameter
-                ry = 0.5 * minor_diameter
-                points: list[tuple[float, float]] = []
-                for idx in range(point_count):
-                    theta = (2.0 * math.pi * idx) / float(point_count)
-                    if reverse:
-                        theta = (2.0 * math.pi) - theta
-                    px = rx * math.cos(theta)
-                    py = ry * math.sin(theta)
-                    points.append(
-                        (
-                            asteroid_x + (px * cos_a) - (py * sin_a),
-                            asteroid_y + (px * sin_a) + (py * cos_a),
-                        )
-                    )
-                return points
-
-            inner_scale = max(0.05, 1.0 - ring_band_width_ratio)
-            inner_major_diameter = ring_major_diameter * inner_scale
-            inner_minor_diameter = ring_minor_diameter * inner_scale
-            outer_points = sample_ellipse_points(
-                ring_major_diameter,
-                ring_minor_diameter,
-                ring_angle,
-                point_count=96,
-                reverse=False,
-            )
-            inner_points = sample_ellipse_points(
-                inner_major_diameter,
-                inner_minor_diameter,
-                ring_angle,
-                point_count=96,
-                reverse=True,
-            )
-            vertices = [outer_points[0]]
-            codes = [mpl.path.Path.MOVETO]
-            for point in outer_points[1:]:
-                vertices.append(point)
-                codes.append(mpl.path.Path.LINETO)
-            vertices.append(outer_points[0])
-            codes.append(mpl.path.Path.CLOSEPOLY)
-            vertices.append(inner_points[0])
-            codes.append(mpl.path.Path.MOVETO)
-            for point in inner_points[1:]:
-                vertices.append(point)
-                codes.append(mpl.path.Path.LINETO)
-            vertices.append(inner_points[0])
-            codes.append(mpl.path.Path.CLOSEPOLY)
-            ring_path = mpl.path.Path(vertices, codes)
-            ax.add_patch(
-                PathPatch(
-                    ring_path,
-                    facecolor=ring_color,
-                    edgecolor="none",
-                    alpha=ring_alpha,
-                    fill=True,
-                    zorder=0.098,
-                )
+        def orbit_point(shell: Mapping[str, float], theta: float, radial_scale: float = 1.0) -> tuple[float, float]:
+            local_x = float(shell['semi_major']) * radial_scale * math.cos(theta)
+            local_y = float(shell['semi_minor']) * radial_scale * math.sin(theta)
+            return (
+                float(shell['center_x']) + (local_x * orbit_axis_cos) - (local_y * orbit_axis_sin),
+                float(shell['center_y']) + (local_x * orbit_axis_sin) + (local_y * orbit_axis_cos),
             )
 
-        def draw_planet_body(asteroid_x: float, asteroid_y: float, asteroid_r: float, size_band: str) -> None:
-            if ring_enabled and size_band in {"medium", "large"}:
-                ring_major_diameter = (2.0 * asteroid_r) * rng.uniform(
-                    float(ring_diameter_scale_range[0]),
-                    float(ring_diameter_scale_range[1]),
-                )
-                ring_minor_diameter = ring_major_diameter * rng.uniform(
-                    float(ring_axis_ratio_range[0]),
-                    float(ring_axis_ratio_range[1]),
-                )
-                ring_angle = rng.uniform(
-                    float(ring_angle_deg_range[0]),
-                    float(ring_angle_deg_range[1]),
-                )
-                draw_planet_ring_band(
-                    asteroid_x,
-                    asteroid_y,
-                    ring_major_diameter,
-                    ring_minor_diameter,
-                    ring_angle,
-                )
-                register_celestial_occupancy(asteroid_x, asteroid_y, ring_major_diameter * 0.5)
-            ax.add_patch(
-                Circle(
-                    (asteroid_x, asteroid_y),
-                    asteroid_r,
-                    color=str(rng.choice(asteroid_colors)),
-                    alpha=asteroid_alpha,
-                    zorder=0.10,
-                )
-            )
-            register_celestial_occupancy(asteroid_x, asteroid_y, asteroid_r)
-            if moon_enabled and size_band in {"medium", "large"}:
-                if size_band == "large":
-                    moon_count = rng.randint(int(moon_count_range_large[0]), int(moon_count_range_large[1]))
-                else:
-                    moon_count = rng.randint(int(moon_count_range_medium[0]), int(moon_count_range_medium[1]))
-                for _moon_idx in range(max(0, moon_count)):
-                    moon_r = asteroid_r * rng.uniform(
-                        float(moon_size_ratio_range[0]),
-                        float(moon_size_ratio_range[1]),
-                    )
-                    moon_orbit = asteroid_r * rng.uniform(
-                        float(moon_orbit_scale_range[0]),
-                        float(moon_orbit_scale_range[1]),
-                    )
-                    moon_theta = rng.uniform(0.0, 2.0 * math.pi)
-                    moon_x = asteroid_x + (moon_orbit * math.cos(moon_theta))
-                    moon_y = asteroid_y + (moon_orbit * math.sin(moon_theta))
-                    if in_orbital_draw_bounds(moon_x, moon_y):
-                        moon_z = 0.099 if rng.random() < 0.5 else 0.101
-                        ax.add_patch(
-                            Circle(
-                                (moon_x, moon_y),
-                                moon_r,
-                                color=moon_color,
-                                alpha=moon_alpha,
-                                zorder=moon_z,
-                            )
-                        )
-                        register_celestial_occupancy(moon_x, moon_y, moon_r)
-
-        def overlaps_occupied_celestial(x: float, y: float, radius: float, pad: float = 0.0) -> bool:
-            clearance_pad = max(0.0, pad)
-            for ox, oy, oradius in occupied_celestial_fields:
-                if math.hypot(x - ox, y - oy) < (radius + oradius + clearance_pad):
-                    return True
-            return False
-
-        def estimate_planet_visual_radius(asteroid_r: float, size_band: str) -> float:
-            visual_radius = asteroid_r
-            if ring_enabled and size_band in {"medium", "large"}:
-                visual_radius = max(
-                    visual_radius,
-                    asteroid_r * max(
-                        float(ring_diameter_scale_range[0]),
-                        float(ring_diameter_scale_range[1]),
-                    ),
-                )
-            return visual_radius
-
-        def try_place_planet(
-            orbit_shell: Mapping[str, float],
-            theta_base: float,
-            visual_radius: float,
-            attempts: int = 24,
-            require_in_canvas: bool = False,
-        ) -> tuple[float, float, float] | None:
-            best_candidate: tuple[float, float, float] | None = None
-            best_angle_gap = -1.0
-            for _attempt in range(attempts):
-                orbit_theta = theta_base + rng.uniform(-angle_jitter_rad, angle_jitter_rad)
-                candidate_x, candidate_y, _ = orbit_shell_point(orbit_shell, orbit_theta, radial_scale=1.0)
-                if not in_orbital_draw_bounds(candidate_x, candidate_y):
-                    continue
-                if require_in_canvas and (not in_canvas_bounds(candidate_x, candidate_y)):
-                    continue
-                if overlaps_occupied_celestial(candidate_x, candidate_y, visual_radius, pad=min_planet_sep * 0.25):
-                    continue
-                theta_norm = orbit_theta % (2.0 * math.pi)
-                if planet_orbit_thetas:
-                    min_angle_gap = min(
-                        min(abs(theta_norm - pt), (2.0 * math.pi) - abs(theta_norm - pt))
-                        for pt in planet_orbit_thetas
-                    )
-                else:
-                    min_angle_gap = 2.0 * math.pi
-                candidate = (candidate_x, candidate_y, theta_norm)
-                if min_angle_gap >= planet_target_angle_gap_rad:
-                    return candidate
-                if min_angle_gap > best_angle_gap:
-                    best_angle_gap = min_angle_gap
-                    best_candidate = candidate
-            return best_candidate
-
-        # 4) Asteroid belts: mid/far orbits around the primary star.
-        belt_cluster_count_range = _cfg(belts_cfg, "cluster_count_range", [0, 10])
-        belt_points_per_360_degree_range = _cfg(belts_cfg, "points_per_360_degree_range", [120.0, 120.0])
-        belt_orbit_ratio_range = _cfg(belts_cfg, "orbit_ratio_range", [0.55, 0.95])
-        belt_orbit_exclusion_gap_ratio = float(_cfg(orbit_cfg, "belt_planet_exclusion_gap_ratio", 0.06))
-        belt_to_belt_exclusion_scale = float(_cfg(orbit_cfg, "belt_belt_exclusion_scale", 0.5))
-        belt_thickness_ratio_range = _cfg(belts_cfg, "thickness_ratio_range", [0.05, 0.12])
-        belt_arc_span_deg_range = _cfg(belts_cfg, "arc_span_deg_range", [20.0, 55.0])
-        belt_curve_strength_range = _cfg(belts_cfg, "curve_strength_range", [-0.06, 0.06])
-        belt_asteroid_radius_range = _cfg(belts_cfg, "asteroid_radius_range", [0.1, 0.2])
-        belt_color = str(_cfg(belts_cfg, "color", "#8e96a3"))
-        belt_alpha = float(_cfg(belts_cfg, "alpha", 0.55))
-        belt_body_count = rng.randint(int(belt_cluster_count_range[0]), int(belt_cluster_count_range[1]))
-        belt_ratio_low = max(0.0, min(1.0, float(belt_orbit_ratio_range[0])))
-        belt_ratio_high = max(0.0, min(1.0, float(belt_orbit_ratio_range[1])))
-        if belt_ratio_high < belt_ratio_low:
-            belt_ratio_low, belt_ratio_high = belt_ratio_high, belt_ratio_low
-        belt_orbit_exclusion_gap_ratio = max(0.0, min(1.0, belt_orbit_exclusion_gap_ratio))
-        belt_to_belt_exclusion_scale = max(0.0, min(2.0, belt_to_belt_exclusion_scale))
-        if isinstance(belt_points_per_360_degree_range, (list, tuple)) and len(belt_points_per_360_degree_range) >= 2:
-            belt_points_per_360_low = float(belt_points_per_360_degree_range[0])
-            belt_points_per_360_high = float(belt_points_per_360_degree_range[1])
-        else:
-            belt_points_per_360_low = 120.0
-            belt_points_per_360_high = 120.0
-        belt_points_per_360_low = max(1.0, belt_points_per_360_low)
-        belt_points_per_360_high = max(1.0, belt_points_per_360_high)
-        if belt_points_per_360_high < belt_points_per_360_low:
-            belt_points_per_360_low, belt_points_per_360_high = belt_points_per_360_high, belt_points_per_360_low
-        belt_orbit_ratios: list[float] = []
-        orbit_count_range = _cfg(orbit_cfg, "orbit_count_range", [8, 14])
-        orbit_slot_count_low = 8
-        orbit_slot_count_high = 14
-        if isinstance(orbit_count_range, (list, tuple)) and len(orbit_count_range) >= 2:
-            orbit_slot_count_low = max(1, int(orbit_count_range[0]))
-            orbit_slot_count_high = max(1, int(orbit_count_range[1]))
-        if orbit_slot_count_high < orbit_slot_count_low:
-            orbit_slot_count_low, orbit_slot_count_high = orbit_slot_count_high, orbit_slot_count_low
-        orbit_pool_ratio_low = min(orbit_ratio_low, belt_ratio_low)
-        orbit_pool_ratio_high = max(orbit_ratio_high, belt_ratio_high)
-        orbit_shell_soft_gap_ratio = max(
-            0.0,
-            planet_orbit_gap_ratio_min,
-            belt_orbit_exclusion_gap_ratio,
-            belt_to_belt_exclusion_scale * belt_orbit_exclusion_gap_ratio,
-        )
-        orbit_jitter_low = float(orbit_jitter_range[0])
-        orbit_jitter_high = float(orbit_jitter_range[1])
-        if orbit_jitter_high < orbit_jitter_low:
-            orbit_jitter_low, orbit_jitter_high = orbit_jitter_high, orbit_jitter_low
-        orbit_shell_jitter_ratio = min(
-            0.45,
-            max(abs(1.0 - orbit_jitter_low), abs(orbit_jitter_high - 1.0)),
-        )
-        orbit_eccentricity_near = float(_cfg(orbit_cfg, "eccentricity_near", 0.02))
-        orbit_eccentricity_far = float(_cfg(orbit_cfg, "eccentricity_far", 0.24))
-        orbit_eccentricity_near = max(0.0, min(0.85, orbit_eccentricity_near))
-        orbit_eccentricity_far = max(0.0, min(0.85, orbit_eccentricity_far))
-        if orbit_eccentricity_far < orbit_eccentricity_near:
-            orbit_eccentricity_far = orbit_eccentricity_near
-        orbit_major_axis_angle_deg = rng.uniform(0.0, 180.0)
-        orbit_major_axis_angle_rad = math.radians(orbit_major_axis_angle_deg)
-        orbit_major_axis_cos = math.cos(orbit_major_axis_angle_rad)
-        orbit_major_axis_sin = math.sin(orbit_major_axis_angle_rad)
-
-        def build_orbit_ratio_pool(required_count: int) -> list[float]:
-            orbit_slot_count = max(required_count, rng.randint(orbit_slot_count_low, orbit_slot_count_high))
-            if orbit_slot_count <= 1:
-                return [0.5 * (orbit_pool_ratio_low + orbit_pool_ratio_high)]
-            orbit_span = max(1e-6, orbit_pool_ratio_high - orbit_pool_ratio_low)
-            base_step = orbit_span / float(orbit_slot_count - 1)
-            effective_soft_gap = min(max(0.0, orbit_shell_soft_gap_ratio), base_step * 0.9)
-            orbit_ratios: list[float] = []
-            for orbit_idx in range(orbit_slot_count):
-                base_ratio = orbit_pool_ratio_low + (base_step * orbit_idx)
-                ratio_jitter = rng.uniform(-orbit_shell_jitter_ratio, orbit_shell_jitter_ratio) * base_step
-                candidate_ratio = base_ratio + ratio_jitter
-                left_bound = orbit_pool_ratio_low if orbit_idx == 0 else (orbit_ratios[-1] + effective_soft_gap)
-                remaining_slots = orbit_slot_count - orbit_idx - 1
-                right_bound = orbit_pool_ratio_high - (remaining_slots * effective_soft_gap)
-                if right_bound < left_bound:
-                    right_bound = left_bound
-                candidate_ratio = max(left_bound, min(right_bound, candidate_ratio))
-                orbit_ratios.append(candidate_ratio)
-            return orbit_ratios
-
-        def orbit_ratio_progress(orbit_ratio: float) -> float:
-            span = max(1e-9, orbit_pool_ratio_high - orbit_pool_ratio_low)
-            progress = (float(orbit_ratio) - orbit_pool_ratio_low) / span
-            return max(0.0, min(1.0, progress))
-
-        def build_orbit_shell(orbit_ratio: float) -> dict[str, float]:
-            semi_major = orbit_radius_base * float(orbit_ratio)
-            eccentricity = orbit_eccentricity_near + (
-                (orbit_eccentricity_far - orbit_eccentricity_near) * orbit_ratio_progress(orbit_ratio)
-            )
-            eccentricity = max(0.0, min(0.85, eccentricity))
-            semi_minor = semi_major * math.sqrt(max(0.0, 1.0 - (eccentricity * eccentricity)))
-            focus_offset = semi_major * eccentricity
-            center_x = major_star_x - (focus_offset * orbit_major_axis_cos)
-            center_y = major_star_y - (focus_offset * orbit_major_axis_sin)
-            return {
-                "orbit_ratio": float(orbit_ratio),
-                "semi_major": semi_major,
-                "semi_minor": semi_minor,
-                "eccentricity": eccentricity,
-                "center_x": center_x,
-                "center_y": center_y,
-                "angle_deg": orbit_major_axis_angle_deg,
-            }
-
-        def orbit_shell_point(
-            orbit_shell: Mapping[str, float],
-            theta: float,
-            radial_scale: float = 1.0,
-        ) -> tuple[float, float, float]:
-            center_x = float(orbit_shell.get("center_x", major_star_x))
-            center_y = float(orbit_shell.get("center_y", major_star_y))
-            semi_major = float(orbit_shell.get("semi_major", 0.0)) * radial_scale
-            semi_minor = float(orbit_shell.get("semi_minor", 0.0)) * radial_scale
-            px = semi_major * math.cos(theta)
-            py = semi_minor * math.sin(theta)
-            x = center_x + (px * orbit_major_axis_cos) - (py * orbit_major_axis_sin)
-            y = center_y + (px * orbit_major_axis_sin) + (py * orbit_major_axis_cos)
-            local_radius = math.sqrt((px * px) + (py * py))
-            return (x, y, local_radius)
-
-        def draw_belt_object(
-            orbit_shell: Mapping[str, float],
-            belt_center_theta: float,
-            require_in_canvas: bool = False,
-        ) -> bool:
-            belt_major = float(orbit_shell.get("semi_major", 0.0))
-            belt_minor = belt_major * rng.uniform(
-                float(belt_thickness_ratio_range[0]),
-                float(belt_thickness_ratio_range[1]),
-            )
-            if belt_major <= 1e-9 or belt_minor <= 1e-9:
-                return False
-            arc_span_deg = rng.uniform(
-                float(belt_arc_span_deg_range[0]),
-                float(belt_arc_span_deg_range[1]),
-            )
-            points_per_360 = rng.uniform(belt_points_per_360_low, belt_points_per_360_high)
-            belt_count = max(1, int(round((points_per_360 * arc_span_deg) / 360.0)))
-            arc_span_rad = math.radians(max(6.0, arc_span_deg))
-            curve_strength = rng.uniform(
-                float(belt_curve_strength_range[0]),
-                float(belt_curve_strength_range[1]),
-            )
-            belt_points: list[tuple[float, float, float]] = []
-            in_canvas_count = 0
-            for _ in range(belt_count):
-                t = rng.uniform(-0.5, 0.5)
-                theta = belt_center_theta + (t * arc_span_rad)
-                radial_jitter = rng.uniform(-belt_minor, belt_minor)
-                inward_bow = 1.0 - (curve_strength * (1.0 - (4.0 * t * t)))
-                _, _, base_local_radius = orbit_shell_point(orbit_shell, theta, radial_scale=1.0)
-                if base_local_radius <= 1e-9:
-                    continue
-                radial_scale = max(0.1, ((base_local_radius + radial_jitter) * inward_bow) / base_local_radius)
-                asteroid_x, asteroid_y, _ = orbit_shell_point(orbit_shell, theta, radial_scale=radial_scale)
-                if not in_orbital_draw_bounds(asteroid_x, asteroid_y):
-                    continue
-                asteroid_r = rng.uniform(
-                    float(belt_asteroid_radius_range[0]),
-                    float(belt_asteroid_radius_range[1]),
-                )
-                belt_points.append((asteroid_x, asteroid_y, asteroid_r))
-                if in_canvas_bounds(asteroid_x, asteroid_y):
-                    in_canvas_count += 1
-            if not belt_points:
-                return False
-            if require_in_canvas and in_canvas_count <= 0:
-                return False
-            for asteroid_x, asteroid_y, asteroid_r in belt_points:
-                ax.add_patch(
-                    Circle(
-                        (asteroid_x, asteroid_y),
-                        asteroid_r,
-                        color=belt_color,
-                        alpha=belt_alpha,
-                        zorder=0.12,
-                    )
-                )
-                register_celestial_occupancy(asteroid_x, asteroid_y, asteroid_r)
-            return True
-
-        def try_add_planet(
-            available_orbit_indices: set[int],
-            used_orbit_indices: set[int],
-            orbit_pool_ratios: list[float],
-            orbit_pool_shells: list[Mapping[str, float]],
-            orbit_try_count: int = 10,
-            place_attempts: int = 18,
-            require_in_canvas: bool = False,
-        ) -> bool:
-            candidate_indices = [
-                orbit_idx
-                for orbit_idx in available_orbit_indices
-                if orbit_ratio_low <= orbit_pool_ratios[orbit_idx] <= orbit_ratio_high
-            ]
-            if not candidate_indices:
-                return False
-            rng.shuffle(candidate_indices)
-            for orbit_idx in candidate_indices[: max(1, orbit_try_count)]:
-                orbit_ratio = orbit_pool_ratios[orbit_idx]
-                orbit_shell = orbit_pool_shells[orbit_idx]
-                asteroid_r, size_band = classify_planet_size_band(orbit_ratio)
-                visual_radius = estimate_planet_visual_radius(asteroid_r, size_band)
-                orbit_theta_base = rng.uniform(0.0, 2.0 * math.pi)
-                placed_xy = try_place_planet(
-                    orbit_shell,
-                    orbit_theta_base,
-                    visual_radius,
-                    attempts=place_attempts,
-                    require_in_canvas=require_in_canvas,
-                )
-                if placed_xy is None:
-                    continue
-                asteroid_x, asteroid_y, asteroid_theta = placed_xy
-                available_orbit_indices.remove(orbit_idx)
-                used_orbit_indices.add(orbit_idx)
-                planet_orbit_ratios.append(orbit_ratio)
-                planet_orbit_thetas.append(asteroid_theta)
-                draw_planet_body(asteroid_x, asteroid_y, asteroid_r, size_band)
-                return True
-            return False
-
-        def try_add_belt(
-            available_orbit_indices: set[int],
-            used_orbit_indices: set[int],
-            orbit_pool_ratios: list[float],
-            orbit_pool_shells: list[Mapping[str, float]],
-            orbit_try_count: int = 12,
-            require_in_canvas: bool = False,
-        ) -> bool:
-            candidate_indices = [
-                orbit_idx
-                for orbit_idx in available_orbit_indices
-                if belt_ratio_low <= orbit_pool_ratios[orbit_idx] <= belt_ratio_high
-            ]
-            if not candidate_indices:
-                return False
-            rng.shuffle(candidate_indices)
-            for orbit_idx in candidate_indices[: max(1, orbit_try_count)]:
-                orbit_ratio = orbit_pool_ratios[orbit_idx]
-                orbit_shell = orbit_pool_shells[orbit_idx]
-                belt_center_theta = rng.uniform(0.0, 2.0 * math.pi)
-                if draw_belt_object(orbit_shell, belt_center_theta, require_in_canvas=require_in_canvas):
-                    available_orbit_indices.remove(orbit_idx)
-                    used_orbit_indices.add(orbit_idx)
-                    belt_orbit_ratios.append(orbit_ratio)
-                    return True
-            return False
-
-        def build_weighted_round_robin_order(planet_count: int, belt_count: int) -> list[str]:
-            remaining_planets = max(0, int(planet_count))
-            remaining_belts = max(0, int(belt_count))
-            total_count = remaining_planets + remaining_belts
-            if total_count <= 0:
+        def choose_orbit_ratios(target_count: int, ratio_range: Sequence[float], min_gap: float) -> list[float]:
+            if target_count <= 0:
                 return []
-            score_planet = 0
-            score_belt = 0
-            order: list[str] = []
-            for _ in range(total_count):
-                if remaining_planets > 0:
-                    score_planet += remaining_planets
-                if remaining_belts > 0:
-                    score_belt += remaining_belts
-                if remaining_planets <= 0:
-                    chosen_kind = "belt"
-                elif remaining_belts <= 0:
-                    chosen_kind = "planet"
-                elif score_planet >= score_belt:
-                    chosen_kind = "planet"
-                else:
-                    chosen_kind = "belt"
-                order.append(chosen_kind)
-                if chosen_kind == "planet":
-                    score_planet -= total_count
-                else:
-                    score_belt -= total_count
-            return order
+            low, high = float_range(ratio_range, [0.15, 0.85])
+            low = clamp(low, 0.0, 1.0, low)
+            high = clamp(high, low, 1.0, high)
+            ratios: list[float] = []
+            for _ in range(max(24, target_count * 16)):
+                candidate = rng.uniform(low, high)
+                if all(abs(candidate - existing) >= min_gap for existing in ratios):
+                    ratios.append(candidate)
+                    if len(ratios) >= target_count:
+                        break
+            while len(ratios) < target_count:
+                ratios.append(rng.uniform(low, high))
+            ratios.sort()
+            return ratios[:target_count]
 
-        def fill_orbit_population_round_robin(
-            *,
-            planet_target_count: int,
-            belt_target_count: int,
-            require_in_canvas: bool,
-            attempt_scale: int = 120,
-        ) -> None:
-            placement_order = build_weighted_round_robin_order(planet_target_count, belt_target_count)
-            if not placement_order:
-                return
-            attempt_limit = max(120, max(1, len(placement_order)) * max(1, int(attempt_scale)))
-            attempts = 0
-            turn_idx = 0
-            baseline_planets = len(planet_orbit_ratios)
-            baseline_belts = len(belt_orbit_ratios)
-            while attempts < attempt_limit:
-                placed_planets = len(planet_orbit_ratios) - baseline_planets
-                placed_belts = len(belt_orbit_ratios) - baseline_belts
-                if placed_planets >= planet_target_count and placed_belts >= belt_target_count:
-                    return
-                chosen_kind = placement_order[turn_idx % len(placement_order)]
-                turn_idx += 1
-                if chosen_kind == "planet":
-                    if placed_planets >= planet_target_count:
-                        continue
-                    try_add_planet(
-                        available_orbit_indices,
-                        used_orbit_indices,
-                        orbit_ratio_pool,
-                        orbit_shell_pool,
-                        orbit_try_count=12,
-                        place_attempts=20,
-                        require_in_canvas=require_in_canvas,
+        asteroid_count_range = _cfg(asteroids_cfg, 'count_range', [0, 3])
+        orbit_ratio_range = _cfg(asteroids_cfg, 'orbit_ratio_range', [0.18, 0.95])
+        orbit_jitter_range = _cfg(asteroids_cfg, 'orbit_jitter_range', [0.92, 1.08])
+        angle_jitter_deg = max(0.0, float(_cfg(asteroids_cfg, 'angle_jitter_deg', 12.0)))
+        planet_angle_jitter_rad = math.radians(angle_jitter_deg)
+        planet_orbit_gap_ratio = clamp(_cfg(orbit_cfg, 'planet_orbit_gap_ratio_min', 0.01), 0.0, 1.0, 0.01)
+        min_separation_ratio = max(0.0, float(_cfg(asteroids_cfg, 'min_separation_ratio', 0.11)))
+        asteroid_radius_range = float_range(_cfg(asteroids_cfg, 'radius_range', [5.0, 10.0]), [5.0, 10.0])
+        asteroid_colors = list(_cfg(asteroids_cfg, 'colors', ['#8f969f', '#9aa1ab', '#8a939c']))
+        asteroid_alpha = clamp(_cfg(asteroids_cfg, 'alpha', 0.72), 0.0, 1.0, 0.72)
+        small_zone_max_ratio = clamp(_cfg(asteroids_cfg, 'small_zone_max_ratio', 0.42), 0.0, 1.0, 0.42)
+        mid_zone_max_ratio = clamp(_cfg(asteroids_cfg, 'mid_zone_max_ratio', 0.72), small_zone_max_ratio, 1.0, 0.72)
+        moon_cfg = _cfg(asteroids_cfg, 'moons', {})
+        moon_enabled = bool(_cfg(moon_cfg, 'enabled', True))
+        moon_size_ratio_range = float_range(_cfg(moon_cfg, 'size_ratio_range', [0.1, 0.2]), [0.1, 0.2])
+        moon_orbit_scale_range = float_range(_cfg(moon_cfg, 'orbit_scale_range', [2.2, 4.5]), [2.2, 4.5])
+        moon_count_range_medium = _cfg(moon_cfg, 'count_range_medium', [0, 1])
+        moon_count_range_large = _cfg(moon_cfg, 'count_range_large', [1, 2])
+        moon_color = str(_cfg(moon_cfg, 'color', '#cfd5df'))
+        moon_alpha = clamp(_cfg(moon_cfg, 'alpha', 0.75), 0.0, 1.0, 0.75)
+        ring_cfg = _cfg(asteroids_cfg, 'gas_giant_ring', {})
+        ring_enabled = bool(_cfg(ring_cfg, 'enabled', True))
+        ring_diameter_scale_range = float_range(_cfg(ring_cfg, 'diameter_scale_range', [2.1, 3.4]), [2.1, 3.4])
+        ring_axis_ratio_range = float_range(_cfg(ring_cfg, 'axis_ratio_range', [0.2, 0.55]), [0.2, 0.55])
+        ring_angle_deg_range = float_range(_cfg(ring_cfg, 'angle_deg_range', [0.0, 180.0]), [0.0, 180.0])
+        ring_color = str(_cfg(ring_cfg, 'color', '#c6ccd6'))
+        ring_alpha = clamp(_cfg(ring_cfg, 'alpha', 0.65), 0.0, 1.0, 0.65)
+        orbit_jitter_low, orbit_jitter_high = float_range(orbit_jitter_range, [0.92, 1.08])
+        min_planet_sep = orbit_radius_base * min_separation_ratio
+
+        def classify_planet(orbit_ratio: float) -> tuple[float, str]:
+            radius_low, radius_high = asteroid_radius_range
+            radius_span = max(0.0, radius_high - radius_low)
+            if radius_span <= 1e-9:
+                return radius_low, 'small'
+            if orbit_ratio < small_zone_max_ratio:
+                return rng.uniform(radius_low, radius_low + (0.45 * radius_span)), 'small'
+            if orbit_ratio < mid_zone_max_ratio:
+                return rng.uniform(radius_low + (0.30 * radius_span), radius_low + (0.75 * radius_span)), 'medium'
+            return rng.uniform(radius_low + (0.55 * radius_span), radius_high), 'large'
+
+        def draw_planet(x: float, y: float, orbit_ratio: float) -> None:
+            radius, size_band = classify_planet(orbit_ratio)
+            visual_radius = radius
+            if ring_enabled and size_band in {'medium', 'large'}:
+                ring_major = max((2.0 * radius) * sample_float(ring_diameter_scale_range, [2.1, 3.4]), radius * 2.0)
+                ring_minor = ring_major * sample_float(ring_axis_ratio_range, [0.2, 0.55])
+                ring_angle = sample_float(ring_angle_deg_range, [0.0, 180.0])
+                ax.add_patch(
+                    Ellipse(
+                        (x, y),
+                        ring_major,
+                        ring_minor,
+                        angle=ring_angle,
+                        fill=False,
+                        edgecolor=ring_color,
+                        linewidth=max(0.8, ring_major * 0.08),
+                        alpha=ring_alpha,
+                        zorder=0.098,
                     )
-                else:
-                    if placed_belts >= belt_target_count:
-                        continue
-                    try_add_belt(
-                        available_orbit_indices,
-                        used_orbit_indices,
-                        orbit_ratio_pool,
-                        orbit_shell_pool,
-                        orbit_try_count=12,
-                        require_in_canvas=require_in_canvas,
+                )
+                visual_radius = max(visual_radius, 0.5 * ring_major)
+            add_circle(x, y, radius, str(rng.choice(asteroid_colors)), asteroid_alpha, 0.10)
+            register_occupied(x, y, visual_radius)
+            if moon_enabled and size_band in {'medium', 'large'}:
+                moon_count = sample_int(
+                    moon_count_range_large if size_band == 'large' else moon_count_range_medium,
+                    [0, 1] if size_band == 'medium' else [1, 2],
+                )
+                for _ in range(max(0, moon_count)):
+                    moon_radius = radius * sample_float(moon_size_ratio_range, [0.1, 0.2])
+                    moon_orbit = radius * sample_float(moon_orbit_scale_range, [2.2, 4.5])
+                    moon_theta = rng.uniform(0.0, 2.0 * math.pi)
+                    moon_x = x + (moon_orbit * math.cos(moon_theta))
+                    moon_y = y + (moon_orbit * math.sin(moon_theta))
+                    if in_draw_bounds(moon_x, moon_y):
+                        add_circle(moon_x, moon_y, moon_radius, moon_color, moon_alpha, 0.099)
+
+        target_planets = sample_int(asteroid_count_range, [0, 3])
+        planet_ratios = choose_orbit_ratios(target_planets, orbit_ratio_range, planet_orbit_gap_ratio)
+        drawn_orbit_ratios: set[float] = set()
+        planet_angles: list[float] = []
+        generated_planets = 0
+        for orbit_ratio in planet_ratios:
+            shell = build_orbit_shell(orbit_ratio)
+            orbit_key = round(orbit_ratio, 4)
+            if orbit_key not in drawn_orbit_ratios:
+                draw_orbit_path(shell)
+                drawn_orbit_ratios.add(orbit_key)
+            for _ in range(32):
+                theta = rng.uniform(0.0, 2.0 * math.pi) + rng.uniform(-planet_angle_jitter_rad, planet_angle_jitter_rad)
+                theta_norm = theta % (2.0 * math.pi)
+                if planet_angles:
+                    angle_gap = min(
+                        min(abs(theta_norm - existing), (2.0 * math.pi) - abs(theta_norm - existing))
+                        for existing in planet_angles
                     )
-                attempts += 1
-
-        # Sample counts first, then fill shared orbit slots via weighted round-robin.
-        # Keep the existing two-pass policy: first guarantee in-canvas minimum, then fill remaining target count.
-        target_planets = asteroid_count
-        target_belts = belt_body_count
-        min_belts_in_canvas = min(target_belts, max(0, int(belt_cluster_count_range[0])))
-        min_planets_in_canvas = min(target_planets, max(0, int(asteroid_count_range[0])))
-        orbit_ratio_pool = build_orbit_ratio_pool(target_planets + target_belts)
-        orbit_shell_pool = [build_orbit_shell(orbit_ratio) for orbit_ratio in orbit_ratio_pool]
-        available_orbit_indices: set[int] = set(range(len(orbit_ratio_pool)))
-        used_orbit_indices: set[int] = set()
-
-        fill_orbit_population_round_robin(
-            planet_target_count=min_planets_in_canvas,
-            belt_target_count=min_belts_in_canvas,
-            require_in_canvas=True,
-        )
-        fill_orbit_population_round_robin(
-            planet_target_count=max(0, target_planets - len(planet_orbit_ratios)),
-            belt_target_count=max(0, target_belts - len(belt_orbit_ratios)),
-            require_in_canvas=False,
-        )
-
-        if draw_orbits_enabled:
-            for orbit_idx in sorted(used_orbit_indices):
-                draw_orbit_path(orbit_shell_pool[orbit_idx])
-
-        # 5) Secondary stars: place after belts/planets, prefer emptier corners near edges.
-
-        def score_secondary_candidate(x: float, y: float, sec_visual_r: float) -> float | None:
-            if not in_canvas_bounds(x, y):
-                return None
-            if math.hypot(x - major_star_x, y - major_star_y) < secondary_min_sep:
-                return None
-            if overlaps_occupied_celestial(x, y, sec_visual_r, pad=secondary_non_overlap_margin):
-                return None
-            for ox, oy, oradius in secondary_star_fields:
-                if math.hypot(x - ox, y - oy) < (sec_visual_r + oradius + secondary_non_overlap_margin):
-                    return None
-            min_clearance = float("inf")
-            for ox, oy, oradius in occupied_celestial_fields:
-                clearance = math.hypot(x - ox, y - oy) - (sec_visual_r + oradius)
-                if clearance < min_clearance:
-                    min_clearance = clearance
-            for ox, oy, oradius in secondary_star_fields:
-                clearance = math.hypot(x - ox, y - oy) - (sec_visual_r + oradius)
-                if clearance < min_clearance:
-                    min_clearance = clearance
-            if not math.isfinite(min_clearance):
-                min_clearance = 0.0
-            edge_dist = min(x, size - x, y, size - y)
-            return min_clearance - (0.15 * edge_dist)
-
-        for _ in range(secondary_count):
-            sec_r = rng.uniform(float(major_star_radius_range[0]), float(major_star_radius_range[1])) * secondary_star_scale
-            sec_visual_r = sec_r * major_star_glow_scale
-            corner_inset = max(1.0, sec_visual_r + (secondary_non_overlap_margin * 0.25))
-            if (corner_inset * 2.0) >= size:
-                continue
-            corners = [
-                (corner_inset, corner_inset, +1.0, +1.0),
-                (size - corner_inset, corner_inset, -1.0, +1.0),
-                (corner_inset, size - corner_inset, +1.0, -1.0),
-                (size - corner_inset, size - corner_inset, -1.0, -1.0),
-            ]
-            jitter_span = min(size * 0.08, max(sec_visual_r, size * 0.02))
-            candidate_points: list[tuple[float, float]] = []
-            for cx, cy, sx, sy in corners:
-                candidate_points.append((cx, cy))
-                for _ in range(4):
-                    jx = rng.uniform(0.0, jitter_span)
-                    jy = rng.uniform(0.0, jitter_span)
-                    candidate_points.append((cx + (sx * jx), cy + (sy * jy)))
-
-            best_candidate: tuple[float, float] | None = None
-            best_score = float("-inf")
-            for cand_x, cand_y in candidate_points:
-                score = score_secondary_candidate(cand_x, cand_y, sec_visual_r)
-                if score is None:
+                    if angle_gap < ((2.0 * math.pi) / float(max(8, target_planets * 2))):
+                        continue
+                radius, size_band = classify_planet(orbit_ratio)
+                visual_radius = radius if not (ring_enabled and size_band in {'medium', 'large'}) else radius * max(ring_diameter_scale_range)
+                radial_scale = max(0.1, rng.uniform(orbit_jitter_low, orbit_jitter_high))
+                planet_x, planet_y = orbit_point(shell, theta, radial_scale=radial_scale)
+                if not in_draw_bounds(planet_x, planet_y):
                     continue
-                if score > best_score:
-                    best_score = score
-                    best_candidate = (cand_x, cand_y)
+                if overlaps_occupied(planet_x, planet_y, visual_radius, pad=min_planet_sep * 0.25):
+                    continue
+                draw_planet(planet_x, planet_y, orbit_ratio)
+                planet_angles.append(theta_norm)
+                generated_planets += 1
+                break
 
-            if best_candidate is None:
-                for _attempt in range(48):
-                    side = rng.randint(0, 3)
-                    t = rng.uniform(corner_inset, size - corner_inset)
-                    if side == 0:
-                        cand_x, cand_y = corner_inset, t
-                    elif side == 1:
-                        cand_x, cand_y = size - corner_inset, t
-                    elif side == 2:
-                        cand_x, cand_y = t, corner_inset
-                    else:
-                        cand_x, cand_y = t, size - corner_inset
-                    score = score_secondary_candidate(cand_x, cand_y, sec_visual_r)
-                    if score is None:
-                        continue
-                    if score > best_score:
-                        best_score = score
-                        best_candidate = (cand_x, cand_y)
+        secondary_count = sample_int(_cfg(major_star_cfg, 'secondary_count_range', [0, 2]), [0, 2])
+        secondary_scale = _cfg(major_star_cfg, 'secondary_scale', [0.3, 0.5])
+        secondary_min_sep = size * max(0.45, float(_cfg(major_star_cfg, 'secondary_min_separation_ratio', 0.55)))
+        secondary_glow_scale = clamp(_cfg(major_star_cfg, 'secondary_glow_alpha_scale', 0.85), 0.0, 2.0, 0.85)
+        secondary_core_scale = clamp(_cfg(major_star_cfg, 'secondary_core_alpha_scale', 0.85), 0.0, 2.0, 0.85)
+        for _ in range(max(0, secondary_count)):
+            scale = sample_float(secondary_scale, [0.3, 0.5])
+            sec_radius = max(1.0, major_star_radius * scale)
+            sec_visual_radius = sec_radius * major_star_glow_scale
+            for _ in range(32):
+                theta = rng.uniform(0.0, 2.0 * math.pi)
+                distance = rng.uniform(secondary_min_sep, size * 1.1)
+                sec_x = major_star_x + (distance * math.cos(theta))
+                sec_y = major_star_y + (distance * math.sin(theta))
+                if not in_draw_bounds(sec_x, sec_y) or not in_canvas_bounds(sec_x, sec_y, margin=sec_visual_radius):
+                    continue
+                if overlaps_occupied(sec_x, sec_y, sec_visual_radius, pad=size * 0.03):
+                    continue
+                add_circle(sec_x, sec_y, sec_visual_radius, major_star_color, major_star_glow_alpha * secondary_glow_scale, 0.064)
+                add_circle(sec_x, sec_y, sec_radius, major_star_color, major_star_core_alpha * secondary_core_scale, 0.065)
+                register_occupied(sec_x, sec_y, sec_visual_radius)
+                break
 
-            if best_candidate is None:
-                continue
-
-            sec_x, sec_y = best_candidate
-            sec_color = str(rng.choice(major_star_colors))
-            ax.add_patch(
-                Circle(
-                    (sec_x, sec_y),
-                    sec_visual_r,
-                    color=sec_color,
-                    alpha=max(0.0, min(1.0, major_star_glow_alpha * secondary_glow_alpha_scale)),
-                    zorder=0.064,
-                )
-            )
-            ax.add_patch(
-                Circle(
-                    (sec_x, sec_y),
-                    sec_r,
-                    color=sec_color,
-                    alpha=max(0.0, min(1.0, major_star_core_alpha * secondary_core_alpha_scale)),
-                    zorder=0.065,
-                )
-            )
-            secondary_star_fields.append((sec_x, sec_y, sec_visual_r))
-            register_celestial_occupancy(sec_x, sec_y, sec_visual_r)
+        belt_cluster_count_range = _cfg(belts_cfg, 'cluster_count_range', [0, 10])
+        belt_points_per_360 = float_range(_cfg(belts_cfg, 'points_per_360_degree_range', [120.0, 120.0]), [120.0, 120.0])
+        belt_ratio_range = _cfg(belts_cfg, 'orbit_ratio_range', [0.55, 0.95])
+        belt_thickness_ratio = float_range(_cfg(belts_cfg, 'thickness_ratio_range', [0.05, 0.12]), [0.05, 0.12])
+        belt_arc_span_deg = float_range(_cfg(belts_cfg, 'arc_span_deg_range', [20.0, 55.0]), [20.0, 55.0])
+        belt_curve_strength = float_range(_cfg(belts_cfg, 'curve_strength_range', [-0.06, 0.06]), [-0.06, 0.06])
+        belt_asteroid_radius = float_range(_cfg(belts_cfg, 'asteroid_radius_range', [0.1, 0.2]), [0.1, 0.2])
+        belt_color = str(_cfg(belts_cfg, 'color', '#8e96a3'))
+        belt_alpha = clamp(_cfg(belts_cfg, 'alpha', 0.55), 0.0, 1.0, 0.55)
+        target_belts = sample_int(belt_cluster_count_range, [0, 10])
+        belt_ratios = choose_orbit_ratios(target_belts, belt_ratio_range, belt_gap_ratio * max(0.25, belt_belt_gap_scale))
+        generated_belts = 0
+        for orbit_ratio in belt_ratios:
+            shell = build_orbit_shell(orbit_ratio)
+            orbit_key = round(orbit_ratio, 4)
+            if orbit_key not in drawn_orbit_ratios:
+                draw_orbit_path(shell)
+                drawn_orbit_ratios.add(orbit_key)
+            span_deg = sample_float(belt_arc_span_deg, [20.0, 55.0])
+            point_count = max(12, int(round(sample_float(belt_points_per_360, [120.0, 120.0]) * span_deg / 360.0)))
+            thickness = sample_float(belt_thickness_ratio, [0.05, 0.12])
+            curvature = sample_float(belt_curve_strength, [-0.06, 0.06])
+            radius = sample_float(belt_asteroid_radius, [0.1, 0.2])
+            theta_start = rng.uniform(0.0, 2.0 * math.pi)
+            span_rad = math.radians(span_deg)
+            any_drawn = False
+            for index in range(point_count):
+                progress = index / float(max(1, point_count - 1))
+                theta = theta_start + (progress * span_rad)
+                radial_scale = max(0.05, 1.0 + rng.uniform(-thickness, thickness) + (curvature * math.sin(math.pi * (progress - 0.5))))
+                belt_x, belt_y = orbit_point(shell, theta, radial_scale=radial_scale)
+                if not in_draw_bounds(belt_x, belt_y):
+                    continue
+                add_circle(belt_x, belt_y, radius, belt_color, belt_alpha, 0.09)
+                any_drawn = True
+            if any_drawn:
+                generated_belts += 1
 
         return {
-            "belts_generated": len(belt_orbit_ratios),
-            "belts_target": target_belts,
-            "planets_generated": len(planet_orbit_ratios),
-            "planets_target": target_planets,
+            'belts_generated': generated_belts,
+            'belts_target': target_belts,
+            'planets_generated': generated_planets,
+            'planets_target': target_planets,
         }
 
     boundary_soft_effective = bool(boundary_enabled)
@@ -1730,15 +969,14 @@ def render_test_run(
             zorder=10.0,
         )
 
+    avatar_dir = Path(__file__).resolve().parent.parent / "visual" / "avatars"
+
     def resolve_avatar_image(avatar_id: str):
         stem = str(avatar_id).strip() if avatar_id is not None else ""
         if not stem:
             return None
-        avatar_dir = Path(__file__).resolve().parent.parent / "visual" / "avatars"
-        if "." in stem:
-            candidates = [avatar_dir / stem]
-        else:
-            candidates = [avatar_dir / f"{stem}.bmp", avatar_dir / f"{stem}.png"]
+        suffixes = ("", ".bmp", ".png", ".jpg", ".jpeg", ".webp")
+        candidates = [avatar_dir / stem] if "." in stem else [avatar_dir / f"{stem}{suffix}" for suffix in suffixes[1:]]
         for path in candidates:
             if path.exists():
                 try:
@@ -1794,6 +1032,9 @@ def render_test_run(
     legend_fontsize = battle_overlay_fontsize
 
     avatar_zoom = 0.75
+    # Target the new small-avatar baseline (~80x100 @ zoom 0.75) so battlefield
+    # avatars scale up from legacy size while still capping oversized source art.
+    avatar_reference_height_px = 100.0
     full_name_fontsize = max(7, int(round(legend_fontsize)) - 1)
     avatar_inset = 0.012
     avatar_border_linewidth = 5.0
@@ -1809,7 +1050,15 @@ def render_test_run(
             return 0.0
         return (points / 72.0) / axis_in
 
-    def estimate_avatar_axes_size(image) -> tuple[float, float] | None:
+    def resolve_avatar_zoom(image) -> float:
+        if image is None or not hasattr(image, "shape") or len(image.shape) < 2:
+            return avatar_zoom
+        img_h = float(image.shape[0])
+        if img_h <= 1e-9:
+            return avatar_zoom
+        return avatar_zoom * (avatar_reference_height_px / img_h)
+
+    def estimate_avatar_axes_size(image, zoom_value: float) -> tuple[float, float] | None:
         if image is None or not hasattr(image, "shape") or len(image.shape) < 2:
             return None
         axes_pos = battle_ax.get_position()
@@ -1818,28 +1067,67 @@ def render_test_run(
         ax_h_px = fig_height_in * fig.dpi * axes_pos.height
         if ax_w_px <= 1e-9 or ax_h_px <= 1e-9:
             return None
-        img_h_px = float(image.shape[0]) * float(avatar_zoom)
-        img_w_px = float(image.shape[1]) * float(avatar_zoom)
+        img_h_px = float(image.shape[0]) * float(zoom_value)
+        img_w_px = float(image.shape[1]) * float(zoom_value)
         return (img_w_px / ax_w_px, img_h_px / ax_h_px)
 
-    avatar_a_img = resolve_avatar_image(fleet_a_avatar)
-    avatar_b_img = resolve_avatar_image(fleet_b_avatar)
-    avatar_images = {
+    avatar_specs = {
         "A": {
-            "color": avatar_a_img,
-            "gray": build_grayscale_avatar_image(avatar_a_img),
+            "avatar": fleet_a_avatar,
+            "color": fleet_a_color,
+            "full_name": fleet_a_full_name,
+            "anchor": (avatar_inset, avatar_inset),
+            "alignment": (0.0, 0.0),
         },
         "B": {
-            "color": avatar_b_img,
-            "gray": build_grayscale_avatar_image(avatar_b_img),
+            "avatar": fleet_b_avatar,
+            "color": fleet_b_color,
+            "full_name": fleet_b_full_name,
+            "anchor": (1.0 - avatar_inset, 1.0 - avatar_inset),
+            "alignment": (1.0, 1.0),
         },
     }
+    avatar_images: dict[str, dict[str, Any]] = {}
     avatar_offset_images: dict[str, OffsetImage] = {}
-    avatar_visual_state = {"A": "color", "B": "color"}
-    avatar_a_size_axes = estimate_avatar_axes_size(avatar_a_img)
-    avatar_b_size_axes = estimate_avatar_axes_size(avatar_b_img)
-    avatar_a_h_axes = avatar_a_size_axes[1] if avatar_a_size_axes is not None else 0.105
-    avatar_b_h_axes = avatar_b_size_axes[1] if avatar_b_size_axes is not None else 0.105
+    avatar_visual_state = {fleet_id: "color" for fleet_id in avatar_specs}
+    avatar_heights = {"A": 0.105, "B": 0.105}
+    for fleet_id, spec in avatar_specs.items():
+        image = resolve_avatar_image(spec["avatar"])
+        avatar_images[fleet_id] = {
+            "color": image,
+            "gray": build_grayscale_avatar_image(image),
+        }
+        zoom_value = resolve_avatar_zoom(image)
+        size_axes = estimate_avatar_axes_size(image, zoom_value)
+        if size_axes is not None:
+            avatar_heights[fleet_id] = size_axes[1]
+        if image is None:
+            continue
+        artist = OffsetImage(
+            avatar_images[fleet_id]["color"],
+            zoom=zoom_value,
+            interpolation="lanczos",
+            resample=True,
+        )
+        avatar_offset_images[fleet_id] = artist
+        battle_ax.add_artist(
+            AnnotationBbox(
+                artist,
+                spec["anchor"],
+                xycoords="axes fraction",
+                box_alignment=spec["alignment"],
+                pad=0.0,
+                frameon=True,
+                bboxprops={
+                    "edgecolor": spec["color"],
+                    "linewidth": avatar_border_linewidth,
+                    "facecolor": "none",
+                    "boxstyle": "square,pad=0.0",
+                },
+                zorder=29.0,
+            )
+        )
+
     marker_side_points = max(8.0, float(full_name_fontsize) * 1.25)
     marker_w_axes = points_to_axes_fraction(marker_side_points, "x")
     marker_h_axes = points_to_axes_fraction(marker_side_points, "y")
@@ -1847,10 +1135,6 @@ def render_test_run(
     name_horizontal_tune_axes = points_to_axes_fraction(2.0, "x")
     label_touch_gap_axes = points_to_axes_fraction(1.0, "y")
     name_vertical_tune_axes = points_to_axes_fraction(16.0, "y")
-    a_name_shift_x_axes = -(0.2 * marker_w_axes)
-    b_name_shift_x_axes = 0.2 * marker_w_axes
-    a_name_shift_y_axes = marker_h_axes
-    b_name_shift_y_axes = -marker_h_axes
     label_bbox = {
         "facecolor": "white",
         "alpha": 0.78,
@@ -1858,111 +1142,57 @@ def render_test_run(
         "boxstyle": "square,pad=0.16",
     }
 
-    if avatar_a_img is not None:
-        avatar_a_artist = OffsetImage(avatar_images["A"]["color"], zoom=avatar_zoom)
-        avatar_offset_images["A"] = avatar_a_artist
-        avatar_a_box = AnnotationBbox(
-            avatar_a_artist,
-            (avatar_inset, avatar_inset),
-            xycoords="axes fraction",
-            box_alignment=(0.0, 0.0),
-            pad=0.0,
-            frameon=True,
-            bboxprops={
-                "edgecolor": fleet_a_color,
-                "linewidth": avatar_border_linewidth,
-                "facecolor": "none",
-                "boxstyle": "square,pad=0.0",
-            },
-            zorder=29.0,
-        )
-        battle_ax.add_artist(avatar_a_box)
-    if avatar_b_img is not None:
-        avatar_b_artist = OffsetImage(avatar_images["B"]["color"], zoom=avatar_zoom)
-        avatar_offset_images["B"] = avatar_b_artist
-        avatar_b_box = AnnotationBbox(
-            avatar_b_artist,
-            (1.0 - avatar_inset, 1.0 - avatar_inset),
-            xycoords="axes fraction",
-            box_alignment=(1.0, 1.0),
-            pad=0.0,
-            frameon=True,
-            bboxprops={
-                "edgecolor": fleet_b_color,
-                "linewidth": avatar_border_linewidth,
-                "facecolor": "none",
-                "boxstyle": "square,pad=0.0",
-            },
-            zorder=29.0,
-        )
-        battle_ax.add_artist(avatar_b_box)
-
     def set_defeated_avatar(defeated_fleet_id: str | None) -> None:
-        for fleet_id in ("A", "B"):
-            artist = avatar_offset_images.get(fleet_id)
-            if artist is None:
-                continue
+        for fleet_id, artist in avatar_offset_images.items():
             next_state = "gray" if defeated_fleet_id == fleet_id else "color"
             if avatar_visual_state[fleet_id] == next_state:
                 continue
             artist.set_data(avatar_images[fleet_id][next_state])
             avatar_visual_state[fleet_id] = next_state
 
-    a_name_bottom = min(0.96, avatar_inset + avatar_a_h_axes + label_touch_gap_axes + name_vertical_tune_axes + a_name_shift_y_axes)
-    b_name_top = max(0.04, 1.0 - avatar_inset - avatar_b_h_axes - label_touch_gap_axes - name_vertical_tune_axes + b_name_shift_y_axes)
-    a_marker_x = avatar_inset + a_name_shift_x_axes
-    b_marker_x = 1.0 - avatar_inset - marker_w_axes + b_name_shift_x_axes
-
-    display_name_a = f"{fleet_a_full_name} (A)"
-    display_name_b = f"{fleet_b_full_name} (B)"
-
-    a_mark = Rectangle(
-        (a_marker_x, a_name_bottom),
-        marker_w_axes,
-        marker_h_axes,
-        transform=battle_ax.transAxes,
-        facecolor=fleet_a_color,
-        edgecolor="none",
-        zorder=30.0,
-    )
-    battle_ax.add_patch(a_mark)
-    battle_ax.text(
-        a_marker_x + marker_w_axes + marker_gap_axes + name_horizontal_tune_axes,
-        a_name_bottom,
-        display_name_a,
-        transform=battle_ax.transAxes,
-        va="bottom",
-        ha="left",
-        fontsize=full_name_fontsize,
-        fontfamily="sans-serif",
-        bbox=label_bbox,
-        clip_on=True,
-        zorder=30.0,
-    )
-
-    b_mark = Rectangle(
-        (b_marker_x, b_name_top - marker_h_axes),
-        marker_w_axes,
-        marker_h_axes,
-        transform=battle_ax.transAxes,
-        facecolor=fleet_b_color,
-        edgecolor="none",
-        zorder=30.0,
-    )
-    battle_ax.add_patch(b_mark)
-    battle_ax.text(
-        b_marker_x - marker_gap_axes - name_horizontal_tune_axes,
-        b_name_top,
-        display_name_b,
-        transform=battle_ax.transAxes,
-        va="top",
-        ha="right",
-        fontsize=full_name_fontsize,
-        fontfamily="sans-serif",
-        bbox=label_bbox,
-        clip_on=True,
-        zorder=30.0,
-    )
+    label_specs = {
+        "A": {
+            "marker_x": avatar_inset - (0.2 * marker_w_axes),
+            "marker_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
+            "text_x": avatar_inset + (0.8 * marker_w_axes) + marker_gap_axes + name_horizontal_tune_axes,
+            "text_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
+            "va": "bottom",
+            "ha": "left",
+        },
+        "B": {
+            "marker_x": 1.0 - avatar_inset - (0.8 * marker_w_axes),
+            "marker_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - (2.0 * marker_h_axes)),
+            "text_x": 1.0 - avatar_inset - (0.8 * marker_w_axes) - marker_gap_axes - name_horizontal_tune_axes,
+            "text_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - marker_h_axes),
+            "va": "top",
+            "ha": "right",
+        },
+    }
+    for fleet_id, spec in label_specs.items():
+        battle_ax.add_patch(
+            Rectangle(
+                (spec["marker_x"], spec["marker_y"]),
+                marker_w_axes,
+                marker_h_axes,
+                transform=battle_ax.transAxes,
+                facecolor=avatar_specs[fleet_id]["color"],
+                edgecolor="none",
+                zorder=30.0,
+            )
+        )
+        battle_ax.text(
+            spec["text_x"],
+            spec["text_y"],
+            f"{avatar_specs[fleet_id]['full_name']} ({fleet_id})",
+            transform=battle_ax.transAxes,
+            va=spec["va"],
+            ha=spec["ha"],
+            fontsize=full_name_fontsize,
+            fontfamily="sans-serif",
+            bbox=label_bbox,
+            clip_on=True,
+            zorder=30.0,
+        )
 
     initial_size_a = float(initial_fleet_sizes.get("A", 0.0))
     initial_size_b = float(initial_fleet_sizes.get("B", 0.0))
@@ -2217,40 +1447,18 @@ def render_test_run(
     tick_text_cache = {"value": ""}
     target_segments_empty = {"value": True}
 
-    def build_frame_point_map(points_a_norm, points_b_norm) -> dict[str, tuple[float, float]]:
-        point_map: dict[str, tuple[float, float]] = {}
-        for unit_id, x, y, _, _, _, _ in points_a_norm:
-            point_map[str(unit_id)] = (float(x), float(y))
-        for unit_id, x, y, _, _, _, _ in points_b_norm:
-            point_map[str(unit_id)] = (float(x), float(y))
-        return point_map
-
-    def build_attack_direction_map_from_point_map(
+    def build_target_geometry(
         frame_targets: Mapping[str, str],
-        point_map: Mapping[str, tuple[float, float]],
-    ) -> dict[str, tuple[float, float]]:
+        points_a_norm,
+        points_b_norm,
+    ) -> tuple[dict[str, tuple[float, float]], list[tuple[tuple[float, float], tuple[float, float]]]]:
         if not frame_targets:
-            return {}
+            return {}, []
+        point_map = {
+            str(unit_id): (float(x), float(y))
+            for unit_id, x, y, _, _, _, _ in [*points_a_norm, *points_b_norm]
+        }
         direction_map: dict[str, tuple[float, float]] = {}
-        for attacker_id, defender_id in frame_targets.items():
-            attacker = point_map.get(str(attacker_id))
-            defender = point_map.get(str(defender_id))
-            if attacker is None or defender is None:
-                continue
-            dx = defender[0] - attacker[0]
-            dy = defender[1] - attacker[1]
-            norm = math.sqrt((dx * dx) + (dy * dy))
-            if norm <= 1e-12:
-                continue
-            direction_map[str(attacker_id)] = (dx / norm, dy / norm)
-        return direction_map
-
-    def build_target_segments_from_point_map(
-        frame_targets: Mapping[str, str],
-        point_map: Mapping[str, tuple[float, float]],
-    ) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-        if not frame_targets:
-            return []
         segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
         for attacker_id, defender_id in frame_targets.items():
             attacker = point_map.get(str(attacker_id))
@@ -2259,10 +1467,15 @@ def render_test_run(
                 continue
             dx = defender[0] - attacker[0]
             dy = defender[1] - attacker[1]
-            if (dx * dx) + (dy * dy) <= 1e-12:
+            norm_sq = (dx * dx) + (dy * dy)
+            if norm_sq <= 1e-12:
                 continue
-            segments.append(((attacker[0], attacker[1]), (defender[0], defender[1])))
-        return segments
+            if needs_attack_direction_map:
+                norm = math.sqrt(norm_sq)
+                direction_map[str(attacker_id)] = (dx / norm, dy / norm)
+            if needs_target_segments:
+                segments.append(((attacker[0], attacker[1]), (defender[0], defender[1])))
+        return direction_map, segments
 
     prepared_frames = []
     for raw_frame in position_frames:
@@ -2277,16 +1490,10 @@ def render_test_run(
         points_b_norm = normalize_frame_points(raw_frame.get("B", []), "B")
         alive_points_a = [(x, y, ox, oy) for _, x, y, ox, oy, _, _ in points_a_norm]
         alive_points_b = [(x, y, ox, oy) for _, x, y, ox, oy, _, _ in points_b_norm]
-        point_map = build_frame_point_map(points_a_norm, points_b_norm) if needs_target_geometry and target_map else {}
-        attack_direction_map = (
-            build_attack_direction_map_from_point_map(target_map, point_map)
-            if (needs_attack_direction_map and point_map)
-            else {}
-        )
-        target_segments = (
-            build_target_segments_from_point_map(target_map, point_map)
-            if (needs_target_segments and point_map)
-            else []
+        attack_direction_map, target_segments = (
+            build_target_geometry(target_map, points_a_norm, points_b_norm)
+            if (needs_target_geometry and target_map)
+            else ({}, [])
         )
         prepared_frames.append(
             {
@@ -2555,126 +1762,23 @@ def render_test_run(
         _fill_nonfinite_with_zero(hostile_intermix_coverage_series)
     )
 
-    # Formation diagnostics derived from battlefield geometry per frame.
-    ar_series_a = [float("nan")] * len(ticks)
-    ar_series_b = [float("nan")] * len(ticks)
-    wedge_series_a = [float("nan")] * len(ticks)
-    wedge_series_b = [float("nan")] * len(ticks)
     split_series_a = [float("nan")] * len(ticks)
     split_series_b = [float("nan")] * len(ticks)
-    if plot_panel_enabled and prepared_frames:
-        for frame in prepared_frames:
-            tick_value = int(frame.get("tick", 0))
-            if tick_value < 1 or tick_value > len(ticks):
-                continue
-            idx = tick_value - 1
-            points_a_xy = [(float(x), float(y)) for _, x, y, _, _, _, _ in frame.get("A_norm", [])]
-            points_b_xy = [(float(x), float(y)) for _, x, y, _, _, _, _ in frame.get("B_norm", [])]
-            m_a = _compute_formation_metrics_xy(points_a_xy, points_b_xy, angle_bins=12)
-            m_b = _compute_formation_metrics_xy(points_b_xy, points_a_xy, angle_bins=12)
-            ar_series_a[idx] = float(m_a.get("AR_forward", m_a.get("AR", float("nan"))))
-            ar_series_b[idx] = float(m_b.get("AR_forward", m_b.get("AR", float("nan"))))
-            wedge_series_a[idx] = float(m_a.get("wedge_ratio", float("nan")))
-            wedge_series_b[idx] = float(m_b.get("wedge_ratio", float("nan")))
-            split_series_a[idx] = float(m_a.get("split_separation", float("nan")))
-            split_series_b[idx] = float(m_b.get("split_separation", float("nan")))
-
-    shape_metric_alive_floor_raw = _cfg(viz_settings, "shape_metric_alive_floor", 0)
-    try:
-        shape_metric_alive_floor = int(shape_metric_alive_floor_raw)
-    except (TypeError, ValueError):
-        shape_metric_alive_floor = 0
-    if shape_metric_alive_floor < 0:
-        shape_metric_alive_floor = 0
-    if shape_metric_alive_floor > 0:
-        for idx in range(len(ticks)):
-            alive_a_tick = int(alive_trajectory["A"][idx]) if idx < len(alive_trajectory["A"]) else 0
-            alive_b_tick = int(alive_trajectory["B"][idx]) if idx < len(alive_trajectory["B"]) else 0
-            if alive_a_tick < shape_metric_alive_floor:
-                ar_series_a[idx] = float("nan")
-                wedge_series_a[idx] = float("nan")
-            if alive_b_tick < shape_metric_alive_floor:
-                ar_series_b[idx] = float("nan")
-                wedge_series_b[idx] = float("nan")
-
-    shape_clip_enabled = bool(_cfg(viz_settings, "shape_metric_clip_enabled", True))
-    shape_clip_bounds_raw = _cfg(
-        viz_settings,
-        "shape_metric_clip_bounds",
-        {
-            "ar": [0.0, 5.0],
-            "wedge_ratio": [0.0, 3.0],
-        },
-    )
-    if not isinstance(shape_clip_bounds_raw, Mapping):
-        shape_clip_bounds_raw = {}
-
-    def _parse_clip_bounds(key: str, default_low: float, default_high: float) -> tuple[float, float]:
-        raw = shape_clip_bounds_raw.get(key, [default_low, default_high])
-        if isinstance(raw, Sequence) and len(raw) >= 2:
-            try:
-                low = float(raw[0])
-                high = float(raw[1])
-            except (TypeError, ValueError):
-                low, high = default_low, default_high
-        else:
-            low, high = default_low, default_high
-        if not (math.isfinite(low) and math.isfinite(high) and low < high):
-            return (default_low, default_high)
-        return (low, high)
-
-    ar_clip_low, ar_clip_high = _parse_clip_bounds("ar", 0.0, 3.0)
-    wedge_clip_low, wedge_clip_high = _parse_clip_bounds("wedge_ratio", 0.0, 3.0)
-
-    def _clip_series(values: Sequence[float], low: float, high: float) -> list[float]:
-        out: list[float] = []
-        for value in values:
-            fv = float(value)
-            if not math.isfinite(fv):
-                out.append(float("nan"))
-                continue
-            if fv < low:
-                out.append(low)
-            elif fv > high:
-                out.append(high)
-            else:
-                out.append(fv)
-        return out
-
-    if shape_clip_enabled:
-        ar_plot_a = _clip_series(ar_series_a, ar_clip_low, ar_clip_high)
-        ar_plot_b = _clip_series(ar_series_b, ar_clip_low, ar_clip_high)
-        wedge_plot_a = _clip_series(wedge_series_a, wedge_clip_low, wedge_clip_high)
-        wedge_plot_b = _clip_series(wedge_series_b, wedge_clip_low, wedge_clip_high)
-    else:
-        ar_plot_a = list(ar_series_a)
-        ar_plot_b = list(ar_series_b)
-        wedge_plot_a = list(wedge_series_a)
-        wedge_plot_b = list(wedge_series_b)
-
-    shape_axis_quantiles_raw = _cfg(viz_settings, "shape_metric_axis_quantiles", [0.0, 1.0])
-    if (
-        isinstance(shape_axis_quantiles_raw, Sequence)
-        and len(shape_axis_quantiles_raw) >= 2
-    ):
-        try:
-            shape_q_low = float(shape_axis_quantiles_raw[0])
-            shape_q_high = float(shape_axis_quantiles_raw[1])
-        except (TypeError, ValueError):
-            shape_q_low = 0.0
-            shape_q_high = 1.0
-    else:
-        shape_q_low = 0.0
-        shape_q_high = 1.0
-    if not (0.0 <= shape_q_low < shape_q_high <= 1.0):
-        shape_q_low = 0.0
-        shape_q_high = 1.0
+    if plot_panel_enabled:
+        split_source = bridge_telemetry if isinstance(bridge_telemetry, Mapping) else observer_telemetry
+        if isinstance(split_source, Mapping):
+            split_bucket = split_source.get("split_separation", {})
+            if isinstance(split_bucket, Mapping):
+                for side, series_out in (("A", split_series_a), ("B", split_series_b)):
+                    raw = split_bucket.get(side, [])
+                    if isinstance(raw, (list, tuple)):
+                        for idx, value in enumerate(raw[: len(ticks)]):
+                            try:
+                                series_out[idx] = float(value)
+                            except (TypeError, ValueError):
+                                series_out[idx] = float("nan")
 
     runtime_series = {
-        "ar_a": _smooth_plot_series(ar_plot_a),
-        "ar_b": _smooth_plot_series(ar_plot_b),
-        "wedge_a": _smooth_plot_series(wedge_plot_a),
-        "wedge_b": _smooth_plot_series(wedge_plot_b),
         "split_a": _smooth_plot_series(split_series_a),
         "split_b": _smooth_plot_series(split_series_b),
         "fire_efficiency_a": _smooth_plot_series(fire_efficiency_series_a_raw),
@@ -2714,29 +1818,19 @@ def render_test_run(
         ax.legend(fontsize=plot_legend_fontsize, loc="best")
         plot_legend_axes.append(ax)
 
-    alive_line_a, = alive_ax.plot(ticks, alive_trajectory["A"], label="A", color=fleet_a_color)
-    alive_line_b, = alive_ax.plot(ticks, alive_trajectory["B"], label="B", color=fleet_b_color)
-    apply_time_axis_label(alive_ax)
-    alive_ax.set_ylabel("Alive", fontsize=plot_label_fontsize)
-    alive_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(alive_ax)
-
-    fire_efficiency_line_a, = fire_efficiency_ax.plot(
-        ticks,
-        runtime_series["fire_efficiency_a"],
-        label="A",
-        color=fleet_a_color,
-    )
-    fire_efficiency_line_b, = fire_efficiency_ax.plot(
-        ticks,
-        runtime_series["fire_efficiency_b"],
-        label="B",
-        color=fleet_b_color,
-    )
-    apply_time_axis_label(fire_efficiency_ax)
-    fire_efficiency_ax.set_ylabel(fire_efficiency_axis_ylabel, fontsize=plot_label_fontsize)
-    fire_efficiency_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(fire_efficiency_ax)
+    def setup_side_plot(
+        ax: plt.Axes,
+        series_a: Sequence[float | int],
+        series_b: Sequence[float | int],
+        ylabel: str,
+    ):
+        line_a, = ax.plot(ticks, series_a, label="A", color=fleet_a_color)
+        line_b, = ax.plot(ticks, series_b, label="B", color=fleet_b_color)
+        apply_time_axis_label(ax)
+        ax.set_ylabel(ylabel, fontsize=plot_label_fontsize)
+        ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+        apply_plot_legend(ax)
+        return (line_a, line_b)
 
     collapse_signal_series_a_raw = [
         (1.0 - float(cohesion_series_b[idx])) if idx < len(cohesion_series_b) and math.isfinite(float(cohesion_series_b[idx])) else float("nan")
@@ -2750,54 +1844,24 @@ def render_test_run(
     collapse_signal_series_b = _smooth_plot_series(collapse_signal_series_b_raw)
     cohesion_plot_series_a = _smooth_plot_series(cohesion_series_a)
     cohesion_plot_series_b = _smooth_plot_series(cohesion_series_b)
-    collapse_signal_line_a, = collapse_signal_ax.plot(
-        ticks,
-        collapse_signal_series_a,
-        label="A",
-        color=fleet_a_color,
-    )
-    collapse_signal_line_b, = collapse_signal_ax.plot(
-        ticks,
-        collapse_signal_series_b,
-        label="B",
-        color=fleet_b_color,
-    )
-    apply_time_axis_label(collapse_signal_ax)
-    collapse_signal_ax.set_ylabel(collapse_signal_axis_ylabel, fontsize=plot_label_fontsize)
-    collapse_signal_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(collapse_signal_ax)
-
-    split_line_a, = split_ax.plot(ticks, runtime_series["split_a"], label="A", color=fleet_a_color)
-    split_line_b, = split_ax.plot(ticks, runtime_series["split_b"], label="B", color=fleet_b_color)
-    apply_time_axis_label(split_ax)
-    split_ax.set_ylabel(split_axis_ylabel, fontsize=plot_label_fontsize)
-    split_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(split_ax)
-
-    loss_rate_line_a, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_a"], label="A", color=fleet_a_color)
-    loss_rate_line_b, = loss_rate_ax.plot(ticks, runtime_series["loss_rate_b"], label="B", color=fleet_b_color)
-    apply_time_axis_label(loss_rate_ax)
-    loss_rate_ax.set_ylabel(loss_rate_axis_ylabel, fontsize=plot_label_fontsize)
-    loss_rate_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(loss_rate_ax)
-
-    cohesion_line_a, = cohesion_ax.plot(ticks, cohesion_plot_series_a, label="A", color=fleet_a_color)
-    cohesion_line_b, = cohesion_ax.plot(ticks, cohesion_plot_series_b, label="B", color=fleet_b_color)
-    apply_time_axis_label(cohesion_ax)
-    cohesion_ax.set_ylabel(cohesion_axis_ylabel, fontsize=plot_label_fontsize)
-    cohesion_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(cohesion_ax)
-
-    front_curvature_line_a, = front_curvature_ax.plot(
-        ticks, runtime_series["front_curvature_a"], label="A", color=fleet_a_color
-    )
-    front_curvature_line_b, = front_curvature_ax.plot(
-        ticks, runtime_series["front_curvature_b"], label="B", color=fleet_b_color
-    )
-    apply_time_axis_label(front_curvature_ax)
-    front_curvature_ax.set_ylabel(front_curvature_axis_ylabel, fontsize=plot_label_fontsize)
-    front_curvature_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(front_curvature_ax)
+    plot_lines: dict[str, tuple[Any, ...]] = {}
+    for key, axis, series_a, series_b, ylabel in (
+        ("alive", alive_ax, alive_trajectory["A"], alive_trajectory["B"], "Alive"),
+        ("fire_efficiency", fire_efficiency_ax, runtime_series["fire_efficiency_a"], runtime_series["fire_efficiency_b"], fire_efficiency_axis_ylabel),
+        ("collapse_signal", collapse_signal_ax, collapse_signal_series_a, collapse_signal_series_b, collapse_signal_axis_ylabel),
+        ("split", split_ax, runtime_series["split_a"], runtime_series["split_b"], split_axis_ylabel),
+        ("loss_rate", loss_rate_ax, runtime_series["loss_rate_a"], runtime_series["loss_rate_b"], loss_rate_axis_ylabel),
+        ("cohesion", cohesion_ax, cohesion_plot_series_a, cohesion_plot_series_b, cohesion_axis_ylabel),
+        ("front_curvature", front_curvature_ax, runtime_series["front_curvature_a"], runtime_series["front_curvature_b"], front_curvature_axis_ylabel),
+        (
+            "center_wing_parallel_share",
+            center_wing_parallel_share_ax,
+            runtime_series["center_wing_parallel_share_a"],
+            runtime_series["center_wing_parallel_share_b"],
+            center_wing_parallel_share_axis_ylabel,
+        ),
+    ):
+        plot_lines[key] = setup_side_plot(axis, series_a, series_b, ylabel)
 
     wedge_line_a, = wedge_ax.plot(
         ticks,
@@ -2810,34 +1874,22 @@ def render_test_run(
     wedge_ax.set_ylabel(wedge_axis_ylabel, fontsize=plot_label_fontsize)
     wedge_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
     apply_plot_legend(wedge_ax)
-
-    center_wing_parallel_share_line_a, = center_wing_parallel_share_ax.plot(
-        ticks, runtime_series["center_wing_parallel_share_a"], label="A", color=fleet_a_color
-    )
-    center_wing_parallel_share_line_b, = center_wing_parallel_share_ax.plot(
-        ticks, runtime_series["center_wing_parallel_share_b"], label="B", color=fleet_b_color
-    )
-    apply_time_axis_label(center_wing_parallel_share_ax)
-    center_wing_parallel_share_ax.set_ylabel(center_wing_parallel_share_axis_ylabel, fontsize=plot_label_fontsize)
-    center_wing_parallel_share_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(center_wing_parallel_share_ax)
+    plot_lines["wedge"] = (wedge_line_a, wedge_line_b)
 
     observer_series_lines = [
-        fire_efficiency_line_a,
-        fire_efficiency_line_b,
-        wedge_line_a,
-        center_wing_parallel_share_line_a,
-        center_wing_parallel_share_line_b,
-        split_line_a,
-        split_line_b,
-        loss_rate_line_a,
-        loss_rate_line_b,
-        cohesion_line_a,
-        cohesion_line_b,
-        collapse_signal_line_a,
-        collapse_signal_line_b,
-        front_curvature_line_a,
-        front_curvature_line_b,
+        line
+        for key in (
+            "fire_efficiency",
+            "wedge",
+            "center_wing_parallel_share",
+            "split",
+            "loss_rate",
+            "cohesion",
+            "collapse_signal",
+            "front_curvature",
+        )
+        for line in plot_lines[key]
+        if line.get_label() != "_nolegend_"
     ]
 
     def apply_observer_axis_disabled_style(ax, slot_name: str) -> None:
@@ -2870,14 +1922,17 @@ def render_test_run(
     if not plot_panel_enabled:
         for line in observer_series_lines:
             line.set_visible(False)
-        apply_observer_axis_disabled_style(fire_efficiency_ax, "slot_03")
-        apply_observer_axis_disabled_style(loss_rate_ax, "slot_04")
-        apply_observer_axis_disabled_style(cohesion_ax, "slot_05")
-        apply_observer_axis_disabled_style(collapse_signal_ax, "slot_06")
-        apply_observer_axis_disabled_style(split_ax, "slot_07")
-        apply_observer_axis_disabled_style(front_curvature_ax, "slot_08")
-        apply_observer_axis_disabled_style(wedge_ax, "slot_09")
-        apply_observer_axis_disabled_style(center_wing_parallel_share_ax, "slot_10")
+        for ax_local, slot_name in (
+            (fire_efficiency_ax, "slot_03"),
+            (loss_rate_ax, "slot_04"),
+            (cohesion_ax, "slot_05"),
+            (collapse_signal_ax, "slot_06"),
+            (split_ax, "slot_07"),
+            (front_curvature_ax, "slot_08"),
+            (wedge_ax, "slot_09"),
+            (center_wing_parallel_share_ax, "slot_10"),
+        ):
+            apply_observer_axis_disabled_style(ax_local, slot_name)
 
     def freeze_plot_legends() -> None:
         active_axes = [ax for ax in plot_legend_axes if ax.get_legend() is not None]
@@ -2960,23 +2015,23 @@ def render_test_run(
             line.set_visible(False)
 
     tick_plot_lines = [
-        (alive_line_a, alive_trajectory["A"]),
-        (alive_line_b, alive_trajectory["B"]),
-        (fire_efficiency_line_a, runtime_series["fire_efficiency_a"]),
-        (fire_efficiency_line_b, runtime_series["fire_efficiency_b"]),
-        (loss_rate_line_a, runtime_series["loss_rate_a"]),
-        (loss_rate_line_b, runtime_series["loss_rate_b"]),
-        (cohesion_line_a, cohesion_series_a),
-        (cohesion_line_b, cohesion_series_b),
-        (collapse_signal_line_a, collapse_signal_series_a),
-        (collapse_signal_line_b, collapse_signal_series_b),
-        (split_line_a, runtime_series["split_a"]),
-        (split_line_b, runtime_series["split_b"]),
-        (front_curvature_line_a, runtime_series["front_curvature_a"]),
-        (front_curvature_line_b, runtime_series["front_curvature_b"]),
-        (wedge_line_a, runtime_series["hostile_intermix_coverage"]),
-        (center_wing_parallel_share_line_a, runtime_series["center_wing_parallel_share_a"]),
-        (center_wing_parallel_share_line_b, runtime_series["center_wing_parallel_share_b"]),
+        (plot_lines["alive"][0], alive_trajectory["A"]),
+        (plot_lines["alive"][1], alive_trajectory["B"]),
+        (plot_lines["fire_efficiency"][0], runtime_series["fire_efficiency_a"]),
+        (plot_lines["fire_efficiency"][1], runtime_series["fire_efficiency_b"]),
+        (plot_lines["loss_rate"][0], runtime_series["loss_rate_a"]),
+        (plot_lines["loss_rate"][1], runtime_series["loss_rate_b"]),
+        (plot_lines["cohesion"][0], cohesion_series_a),
+        (plot_lines["cohesion"][1], cohesion_series_b),
+        (plot_lines["collapse_signal"][0], collapse_signal_series_a),
+        (plot_lines["collapse_signal"][1], collapse_signal_series_b),
+        (plot_lines["split"][0], runtime_series["split_a"]),
+        (plot_lines["split"][1], runtime_series["split_b"]),
+        (plot_lines["front_curvature"][0], runtime_series["front_curvature_a"]),
+        (plot_lines["front_curvature"][1], runtime_series["front_curvature_b"]),
+        (plot_lines["wedge"][0], runtime_series["hostile_intermix_coverage"]),
+        (plot_lines["center_wing_parallel_share"][0], runtime_series["center_wing_parallel_share_a"]),
+        (plot_lines["center_wing_parallel_share"][1], runtime_series["center_wing_parallel_share_b"]),
     ]
 
     tick_plots_follow_enabled = bool(tick_plots_follow_battlefield_tick and len(prepared_frames) > 0)
@@ -3725,9 +2780,7 @@ def render_test_run(
         count_text.set_text(format_count_text(len(final_a), len(final_b), curr_size_a, curr_size_b, pct_a, pct_b))
         anim = None
 
-    export_video_cfg_local = export_video_cfg_layout
-    export_video_enabled = export_video_enabled_layout
-    if export_video_enabled:
+    if export_video_enabled_layout:
         if anim is None:
             raise RuntimeError("Video export requires captured animation frames (animate=true).")
         ffmpeg_path = _resolve_ffmpeg_path()
@@ -3735,12 +2788,10 @@ def render_test_run(
             raise RuntimeError(
                 "Video export enabled but ffmpeg not found. Install ffmpeg or imageio-ffmpeg."
             )
-        raw_output_path = str(_cfg(export_video_cfg_local, "output_path", "analysis/exports/videos"))
-        output_path = Path(raw_output_path)
+        output_path = Path(str(_cfg(export_video_cfg_layout, "output_path", "analysis/exports/videos")))
         if not output_path.is_absolute():
             output_path = (Path.cwd() / output_path).resolve()
-        output_path_is_final = bool(_cfg(export_video_cfg_local, "output_path_is_final", False))
-        if not output_path_is_final:
+        if not bool(_cfg(export_video_cfg_layout, "output_path_is_final", False)):
             stem_has_timestamp = re.search(r"_\d{8}_\d{6}$", output_path.stem) is not None
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             if output_path.suffix:
@@ -3750,30 +2801,23 @@ def render_test_run(
                 output_path = output_path / f"test_run_v1_0_{timestamp}.mp4"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        default_fps = max(1, int(round(1000.0 / max(1, frame_interval_ms))))
-        fps = max(1, int(_cfg(export_video_cfg_local, "fps", default_fps)))
-        codec = str(_cfg(export_video_cfg_local, "codec", "libx264"))
-        bitrate_kbps = max(200, int(_cfg(export_video_cfg_local, "bitrate_kbps", 2400)))
-        full_plot = export_full_plot_layout
-        width_px = export_width_px_layout
-        height_px = export_height_px_layout
-        dpi = export_dpi_layout
-
         mpl.rcParams["animation.ffmpeg_path"] = ffmpeg_path
-        extra_args = [
-            "-pix_fmt",
-            "yuv420p",
-            "-vf",
-            f"scale={width_px}:{height_px}:flags=lanczos",
-        ]
+        fps = max(1, int(_cfg(export_video_cfg_layout, "fps", max(1, int(round(1000.0 / max(1, frame_interval_ms)))))))
+        codec = str(_cfg(export_video_cfg_layout, "codec", "libx264"))
+        bitrate_kbps = max(200, int(_cfg(export_video_cfg_layout, "bitrate_kbps", 2400)))
         writer = FFMpegWriter(
             fps=fps,
             codec=codec,
             bitrate=bitrate_kbps,
-            extra_args=extra_args,
+            extra_args=[
+                "-pix_fmt",
+                "yuv420p",
+                "-vf",
+                f"scale={export_width_px_layout}:{export_height_px_layout}:flags=lanczos",
+            ],
         )
         original_size_inches = tuple(fig.get_size_inches())
-        if not full_plot:
+        if not export_full_plot_layout:
             for ax in fig.axes:
                 if ax is battle_ax:
                     continue
@@ -3782,10 +2826,11 @@ def render_test_run(
         print(f"[viz] export_video enabled: {output_path}")
         print(
             f"[viz] export writer=ffmpeg, fps={fps}, codec={codec}, bitrate_kbps={bitrate_kbps}, "
-            f"size={width_px}x{height_px}, dpi={dpi}, full_plot={full_plot}"
+            f"size={export_width_px_layout}x{export_height_px_layout}, dpi={export_dpi_layout}, "
+            f"full_plot={export_full_plot_layout}"
         )
         try:
-            fig.set_size_inches(width_px / dpi, height_px / dpi, forward=True)
+            fig.set_size_inches(export_width_px_layout / export_dpi_layout, export_height_px_layout / export_dpi_layout, forward=True)
             try:
                 fig.canvas.draw()
             except Exception:
@@ -3793,7 +2838,7 @@ def render_test_run(
             anim.save(
                 str(output_path),
                 writer=writer,
-                dpi=dpi,
+                dpi=export_dpi_layout,
             )
         finally:
             fig.set_size_inches(original_size_inches[0], original_size_inches[1], forward=True)

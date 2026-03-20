@@ -34,18 +34,17 @@ from test_run.settings_accessor import (
     load_json_file,
     resolve_optional_json_path,
 )
-from test_run.battle_report_builder import compute_bridge_event_ticks
-from test_run.test_run_experiments import (
+from test_run.test_run_execution import (
     SimulationBoundaryConfig,
     SimulationContactConfig,
     SimulationExecutionConfig,
     SimulationMovementConfig,
     SimulationObserverConfig,
     SimulationRuntimeConfig,
-    build_initial_state,
-    compute_formation_snapshot_metrics,
     run_simulation,
 )
+from test_run.test_run_scenario import build_initial_state
+from test_run.test_run_telemetry import compute_formation_snapshot_metrics
 
 
 DEFAULT_DT = 1.0

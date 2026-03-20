@@ -47,14 +47,22 @@ Current emphasis is not personality expansion.
 
 ## Test Harness Paths
 
+- `test_run/test_run_entry.py`
+  - maintained thin entry for routine run
+- `test_run/test_run_scenario.py`
+  - scenario build and grouped config preparation
+- `test_run/test_run_execution.py`
+  - maintained battle execution host
+- `test_run/test_run_telemetry.py`
+  - observer / bridge / collapse-shadow collection
 - `test_run/test_run_v1_0.py`
-  - engine-facing harness core and shared helper surface
+  - transitional shell for the historical launcher target
 - `test_run/test_run_main.py`
-  - launcher / orchestration entry
+  - legacy full launcher / export / viz orchestration
 - `test_run/test_run_experiments.py`
-  - simulation execution and telemetry collection
+  - transitional compatibility shell over the maintained spine
 - `test_run/test_run_anchor_regression.py`
-  - fixed routine 3-run anchor regression entry
+  - fixed routine 3-run anchor regression on the maintained spine
 - `test_run/settings_accessor.py`
   - layered settings loading/access
 
@@ -81,17 +89,21 @@ Current emphasis is not personality expansion.
 ## Key Current Records
 
 - `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
-- `docs/a5_iteration0_baseline_anchor_20260318.md`
-- `docs/a5_iteration0_baseline_anchor_20260318.json`
-- `docs/test_run_harness_cleanup_record_20260319.md`
-- `docs/phase_a_governance_update_20260319.md`
-- `docs/test_run_anchor_regression_policy_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_harness_cleanup_record_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/phase_a_governance_update_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_anchor_regression_policy_20260319.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_structural_reset_preparation_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_active_surface_reset_round1_20260320.md`
 
 ## Reading Order
 
 1. `runtime/runtime_v0_1.py`
 2. `runtime/engine_skeleton.py`
-3. `test_run/test_run_v1_0.py`
-4. `test_run/test_run_main.py`
-5. `test_run/test_run_experiments.py`
-6. `test_run/test_run_v1_0_viz.py`
+3. `test_run/test_run_entry.py`
+4. `test_run/test_run_scenario.py`
+5. `test_run/test_run_execution.py`
+6. `test_run/test_run_telemetry.py`
+7. `test_run/test_run_main.py`
+8. `test_run/test_run_v1_0_viz.py`

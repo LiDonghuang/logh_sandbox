@@ -51,8 +51,8 @@ The pushed repo state does include real progress:
 
 Relevant supporting records:
 
-- `docs/test_run_a5_governance_request_20260320.md`
-- `docs/test_run_public_interface_normalization_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_a5_governance_request_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_public_interface_normalization_20260320.md`
 
 ## 4. Why Human Dissatisfaction Is Still Reasonable
 
@@ -141,9 +141,9 @@ The concern is:
 
 ### Current A5 records
 
-- `docs/test_run_a5_governance_request_20260320.md`
-- `docs/test_run_public_interface_normalization_20260320.md`
-- `docs/test_run_governance_followup_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_a5_governance_request_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_public_interface_normalization_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_governance_followup_20260320.md`
 
 ### Core files under dispute
 

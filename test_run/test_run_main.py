@@ -1,7 +1,12 @@
 import random
+import sys
 from datetime import datetime
 from functools import partial
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from test_run import battle_report_builder as report_builder
 from test_run import settings_accessor as settings_api
@@ -109,6 +114,7 @@ def _render_animation(
     render_test_run(
         **render_context,
         combat_telemetry=combat_telemetry,
+        bridge_telemetry=bridge_telemetry,
         debug_context={
             **debug_context,
             "first_contact_tick": first_contact_tick_debug,
