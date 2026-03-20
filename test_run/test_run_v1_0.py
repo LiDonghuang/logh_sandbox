@@ -1270,8 +1270,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
 
 
 # Launcher-facing helper surface.
-# These remain in core for now because `test_run_main.py` still uses this
-# module as the stable engine/helper anchor while A5 cleanup continues.
+# These remain in core for now because the maintained scenario/entry layer
+# still uses this module as the stable engine/helper anchor.
 def resolve_archetype(archetypes: dict, archetype_ref: str):
     if archetype_ref == "default":
         return {
@@ -1667,7 +1667,7 @@ def resolve_timestamped_video_output_path(
 
 
 def main() -> None:
-    from test_run.test_run_main import main as launcher_main
+    from test_run.test_run_entry import main as launcher_main
 
     launcher_main()
 

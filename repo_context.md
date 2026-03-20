@@ -48,7 +48,7 @@ Current emphasis is not personality expansion.
 ## Test Harness Paths
 
 - `test_run/test_run_entry.py`
-  - maintained thin entry for routine run
+  - maintained launcher ground truth for routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
   - scenario build and grouped config preparation
 - `test_run/test_run_execution.py`
@@ -56,15 +56,22 @@ Current emphasis is not personality expansion.
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
 - `test_run/test_run_v1_0.py`
-  - transitional shell for the historical launcher target
-- `test_run/test_run_main.py`
-  - legacy full launcher / export / viz orchestration
+  - transitional helper host and historical launcher shim
 - `test_run/test_run_experiments.py`
   - transitional compatibility shell over the maintained spine
 - `test_run/test_run_anchor_regression.py`
   - fixed routine 3-run anchor regression on the maintained spine
 - `test_run/settings_accessor.py`
   - layered settings loading/access
+
+## Report / Viz Paths
+
+- `test_run/battle_report_builder.py`
+  - BRF markdown assembly used by the maintained launcher path
+- `test_run/brf_narrative_messages.py`
+  - BRF narrative message library kept stable during current cleanup rounds
+- `test_run/test_run_v1_0_viz.py`
+  - rendering, plots, animation/export display layer
 
 ## Settings Paths
 
@@ -81,11 +88,6 @@ Current emphasis is not personality expansion.
 - `test_run/test_run_v1_0.settings.reference.md`
   - settings structure notes
 
-## Visualization Path
-
-- `test_run/test_run_v1_0_viz.py`
-  - rendering, plots, animation/export display layer
-
 ## Key Current Records
 
 - `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
@@ -96,6 +98,8 @@ Current emphasis is not personality expansion.
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_anchor_regression_policy_20260319.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_structural_reset_preparation_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_active_surface_reset_round1_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_governance_followup_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_governance_request_brf_and_runtime_followup_20260320.md`
 
 ## Reading Order
 
@@ -105,5 +109,6 @@ Current emphasis is not personality expansion.
 4. `test_run/test_run_scenario.py`
 5. `test_run/test_run_execution.py`
 6. `test_run/test_run_telemetry.py`
-7. `test_run/test_run_main.py`
-8. `test_run/test_run_v1_0_viz.py`
+7. `test_run/test_run_v1_0.py`
+8. `test_run/battle_report_builder.py`
+9. `test_run/test_run_v1_0_viz.py`

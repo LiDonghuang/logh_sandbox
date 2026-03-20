@@ -29,7 +29,8 @@ Authority: Reference only, not canonical semantics authority
 ### 3. Maintained Harness Spine
 
 - `test_run/test_run_entry.py`
-  - thin maintained entry
+  - thin maintained launcher ground truth
+  - routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
   - settings resolution and initial scenario build
 - `test_run/test_run_execution.py`
@@ -39,18 +40,19 @@ Authority: Reference only, not canonical semantics authority
 
 ### 4. Legacy / Transitional Harness Layer
 
-- `test_run/test_run_main.py`
-  - legacy full launcher orchestration
-  - settings interpretation
-  - export / viz handoff
 - `test_run/test_run_v1_0.py`
-  - historical launcher target shell
+  - transitional helper host and historical launcher shim
 - `test_run/test_run_experiments.py`
   - transitional shell over the maintained spine
 - `test_run/settings_accessor.py`
   - layered settings load and access
 
-### 5. Visualization / Observer Display Layer
+### 5. Optional Report / Visualization Layer
+
+- `test_run/battle_report_builder.py`
+  - battle report markdown assembly
+- `test_run/brf_narrative_messages.py`
+  - battle report narrative message library
 
 - `test_run/test_run_v1_0_viz.py`
 - Role:
@@ -69,17 +71,17 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Structural Tension
 
-The current reset target is now split across the legacy layer and optional heavy paths:
+The current reset target is now concentrated in one remaining helper host plus optional heavy paths:
 
-- `test_run/test_run_main.py` still carries the old full-launcher weight
-- legacy viz / report paths remain physically present
-- the maintained spine is smaller, but the old tree has not been fully retired yet
+- `test_run/test_run_v1_0.py` still sits under the maintained spine as a helper anchor
+- BRF and viz paths remain physically present and callable from the maintained launcher
+- the maintained spine is smaller, but the historical helper surface has not been fully retired yet
 
 ## Practical Interpretation Rule
 
-Read the system as:
+Read the current maintained path as:
 
-schema -> engine -> maintained harness spine -> legacy launcher shell -> viz/observer
+schema -> engine -> maintained harness spine -> optional report/viz surfaces
 
 Do not read observer wording as runtime ontology.
 Do not read test-only selectors as canonical semantics.

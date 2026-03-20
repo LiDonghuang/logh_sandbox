@@ -2,10 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "test_run_v1.0",
+      "name": "test_run_entry (Animate)",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
+      "program": "${workspaceFolder}/test_run/test_run_entry.py",
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "env": {
@@ -15,10 +15,10 @@
       "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
     },
     {
-      "name": "test_run_v1.0 (Export Video)",
+      "name": "test_run_entry (Export Video)",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_v1_0.py",
+      "program": "${workspaceFolder}/test_run/test_run_entry.py",
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "env": {

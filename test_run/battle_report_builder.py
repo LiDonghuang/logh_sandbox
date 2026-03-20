@@ -239,15 +239,19 @@ def _resolve_report_names(fleet_a_data: dict, fleet_b_data: dict) -> dict[str, s
             "fleet_a_en": "A",
             "fleet_b_en": "B",
         }
+    name_specs = {
+        "commander_a_zh": (fleet_a_data, "ZH", True, "A"),
+        "commander_b_zh": (fleet_b_data, "ZH", True, "B"),
+        "fleet_a_zh": (fleet_a_data, "ZH", False, "A"),
+        "fleet_b_zh": (fleet_b_data, "ZH", False, "B"),
+        "commander_a_en": (fleet_a_data, "EN", True, "A"),
+        "commander_b_en": (fleet_b_data, "EN", True, "B"),
+        "fleet_a_en": (fleet_a_data, "EN", False, "A"),
+        "fleet_b_en": (fleet_b_data, "EN", False, "B"),
+    }
     return {
-        "commander_a_zh": resolve_name_with_fallback(fleet_a_data, "ZH", True, "A"),
-        "commander_b_zh": resolve_name_with_fallback(fleet_b_data, "ZH", True, "B"),
-        "fleet_a_zh": resolve_name_with_fallback(fleet_a_data, "ZH", False, "A"),
-        "fleet_b_zh": resolve_name_with_fallback(fleet_b_data, "ZH", False, "B"),
-        "commander_a_en": resolve_name_with_fallback(fleet_a_data, "EN", True, "A"),
-        "commander_b_en": resolve_name_with_fallback(fleet_b_data, "EN", True, "B"),
-        "fleet_a_en": resolve_name_with_fallback(fleet_a_data, "EN", False, "A"),
-        "fleet_b_en": resolve_name_with_fallback(fleet_b_data, "EN", False, "B"),
+        key: resolve_name_with_fallback(side_data, language, prefer_full_name, fallback)
+        for key, (side_data, language, prefer_full_name, fallback) in name_specs.items()
     }
 
 
@@ -275,88 +279,61 @@ def _render_run_configuration_section(
     display_language: str,
     run_config_snapshot: dict[str, Any],
 ) -> list[str]:
-    return [
-        "## 0. Run Configuration Snapshot",
-        f"- Source settings path: `{settings_source_path}`",
-        f"- test_mode: `{run_config_snapshot['test_mode']}` ({run_config_snapshot['test_mode_label']})",
-        f"- runtime_decision_source_effective: `{run_config_snapshot.get('runtime_decision_source_effective', 'v2')}`",
-        f"- collapse_decision_source_effective: `{run_config_snapshot.get('collapse_decision_source_effective', 'legacy_v2')}`",
-        f"- movement_model_effective: `{run_config_snapshot.get('movement_model_effective', 'v3a')}`",
-        f"- movement_v3a_experiment_effective: `{run_config_snapshot.get('movement_v3a_experiment_effective', 'base')}`",
-        f"- centroid_probe_scale_effective: `{run_config_snapshot.get('centroid_probe_scale_effective', 'N/A')}`",
-        f"- random_seed_effective: `{run_config_snapshot.get('random_seed_effective', 'N/A')}`",
-        f"- background_map_seed_effective: `{run_config_snapshot.get('background_map_seed_effective', 'N/A')}`",
-        f"- metatype_random_seed_effective: `{run_config_snapshot.get('metatype_random_seed_effective', 'N/A')}`",
-        f"- display_language: `{display_language}`",
-        f"- attack_range: `{run_config_snapshot['attack_range']}`",
-        f"- min_unit_spacing: `{run_config_snapshot['min_unit_spacing']}`",
-        f"- arena_size: `{run_config_snapshot['arena_size']}`",
-        f"- max_time_steps_effective: `{run_config_snapshot['max_time_steps_effective']}`",
-        f"- unit_speed: `{run_config_snapshot['unit_speed']}`",
-        f"- damage_per_tick: `{run_config_snapshot['damage_per_tick']}`",
-        f"- ch_enabled / contact_hysteresis_h: `{run_config_snapshot['ch_enabled']}` / `{run_config_snapshot['contact_hysteresis_h']}`",
-        f"- fsr_enabled / fsr_strength: `{run_config_snapshot['fsr_enabled']}` / `{run_config_snapshot['fsr_strength']}`",
-        f"- boundary_enabled: `{run_config_snapshot['boundary_enabled']}`",
-        f"- boundary_soft_strength: `{run_config_snapshot.get('boundary_soft_strength', 1.0)}`",
-        f"- boundary_hard_enabled (requested/effective): "
-        f"`{run_config_snapshot.get('boundary_hard_enabled', True)}` / "
-        f"`{run_config_snapshot.get('boundary_hard_enabled_effective', run_config_snapshot['boundary_enabled'])}`",
-        f"- alpha_sep: `{run_config_snapshot.get('alpha_sep', 0.6)}`",
-        "- overrides_applied: none",
-        "",
-    ]
-
-
-def _render_header_section(
-    *,
-    fleet_a_data: dict,
-    fleet_b_data: dict,
-    initial_units_a: int,
-    initial_units_b: int,
-    report_date: str,
-) -> list[str]:
-    if int(initial_units_a) == int(initial_units_b):
-        grid_descriptor = f"units_per_side={int(initial_units_a)}"
-    else:
-        grid_descriptor = f"units_A={int(initial_units_a)}, units_B={int(initial_units_b)}"
-    return [
-        "## 1. Header",
-        "- Engine Version: v5.0-alpha5",
+    rows = [
+        ("Source settings path", f"`{settings_source_path}`"),
+        ("test_mode", f"`{run_config_snapshot['test_mode']}` ({run_config_snapshot['test_mode_label']})"),
         (
-            "- Grid Parameters: "
-            f"A={fleet_a_data.get('name', 'A')} vs B={fleet_b_data.get('name', 'B')}, "
-            f"{grid_descriptor}"
+            "runtime_decision_source_effective",
+            f"`{run_config_snapshot.get('runtime_decision_source_effective', 'v2')}`",
         ),
-        "- Determinism Status: Not checked in this single-run export",
-        f"- Date: {report_date}",
-        "",
+        (
+            "collapse_decision_source_effective",
+            f"`{run_config_snapshot.get('collapse_decision_source_effective', 'legacy_v2')}`",
+        ),
+        ("movement_model_effective", f"`{run_config_snapshot.get('movement_model_effective', 'v3a')}`"),
+        (
+            "movement_v3a_experiment_effective",
+            f"`{run_config_snapshot.get('movement_v3a_experiment_effective', 'base')}`",
+        ),
+        (
+            "centroid_probe_scale_effective",
+            f"`{run_config_snapshot.get('centroid_probe_scale_effective', 'N/A')}`",
+        ),
+        ("random_seed_effective", f"`{run_config_snapshot.get('random_seed_effective', 'N/A')}`"),
+        (
+            "background_map_seed_effective",
+            f"`{run_config_snapshot.get('background_map_seed_effective', 'N/A')}`",
+        ),
+        (
+            "metatype_random_seed_effective",
+            f"`{run_config_snapshot.get('metatype_random_seed_effective', 'N/A')}`",
+        ),
+        ("display_language", f"`{display_language}`"),
+        ("attack_range", f"`{run_config_snapshot['attack_range']}`"),
+        ("min_unit_spacing", f"`{run_config_snapshot['min_unit_spacing']}`"),
+        ("arena_size", f"`{run_config_snapshot['arena_size']}`"),
+        ("max_time_steps_effective", f"`{run_config_snapshot['max_time_steps_effective']}`"),
+        ("unit_speed", f"`{run_config_snapshot['unit_speed']}`"),
+        ("damage_per_tick", f"`{run_config_snapshot['damage_per_tick']}`"),
+        (
+            "ch_enabled / contact_hysteresis_h",
+            f"`{run_config_snapshot['ch_enabled']}` / `{run_config_snapshot['contact_hysteresis_h']}`",
+        ),
+        (
+            "fsr_enabled / fsr_strength",
+            f"`{run_config_snapshot['fsr_enabled']}` / `{run_config_snapshot['fsr_strength']}`",
+        ),
+        ("boundary_enabled", f"`{run_config_snapshot['boundary_enabled']}`"),
+        ("boundary_soft_strength", f"`{run_config_snapshot.get('boundary_soft_strength', 1.0)}`"),
+        (
+            "boundary_hard_enabled (requested/effective)",
+            f"`{run_config_snapshot.get('boundary_hard_enabled', True)}` / "
+            f"`{run_config_snapshot.get('boundary_hard_enabled_effective', run_config_snapshot['boundary_enabled'])}`",
+        ),
+        ("alpha_sep", f"`{run_config_snapshot.get('alpha_sep', 0.6)}`"),
+        ("overrides_applied", "none"),
     ]
-
-
-def _render_operational_timeline_section(
-    *,
-    first_contact_tick: int | None,
-    first_kill_tick: int | None,
-    formation_cut_tick: int | None,
-    pocket_formation_tick: int | None,
-    inflection_tick: int | None,
-    endgame_tick: int | None,
-    end_tick: int,
-) -> list[str]:
-    return [
-        "## 2. Operational Timeline",
-        "| Event | Tick |",
-        "| --- | --- |",
-        f"| First Contact | {first_contact_tick if first_contact_tick is not None else 'N/A'} |",
-        f"| First Kill | {first_kill_tick if first_kill_tick is not None else 'N/A'} |",
-        f"| Formation Cut | {formation_cut_tick if formation_cut_tick is not None else 'N/A'} |",
-        f"| Pocket Formation | {pocket_formation_tick if pocket_formation_tick is not None else 'N/A'} |",
-        "| Pursuit Mode | N/A |",
-        f"| Inflection | {inflection_tick if inflection_tick is not None else 'N/A'} |",
-        f"| Endgame Onset | {endgame_tick if endgame_tick is not None else 'N/A'} |",
-        f"| End | {end_tick} |",
-        "",
-    ]
+    return ["## 0. Run Configuration Snapshot", *[f"- {label}: {value}" for label, value in rows], ""]
 
 
 def _render_precontact_geometry_section(
@@ -364,97 +341,30 @@ def _render_precontact_geometry_section(
     first_contact_tick: int | None,
     total_ticks: int,
 ) -> list[str]:
-    return [
+    lines = [
         "## 4A. Pre-Contact Geometry / Posture Summary",
         f"- Window: `t=1..{max(1, first_contact_tick - 1) if first_contact_tick is not None else total_ticks}`",
-        (
-            f"- Side A: Wedge p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['A']['wedge_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['wedge_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['wedge_p90'])}`; "
-            f"FrontCurv p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['A']['frontcurv_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['frontcurv_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['frontcurv_p90'])}`; "
-            f"C_W_PShare p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['A']['cw_pshare_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['cw_pshare_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['A']['cw_pshare_p90'])}`; "
-            f"PosPersist max_abs=`{_fmt_stat(precontact_geometry_summary['A']['pospersist_max_abs'], 1)}`; "
-            f"Tendency=`{precontact_geometry_summary['A']['geometry_tendency']}`"
-        ),
-        (
-            f"- Side B: Wedge p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['B']['wedge_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['wedge_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['wedge_p90'])}`; "
-            f"FrontCurv p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['B']['frontcurv_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['frontcurv_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['frontcurv_p90'])}`; "
-            f"C_W_PShare p10/p50/p90=`{_fmt_stat(precontact_geometry_summary['B']['cw_pshare_p10'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['cw_pshare_p50'])}` / "
-            f"`{_fmt_stat(precontact_geometry_summary['B']['cw_pshare_p90'])}`; "
-            f"PosPersist max_abs=`{_fmt_stat(precontact_geometry_summary['B']['pospersist_max_abs'], 1)}`; "
-            f"Tendency=`{precontact_geometry_summary['B']['geometry_tendency']}`"
-        ),
-        "",
     ]
+    for side in ("A", "B"):
+        side_summary = precontact_geometry_summary[side]
+        lines.append(
+            f"- Side {side}: "
+            f"Wedge p10/p50/p90=`{_fmt_stat(side_summary['wedge_p10'])}` / "
+            f"`{_fmt_stat(side_summary['wedge_p50'])}` / "
+            f"`{_fmt_stat(side_summary['wedge_p90'])}`; "
+            f"FrontCurv p10/p50/p90=`{_fmt_stat(side_summary['frontcurv_p10'])}` / "
+            f"`{_fmt_stat(side_summary['frontcurv_p50'])}` / "
+            f"`{_fmt_stat(side_summary['frontcurv_p90'])}`; "
+            f"C_W_PShare p10/p50/p90=`{_fmt_stat(side_summary['cw_pshare_p10'])}` / "
+            f"`{_fmt_stat(side_summary['cw_pshare_p50'])}` / "
+            f"`{_fmt_stat(side_summary['cw_pshare_p90'])}`; "
+            f"PosPersist max_abs=`{_fmt_stat(side_summary['pospersist_max_abs'], 1)}`; "
+            f"Tendency=`{side_summary['geometry_tendency']}`"
+        )
+    lines.append("")
+    return lines
 
 
-def _render_front_profile_section(front_profile_quality_summary: dict[str, dict[str, Any]]) -> list[str]:
-    return [
-        "## 4B. Front Profile Quality Summary",
-        (
-            f"- Side A: Profile=`{_describe_front_profile(front_profile_quality_summary['A']['profile'])}`; "
-            f"FireEff(contact->cut) mean/p90=`{_fmt_stat(front_profile_quality_summary['A']['fire_eff_contact_to_cut_mean'])}` / "
-            f"`{_fmt_stat(front_profile_quality_summary['A']['fire_eff_contact_to_cut_p90'])}`; "
-            f"WedgePresent=`{'Yes' if front_profile_quality_summary['A']['wedge_present'] else 'No'}`; "
-            f"PostureCoherence=`{'Yes' if front_profile_quality_summary['A']['posture_coherence'] else 'No'}`; "
-            f"StructuralFragility=`{'Yes' if front_profile_quality_summary['A']['structural_fragility'] else 'No'}`"
-        ),
-        (
-            f"- Side B: Profile=`{_describe_front_profile(front_profile_quality_summary['B']['profile'])}`; "
-            f"FireEff(contact->cut) mean/p90=`{_fmt_stat(front_profile_quality_summary['B']['fire_eff_contact_to_cut_mean'])}` / "
-            f"`{_fmt_stat(front_profile_quality_summary['B']['fire_eff_contact_to_cut_p90'])}`; "
-            f"WedgePresent=`{'Yes' if front_profile_quality_summary['B']['wedge_present'] else 'No'}`; "
-            f"PostureCoherence=`{'Yes' if front_profile_quality_summary['B']['posture_coherence'] else 'No'}`; "
-            f"StructuralFragility=`{'Yes' if front_profile_quality_summary['B']['structural_fragility'] else 'No'}`"
-        ),
-        "",
-    ]
-
-
-def _render_event_aligned_section(event_aligned_geometry: dict[str, dict[str, dict[str, float]]]) -> list[str]:
-    rows = [
-        "## 4C. Event-Aligned Geometry Snapshots",
-        "| Event | Side | Wedge | FrontCurv | C_W_PShare | CollapseSig |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ]
-    for event_label in ("First Contact", "Formation Cut", "Pocket Formation"):
-        for side in ("A", "B"):
-            event_side = event_aligned_geometry.get(event_label, {}).get(side, {})
-            rows.append(
-                f"| {event_label} | {side} | "
-                f"{_fmt_stat(event_side.get('wedge', float('nan')))} | "
-                f"{_fmt_stat(event_side.get('frontcurv', float('nan')))} | "
-                f"{_fmt_stat(event_side.get('cw_pshare', float('nan')))} | "
-                f"{_fmt_stat(event_side.get('collapse_sig', float('nan')))} |"
-            )
-    rows.append("")
-    return rows
-
-
-def _render_collapse_analysis_section(
-    *,
-    collapse_before_contact: str,
-    collapse_aligned_with_cut: str,
-    runtime_collapse_summary: dict[str, dict[str, float]],
-) -> list[str]:
-    return [
-        "## 5. Collapse Analysis",
-        f"- Collapse shadow occurred before contact (observer-only, any side): {collapse_before_contact}",
-        "- Collapse shadow preceded or aligned with pursuit mode: N/A",
-        f"- Collapse shadow aligned with formation cut (|delta_tick|<=1, earliest side): {collapse_aligned_with_cut}",
-        f"- Runtime collapse signal summary A: mean/p95=`{_fmt_stat(runtime_collapse_summary['A']['collapse_sig_mean'])}` / `{_fmt_stat(runtime_collapse_summary['A']['collapse_sig_p95'])}`, c_conn=`{_fmt_stat(runtime_collapse_summary['A']['c_conn_mean'])}`, rho=`{_fmt_stat(runtime_collapse_summary['A']['rho_mean'])}`, c_scale=`{_fmt_stat(runtime_collapse_summary['A']['c_scale_mean'])}`",
-        f"- Runtime collapse signal summary B: mean/p95=`{_fmt_stat(runtime_collapse_summary['B']['collapse_sig_mean'])}` / `{_fmt_stat(runtime_collapse_summary['B']['collapse_sig_p95'])}`, c_conn=`{_fmt_stat(runtime_collapse_summary['B']['c_conn_mean'])}`, rho=`{_fmt_stat(runtime_collapse_summary['B']['rho_mean'])}`, c_scale=`{_fmt_stat(runtime_collapse_summary['B']['c_scale_mean'])}`",
-        "",
-    ]
 def compute_bridge_event_ticks(bridge_telemetry: dict | None) -> dict:
     result = {
         "cut_per_side": {"A": None, "B": None},
@@ -927,21 +837,26 @@ def _build_narrative_identity(
     initial_units_a: int,
     initial_units_b: int,
 ) -> dict[str, Any]:
+    side_names = {
+        "A": {
+            "commander": {"ZH": commander_a_zh, "EN": commander_a_en},
+            "fleet": {"ZH": fleet_a_zh, "EN": fleet_a_en},
+        },
+        "B": {
+            "commander": {"ZH": commander_b_zh, "EN": commander_b_en},
+            "fleet": {"ZH": fleet_b_zh, "EN": fleet_b_en},
+        },
+    }
     return {
         "seed_word": seed_word,
         "initial_ships": {"A": int(initial_ships_a), "B": int(initial_ships_b)},
-        "initial_units_per_side": int(initial_units_a) if int(initial_units_a) == int(initial_units_b) else int(max(initial_units_a, initial_units_b)),
+        "initial_units_per_side": (
+            int(initial_units_a)
+            if int(initial_units_a) == int(initial_units_b)
+            else int(max(initial_units_a, initial_units_b))
+        ),
         "initial_units": {"A": int(initial_units_a), "B": int(initial_units_b)},
-        "sides": {
-            "A": {
-                "commander": {"ZH": commander_a_zh, "EN": commander_a_en},
-                "fleet": {"ZH": fleet_a_zh, "EN": fleet_a_en},
-            },
-            "B": {
-                "commander": {"ZH": commander_b_zh, "EN": commander_b_en},
-                "fleet": {"ZH": fleet_b_zh, "EN": fleet_b_en},
-            },
-        },
+        "sides": side_names,
     }
 
 
@@ -951,20 +866,6 @@ def _build_structural_readout_slots(
     front_profile_quality_summary: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     slots: list[dict[str, Any]] = []
-    wedge_slot = _build_structural_wedge_slot(precontact_geometry_summary, front_profile_quality_summary)
-    if wedge_slot is not None:
-        slots.append(wedge_slot)
-    slots.extend(_build_structural_profile_slots(front_profile_quality_summary))
-    collapse_slot = _build_structural_collapse_slot(runtime_collapse_summary)
-    if collapse_slot is not None:
-        slots.append(collapse_slot)
-    return slots
-
-
-def _build_structural_wedge_slot(
-    precontact_geometry_summary: dict[str, dict[str, Any]],
-    front_profile_quality_summary: dict[str, dict[str, Any]],
-) -> dict[str, Any] | None:
     wedge_a = _safe_float_or_nan(precontact_geometry_summary.get("A", {}).get("wedge_p50"))
     wedge_b = _safe_float_or_nan(precontact_geometry_summary.get("B", {}).get("wedge_p50"))
     profile_a = str(front_profile_quality_summary.get("A", {}).get("profile", ""))
@@ -976,45 +877,28 @@ def _build_structural_wedge_slot(
             trail_side = "B" if wedge_delta < 0 else "A"
             lead_profile = profile_a if lead_side == "A" else profile_b
             if lead_profile not in {"coherent_penetration_wedge", "unstable_penetration_wedge"}:
-                return _semantic_slot("structural_wedge_advantage", lead_side=lead_side, trail_side=trail_side)
-    return None
-
-
-def _build_structural_profile_slots(
-    front_profile_quality_summary: dict[str, dict[str, Any]],
-) -> list[dict[str, Any]]:
-    slots: list[dict[str, Any]] = []
-    profile_a = str(front_profile_quality_summary.get("A", {}).get("profile", ""))
-    profile_b = str(front_profile_quality_summary.get("B", {}).get("profile", ""))
+                slots.append(
+                    _semantic_slot("structural_wedge_advantage", lead_side=lead_side, trail_side=trail_side)
+                )
     if profile_a != profile_b:
-        if profile_a == "flat_holding_front":
-            slots.append(_semantic_slot("structural_flat_holding_front", side="A"))
-        elif profile_b == "flat_holding_front":
-            slots.append(_semantic_slot("structural_flat_holding_front", side="B"))
-
-        if profile_a == "coherent_penetration_wedge":
-            slots.append(_semantic_slot("structural_coherent_penetration", side="A"))
-        elif profile_b == "coherent_penetration_wedge":
-            slots.append(_semantic_slot("structural_coherent_penetration", side="B"))
-
-        if profile_a == "unstable_penetration_wedge":
-            slots.append(_semantic_slot("structural_unstable_penetration", side="A"))
-        elif profile_b == "unstable_penetration_wedge":
-            slots.append(_semantic_slot("structural_unstable_penetration", side="B"))
-    return slots
-
-
-def _build_structural_collapse_slot(
-    runtime_collapse_summary: dict[str, dict[str, float]],
-) -> dict[str, Any] | None:
+        profile_slots = {
+            "flat_holding_front": "structural_flat_holding_front",
+            "coherent_penetration_wedge": "structural_coherent_penetration",
+            "unstable_penetration_wedge": "structural_unstable_penetration",
+        }
+        for profile_name, slot_name in profile_slots.items():
+            if profile_a == profile_name:
+                slots.append(_semantic_slot(slot_name, side="A"))
+            elif profile_b == profile_name:
+                slots.append(_semantic_slot(slot_name, side="B"))
     collapse_a = _safe_float_or_nan(runtime_collapse_summary.get("A", {}).get("collapse_sig_mean"))
     collapse_b = _safe_float_or_nan(runtime_collapse_summary.get("B", {}).get("collapse_sig_mean"))
     if math.isfinite(collapse_a) and math.isfinite(collapse_b):
         collapse_delta = collapse_a - collapse_b
         if abs(collapse_delta) >= 0.05:
             pressured_side = "A" if collapse_delta > 0 else "B"
-            return _semantic_slot("structural_collapse_pressure", pressured_side=pressured_side)
-    return None
+            slots.append(_semantic_slot("structural_collapse_pressure", pressured_side=pressured_side))
+    return slots
 
 
 def _build_tactical_event_slots(
@@ -1269,44 +1153,6 @@ def _render_battle_narrative(model: dict[str, Any], language: str) -> str:
     return "\n".join(header_lines) + "\n\n" + body_text
 
 
-def _build_report_summaries(
-    *,
-    observer_telemetry: dict | None,
-    bridge_telemetry: dict,
-    first_contact_tick: int | None,
-    bridge_ticks: dict,
-    fire_efficiency_series_a: list[float],
-    fire_efficiency_series_b: list[float],
-    formation_cut_tick: int | None,
-) -> dict[str, Any]:
-    precontact_geometry_summary = _build_precontact_geometry_summary(
-        observer_telemetry,
-        bridge_telemetry,
-        first_contact_tick,
-    )
-    event_aligned_geometry = _build_event_aligned_snapshots(
-        observer_telemetry,
-        bridge_telemetry,
-        first_contact_tick,
-        bridge_ticks,
-    )
-    runtime_collapse_summary = _build_runtime_collapse_summary(observer_telemetry, first_contact_tick)
-    front_profile_quality_summary = _build_front_profile_quality_summary(
-        precontact_geometry_summary,
-        runtime_collapse_summary,
-        fire_efficiency_series_a=fire_efficiency_series_a,
-        fire_efficiency_series_b=fire_efficiency_series_b,
-        first_contact_tick=first_contact_tick,
-        formation_cut_tick=formation_cut_tick,
-    )
-    return {
-        "precontact_geometry_summary": precontact_geometry_summary,
-        "event_aligned_geometry": event_aligned_geometry,
-        "runtime_collapse_summary": runtime_collapse_summary,
-        "front_profile_quality_summary": front_profile_quality_summary,
-    }
-
-
 def build_battle_report_markdown(
     *,
     settings_source_path: str,
@@ -1339,19 +1185,26 @@ def build_battle_report_markdown(
         alive_b,
         per_unit_damage=float(run_config_snapshot.get("damage_per_tick", 1.0)),
     )
-    report_summaries = _build_report_summaries(
-        observer_telemetry=observer_telemetry,
-        bridge_telemetry=bridge_telemetry,
-        first_contact_tick=first_contact_tick,
-        bridge_ticks=bridge_ticks,
+    precontact_geometry_summary = _build_precontact_geometry_summary(
+        observer_telemetry,
+        bridge_telemetry,
+        first_contact_tick,
+    )
+    event_aligned_geometry = _build_event_aligned_snapshots(
+        observer_telemetry,
+        bridge_telemetry,
+        first_contact_tick,
+        bridge_ticks,
+    )
+    runtime_collapse_summary = _build_runtime_collapse_summary(observer_telemetry, first_contact_tick)
+    front_profile_quality_summary = _build_front_profile_quality_summary(
+        precontact_geometry_summary,
+        runtime_collapse_summary,
         fire_efficiency_series_a=fire_efficiency_series_a,
         fire_efficiency_series_b=fire_efficiency_series_b,
+        first_contact_tick=first_contact_tick,
         formation_cut_tick=bridge_ticks.get("formation_cut_tick"),
     )
-    precontact_geometry_summary = report_summaries["precontact_geometry_summary"]
-    event_aligned_geometry = report_summaries["event_aligned_geometry"]
-    runtime_collapse_summary = report_summaries["runtime_collapse_summary"]
-    front_profile_quality_summary = report_summaries["front_profile_quality_summary"]
     strategic_inflection_sustain_ticks = max(
         1,
         int(run_config_snapshot.get("strategic_inflection_sustain_ticks", STRATEGIC_INFLECTION_SUSTAIN_TICKS)),
@@ -1489,6 +1342,65 @@ def build_battle_report_markdown(
     )
     tactical_narrative_zh = _render_battle_narrative(narrative_model, "ZH")
     tactical_narrative_en = _render_battle_narrative(narrative_model, "EN")
+    if int(initial_units_a) == int(initial_units_b):
+        grid_descriptor = f"units_per_side={int(initial_units_a)}"
+    else:
+        grid_descriptor = f"units_A={int(initial_units_a)}, units_B={int(initial_units_b)}"
+    timeline_rows = [
+        ("First Contact", first_contact_tick),
+        ("First Kill", first_kill_tick),
+        ("Formation Cut", formation_cut_tick),
+        ("Pocket Formation", bridge_ticks.get("pocket_formation_tick")),
+        ("Pursuit Mode", "N/A"),
+        ("Inflection", inflection_tick),
+        ("Endgame Onset", endgame_tick),
+        ("End", end_tick),
+    ]
+    front_profile_lines = ["## 4B. Front Profile Quality Summary"]
+    for side in ("A", "B"):
+        summary = front_profile_quality_summary[side]
+        front_profile_lines.append(
+            f"- Side {side}: "
+            f"Profile=`{_describe_front_profile(summary['profile'])}`; "
+            f"FireEff(contact->cut) mean/p90=`{_fmt_stat(summary['fire_eff_contact_to_cut_mean'])}` / "
+            f"`{_fmt_stat(summary['fire_eff_contact_to_cut_p90'])}`; "
+            f"WedgePresent=`{'Yes' if summary['wedge_present'] else 'No'}`; "
+            f"PostureCoherence=`{'Yes' if summary['posture_coherence'] else 'No'}`; "
+            f"StructuralFragility=`{'Yes' if summary['structural_fragility'] else 'No'}`"
+        )
+    front_profile_lines.append("")
+    event_aligned_lines = [
+        "## 4C. Event-Aligned Geometry Snapshots",
+        "| Event | Side | Wedge | FrontCurv | C_W_PShare | CollapseSig |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for event_label in ("First Contact", "Formation Cut", "Pocket Formation"):
+        for side in ("A", "B"):
+            event_side = event_aligned_geometry.get(event_label, {}).get(side, {})
+            event_aligned_lines.append(
+                f"| {event_label} | {side} | "
+                f"{_fmt_stat(event_side.get('wedge', float('nan')))} | "
+                f"{_fmt_stat(event_side.get('frontcurv', float('nan')))} | "
+                f"{_fmt_stat(event_side.get('cw_pshare', float('nan')))} | "
+                f"{_fmt_stat(event_side.get('collapse_sig', float('nan')))} |"
+            )
+    event_aligned_lines.append("")
+    collapse_lines = [
+        "## 5. Collapse Analysis",
+        f"- Collapse shadow occurred before contact (observer-only, any side): {collapse_before_contact}",
+        "- Collapse shadow preceded or aligned with pursuit mode: N/A",
+        f"- Collapse shadow aligned with formation cut (|delta_tick|<=1, earliest side): {collapse_aligned_with_cut}",
+    ]
+    for side in ("A", "B"):
+        summary = runtime_collapse_summary[side]
+        collapse_lines.append(
+            f"- Runtime collapse signal summary {side}: "
+            f"mean/p95=`{_fmt_stat(summary['collapse_sig_mean'])}` / `{_fmt_stat(summary['collapse_sig_p95'])}`, "
+            f"c_conn=`{_fmt_stat(summary['c_conn_mean'])}`, "
+            f"rho=`{_fmt_stat(summary['rho_mean'])}`, "
+            f"c_scale=`{_fmt_stat(summary['c_scale_mean'])}`"
+        )
+    collapse_lines.append("")
 
     report_lines = [
         "# Battle Report Framework v1.0",
@@ -1498,22 +1410,20 @@ def build_battle_report_markdown(
             display_language=display_language,
             run_config_snapshot=run_config_snapshot,
         ),
-        *_render_header_section(
-            fleet_a_data=fleet_a_data,
-            fleet_b_data=fleet_b_data,
-            initial_units_a=initial_units_a,
-            initial_units_b=initial_units_b,
-            report_date=datetime.now().strftime("%Y-%m-%d"),
+        "## 1. Header",
+        "- Engine Version: v5.0-alpha5",
+        (
+            "- Grid Parameters: "
+            f"A={fleet_a_data.get('name', 'A')} vs B={fleet_b_data.get('name', 'B')}, {grid_descriptor}"
         ),
-        *_render_operational_timeline_section(
-            first_contact_tick=first_contact_tick,
-            first_kill_tick=first_kill_tick,
-            formation_cut_tick=formation_cut_tick,
-            pocket_formation_tick=bridge_ticks.get("pocket_formation_tick"),
-            inflection_tick=inflection_tick,
-            endgame_tick=endgame_tick,
-            end_tick=end_tick,
-        ),
+        "- Determinism Status: Not checked in this single-run export",
+        f"- Date: {datetime.now().strftime('%Y-%m-%d')}",
+        "",
+        "## 2. Operational Timeline",
+        "| Event | Tick |",
+        "| --- | --- |",
+        *[f"| {label} | {value if value is not None else 'N/A'} |" for label, value in timeline_rows],
+        "",
         "## 3. Tactical Narrative (Auto-generated)",
         "### 3.1 Archetypes",
         *_build_archetype_lines(fleet_a_data, fleet_b_data),
@@ -1531,12 +1441,8 @@ def build_battle_report_markdown(
         "- Cohesion behavior summary: Runtime path unchanged; this export is observer/report-layer only.",
         "",
         *_render_precontact_geometry_section(precontact_geometry_summary, first_contact_tick, len(ticks)),
-        *_render_front_profile_section(front_profile_quality_summary),
-        *_render_event_aligned_section(event_aligned_geometry),
-        *_render_collapse_analysis_section(
-            collapse_before_contact=collapse_before_contact,
-            collapse_aligned_with_cut=collapse_aligned_with_cut,
-            runtime_collapse_summary=runtime_collapse_summary,
-        ),
+        *front_profile_lines,
+        *event_aligned_lines,
+        *collapse_lines,
     ]
     return "\n".join(report_lines)
