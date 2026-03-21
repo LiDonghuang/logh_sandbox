@@ -35,7 +35,7 @@ Current emphasis is not personality expansion.
   - engineering reference priority and canonical authority alignment guidance
 - `docs/architecture/LOGH_Analytical_Stack_Architecture_v1.0.md`
   - observer/report analytical stack layers and L0-L3 boundary map
-- `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
+- `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
   - top-level phase ordering and current Phase A positioning
 
 ## Runtime Core Paths
@@ -86,7 +86,7 @@ Current emphasis is not personality expansion.
 
 ## Key Current Records
 
-- `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
+- `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_harness_cleanup_record_20260319.md`

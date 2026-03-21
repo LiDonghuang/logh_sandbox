@@ -84,7 +84,7 @@ Cleanup tag:
 
 These explain what we are doing now, and what not to do.
 
-### 5. `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
+### 5. `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 
 Why:
 
@@ -384,7 +384,7 @@ If the new thread is continuing current `Phase A` work, use this order:
 2. `archive/ts_handoff_archive/TS_HANDOFF_20260319_210459/TS_HANDOFF_20260319_210459.md`
 3. `repo_context.md`
 4. `system_map.md`
-5. `docs/Global_Road_Map_Engagement_to_Personality_20260318.md`
+5. `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 6. `docs/phase_a_governance_update_20260319.md`
 7. `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_harness_cleanup_record_20260319.md`
 8. `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_anchor_regression_policy_20260319.md`

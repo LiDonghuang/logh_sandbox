@@ -12,7 +12,8 @@ import numpy as np
 from matplotlib.collections import LineCollection
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
-from matplotlib.patches import Circle, Ellipse, Rectangle
+from matplotlib.patches import Circle, Ellipse, PathPatch, Rectangle
+from matplotlib.path import Path as MplPath
 
 from runtime.runtime_v0_1 import BattleState
 
@@ -160,8 +161,14 @@ def render_test_run(
     if display_language not in {"EN", "ZH"}:
         display_language = "EN"
     show_attack_target_lines = bool(show_attack_target_lines)
+    settings_vector_display_mode = str(
+        _cfg(viz_settings, "vector_display_mode", unit_direction_mode)
+    ).strip().lower()
     unit_direction_mode = str(unit_direction_mode).strip().lower()
-    if unit_direction_mode not in {"effective", "free", "attack", "composite"}:
+    valid_vector_display_modes = {"effective", "free", "attack", "composite", "radial_debug"}
+    if unit_direction_mode not in valid_vector_display_modes:
+        unit_direction_mode = settings_vector_display_mode
+    if unit_direction_mode not in valid_vector_display_modes:
         unit_direction_mode = "effective"
     needs_attack_direction_map = unit_direction_mode in {"attack", "composite"}
     needs_target_segments = bool(show_attack_target_lines)
@@ -389,6 +396,76 @@ def render_test_run(
                 return
             ax.add_patch(Circle((x, y), radius, color=color, alpha=alpha, zorder=zorder))
 
+        def add_ellipse_ring(
+            center_x: float,
+            center_y: float,
+            outer_width: float,
+            outer_height: float,
+            inner_width: float,
+            inner_height: float,
+            angle_deg: float,
+            color: str,
+            alpha: float,
+            zorder: float,
+            segments: int = 128,
+        ) -> None:
+            if outer_width <= 0.0 or outer_height <= 0.0:
+                return
+            if inner_width <= 0.0 or inner_height <= 0.0:
+                return
+            if inner_width >= outer_width or inner_height >= outer_height:
+                return
+
+            angle_rad = math.radians(angle_deg)
+            cos_angle = math.cos(angle_rad)
+            sin_angle = math.sin(angle_rad)
+
+            def ellipse_points(width: float, height: float, reverse: bool = False) -> list[tuple[float, float]]:
+                theta_values = np.linspace(0.0, 2.0 * math.pi, max(16, segments), endpoint=False)
+                if reverse:
+                    theta_values = theta_values[::-1]
+                points: list[tuple[float, float]] = []
+                half_w = 0.5 * width
+                half_h = 0.5 * height
+                for theta in theta_values:
+                    local_x = half_w * math.cos(float(theta))
+                    local_y = half_h * math.sin(float(theta))
+                    points.append(
+                        (
+                            center_x + (local_x * cos_angle) - (local_y * sin_angle),
+                            center_y + (local_x * sin_angle) + (local_y * cos_angle),
+                        )
+                    )
+                return points
+
+            outer_points = ellipse_points(outer_width, outer_height)
+            inner_points = ellipse_points(inner_width, inner_height, reverse=True)
+            vertices = (
+                [outer_points[0]]
+                + outer_points[1:]
+                + [outer_points[0]]
+                + [inner_points[0]]
+                + inner_points[1:]
+                + [inner_points[0]]
+            )
+            codes = (
+                [MplPath.MOVETO]
+                + [MplPath.LINETO] * (len(outer_points) - 1)
+                + [MplPath.CLOSEPOLY]
+                + [MplPath.MOVETO]
+                + [MplPath.LINETO] * (len(inner_points) - 1)
+                + [MplPath.CLOSEPOLY]
+            )
+            ax.add_patch(
+                PathPatch(
+                    MplPath(vertices, codes),
+                    facecolor=color,
+                    edgecolor="none",
+                    alpha=alpha,
+                    zorder=zorder,
+                )
+            )
+
         haze_center_ratio = _cfg(haze_cfg, 'center_ratio', [0.5, 0.5])
         haze_center_x = size * float(haze_center_ratio[0])
         haze_center_y = size * float(haze_center_ratio[1])
@@ -497,24 +574,6 @@ def render_test_run(
                 float(shell['center_y']) + (local_x * orbit_axis_sin) + (local_y * orbit_axis_cos),
             )
 
-        def choose_orbit_ratios(target_count: int, ratio_range: Sequence[float], min_gap: float) -> list[float]:
-            if target_count <= 0:
-                return []
-            low, high = float_range(ratio_range, [0.15, 0.85])
-            low = clamp(low, 0.0, 1.0, low)
-            high = clamp(high, low, 1.0, high)
-            ratios: list[float] = []
-            for _ in range(max(24, target_count * 16)):
-                candidate = rng.uniform(low, high)
-                if all(abs(candidate - existing) >= min_gap for existing in ratios):
-                    ratios.append(candidate)
-                    if len(ratios) >= target_count:
-                        break
-            while len(ratios) < target_count:
-                ratios.append(rng.uniform(low, high))
-            ratios.sort()
-            return ratios[:target_count]
-
         asteroid_count_range = _cfg(asteroids_cfg, 'count_range', [0, 3])
         orbit_ratio_range = _cfg(asteroids_cfg, 'orbit_ratio_range', [0.18, 0.95])
         orbit_jitter_range = _cfg(asteroids_cfg, 'orbit_jitter_range', [0.92, 1.08])
@@ -542,7 +601,99 @@ def render_test_run(
         ring_angle_deg_range = float_range(_cfg(ring_cfg, 'angle_deg_range', [0.0, 180.0]), [0.0, 180.0])
         ring_color = str(_cfg(ring_cfg, 'color', '#c6ccd6'))
         ring_alpha = clamp(_cfg(ring_cfg, 'alpha', 0.65), 0.0, 1.0, 0.65)
+        ring_band_width_ratio = 0.24
         orbit_jitter_low, orbit_jitter_high = float_range(orbit_jitter_range, [0.92, 1.08])
+        belt_cluster_count_range = _cfg(belts_cfg, 'cluster_count_range', [0, 10])
+        belt_points_per_360 = float_range(_cfg(belts_cfg, 'points_per_360_degree_range', [120.0, 120.0]), [120.0, 120.0])
+        belt_ratio_range = _cfg(belts_cfg, 'orbit_ratio_range', [0.55, 0.95])
+        belt_thickness_ratio = float_range(_cfg(belts_cfg, 'thickness_ratio_range', [0.05, 0.12]), [0.05, 0.12])
+        belt_arc_span_deg = float_range(_cfg(belts_cfg, 'arc_span_deg_range', [20.0, 55.0]), [20.0, 55.0])
+        belt_curve_strength = float_range(_cfg(belts_cfg, 'curve_strength_range', [-0.06, 0.06]), [-0.06, 0.06])
+        belt_asteroid_radius = float_range(_cfg(belts_cfg, 'asteroid_radius_range', [0.1, 0.2]), [0.1, 0.2])
+        belt_color = str(_cfg(belts_cfg, 'color', '#8e96a3'))
+        belt_alpha = clamp(_cfg(belts_cfg, 'alpha', 0.55), 0.0, 1.0, 0.55)
+        target_planets = sample_int(asteroid_count_range, [0, 3])
+        target_belts = sample_int(belt_cluster_count_range, [0, 10])
+        orbit_count_range = _cfg(orbit_cfg, 'orbit_count_range', [8, 12])
+        orbit_pool_low = min(float_range(orbit_ratio_range, [0.18, 0.95])[0], float_range(belt_ratio_range, [0.55, 0.95])[0])
+        orbit_pool_high = max(float_range(orbit_ratio_range, [0.18, 0.95])[1], float_range(belt_ratio_range, [0.55, 0.95])[1])
+        shared_orbit_pool: list[float] = []
+        assigned_orbit_ratios: list[float] = []
+
+        def build_orbit_pool(pool_count: int, low: float, high: float) -> list[float]:
+            if pool_count <= 0:
+                return []
+            low = clamp(low, 0.0, 1.0, low)
+            high = clamp(high, low, 1.0, high)
+            if pool_count == 1 or abs(high - low) <= 1e-9:
+                return [0.5 * (low + high)]
+            spacing = (high - low) / float(pool_count - 1)
+            pool: list[float] = []
+            for idx in range(pool_count):
+                base_ratio = low + (idx * spacing)
+                jitter = (rng.uniform(orbit_jitter_low, orbit_jitter_high) - 1.0) * 0.5 * spacing
+                pool.append(clamp(base_ratio + jitter, low, high, base_ratio))
+            pool.sort()
+            return pool
+
+        shared_pool_count = max(
+            sample_int(orbit_count_range, [8, 12]),
+            target_planets + target_belts,
+        )
+        shared_orbit_pool = build_orbit_pool(shared_pool_count, orbit_pool_low, orbit_pool_high)
+
+        def ensure_shared_orbit_pool(ratio_range: Sequence[float], required_count: int) -> None:
+            nonlocal shared_orbit_pool
+            if required_count <= 0:
+                return
+            low, high = float_range(ratio_range, [0.15, 0.85])
+            low = clamp(low, 0.0, 1.0, low)
+            high = clamp(high, low, 1.0, high)
+            eligible = [ratio for ratio in shared_orbit_pool if low <= ratio <= high]
+            if len(eligible) >= required_count:
+                return
+            supplemental = build_orbit_pool(required_count + 2, low, high)
+            existing = {round(ratio, 6) for ratio in shared_orbit_pool}
+            for candidate in supplemental:
+                key = round(candidate, 6)
+                if key in existing:
+                    continue
+                shared_orbit_pool.append(candidate)
+                existing.add(key)
+            shared_orbit_pool.sort()
+
+        def choose_orbit_ratios(target_count: int, ratio_range: Sequence[float], min_gap: float) -> list[float]:
+            if target_count <= 0:
+                return []
+            low, high = float_range(ratio_range, [0.15, 0.85])
+            low = clamp(low, 0.0, 1.0, low)
+            high = clamp(high, low, 1.0, high)
+            ensure_shared_orbit_pool((low, high), target_count)
+            ratios: list[float] = []
+            for candidate in shared_orbit_pool:
+                if candidate < low or candidate > high:
+                    continue
+                if (
+                    all(abs(candidate - existing) >= min_gap for existing in ratios)
+                    and all(abs(candidate - existing) >= min_gap for existing in assigned_orbit_ratios)
+                ):
+                    ratios.append(candidate)
+                    if len(ratios) >= target_count:
+                        break
+            if len(ratios) < target_count:
+                supplemental = build_orbit_pool(target_count * 2, low, high)
+                for candidate in supplemental:
+                    if (
+                        all(abs(candidate - existing) >= min_gap for existing in ratios)
+                        and all(abs(candidate - existing) >= min_gap for existing in assigned_orbit_ratios)
+                    ):
+                        ratios.append(candidate)
+                        if len(ratios) >= target_count:
+                            break
+            ratios.sort()
+            assigned_orbit_ratios.extend(ratios)
+            return ratios[:target_count]
+
         min_planet_sep = orbit_radius_base * min_separation_ratio
 
         def classify_planet(orbit_ratio: float) -> tuple[float, str]:
@@ -563,18 +714,18 @@ def render_test_run(
                 ring_major = max((2.0 * radius) * sample_float(ring_diameter_scale_range, [2.1, 3.4]), radius * 2.0)
                 ring_minor = ring_major * sample_float(ring_axis_ratio_range, [0.2, 0.55])
                 ring_angle = sample_float(ring_angle_deg_range, [0.0, 180.0])
-                ax.add_patch(
-                    Ellipse(
-                        (x, y),
-                        ring_major,
-                        ring_minor,
-                        angle=ring_angle,
-                        fill=False,
-                        edgecolor=ring_color,
-                        linewidth=max(0.8, ring_major * 0.08),
-                        alpha=ring_alpha,
-                        zorder=0.098,
-                    )
+                inner_scale = max(0.05, 1.0 - ring_band_width_ratio)
+                add_ellipse_ring(
+                    x,
+                    y,
+                    ring_major,
+                    ring_minor,
+                    ring_major * inner_scale,
+                    ring_minor * inner_scale,
+                    ring_angle,
+                    ring_color,
+                    ring_alpha,
+                    0.098,
                 )
                 visual_radius = max(visual_radius, 0.5 * ring_major)
             add_circle(x, y, radius, str(rng.choice(asteroid_colors)), asteroid_alpha, 0.10)
@@ -593,7 +744,6 @@ def render_test_run(
                     if in_draw_bounds(moon_x, moon_y):
                         add_circle(moon_x, moon_y, moon_radius, moon_color, moon_alpha, 0.099)
 
-        target_planets = sample_int(asteroid_count_range, [0, 3])
         planet_ratios = choose_orbit_ratios(target_planets, orbit_ratio_range, planet_orbit_gap_ratio)
         drawn_orbit_ratios: set[float] = set()
         planet_angles: list[float] = []
@@ -601,9 +751,6 @@ def render_test_run(
         for orbit_ratio in planet_ratios:
             shell = build_orbit_shell(orbit_ratio)
             orbit_key = round(orbit_ratio, 4)
-            if orbit_key not in drawn_orbit_ratios:
-                draw_orbit_path(shell)
-                drawn_orbit_ratios.add(orbit_key)
             for _ in range(32):
                 theta = rng.uniform(0.0, 2.0 * math.pi) + rng.uniform(-planet_angle_jitter_rad, planet_angle_jitter_rad)
                 theta_norm = theta % (2.0 * math.pi)
@@ -622,6 +769,9 @@ def render_test_run(
                     continue
                 if overlaps_occupied(planet_x, planet_y, visual_radius, pad=min_planet_sep * 0.25):
                     continue
+                if orbit_key not in drawn_orbit_ratios:
+                    draw_orbit_path(shell)
+                    drawn_orbit_ratios.add(orbit_key)
                 draw_planet(planet_x, planet_y, orbit_ratio)
                 planet_angles.append(theta_norm)
                 generated_planets += 1
@@ -650,29 +800,15 @@ def render_test_run(
                 register_occupied(sec_x, sec_y, sec_visual_radius)
                 break
 
-        belt_cluster_count_range = _cfg(belts_cfg, 'cluster_count_range', [0, 10])
-        belt_points_per_360 = float_range(_cfg(belts_cfg, 'points_per_360_degree_range', [120.0, 120.0]), [120.0, 120.0])
-        belt_ratio_range = _cfg(belts_cfg, 'orbit_ratio_range', [0.55, 0.95])
-        belt_thickness_ratio = float_range(_cfg(belts_cfg, 'thickness_ratio_range', [0.05, 0.12]), [0.05, 0.12])
-        belt_arc_span_deg = float_range(_cfg(belts_cfg, 'arc_span_deg_range', [20.0, 55.0]), [20.0, 55.0])
-        belt_curve_strength = float_range(_cfg(belts_cfg, 'curve_strength_range', [-0.06, 0.06]), [-0.06, 0.06])
-        belt_asteroid_radius = float_range(_cfg(belts_cfg, 'asteroid_radius_range', [0.1, 0.2]), [0.1, 0.2])
-        belt_color = str(_cfg(belts_cfg, 'color', '#8e96a3'))
-        belt_alpha = clamp(_cfg(belts_cfg, 'alpha', 0.55), 0.0, 1.0, 0.55)
-        target_belts = sample_int(belt_cluster_count_range, [0, 10])
         belt_ratios = choose_orbit_ratios(target_belts, belt_ratio_range, belt_gap_ratio * max(0.25, belt_belt_gap_scale))
         generated_belts = 0
         for orbit_ratio in belt_ratios:
             shell = build_orbit_shell(orbit_ratio)
             orbit_key = round(orbit_ratio, 4)
-            if orbit_key not in drawn_orbit_ratios:
-                draw_orbit_path(shell)
-                drawn_orbit_ratios.add(orbit_key)
             span_deg = sample_float(belt_arc_span_deg, [20.0, 55.0])
             point_count = max(12, int(round(sample_float(belt_points_per_360, [120.0, 120.0]) * span_deg / 360.0)))
             thickness = sample_float(belt_thickness_ratio, [0.05, 0.12])
             curvature = sample_float(belt_curve_strength, [-0.06, 0.06])
-            radius = sample_float(belt_asteroid_radius, [0.1, 0.2])
             theta_start = rng.uniform(0.0, 2.0 * math.pi)
             span_rad = math.radians(span_deg)
             any_drawn = False
@@ -683,9 +819,13 @@ def render_test_run(
                 belt_x, belt_y = orbit_point(shell, theta, radial_scale=radial_scale)
                 if not in_draw_bounds(belt_x, belt_y):
                     continue
+                radius = sample_float(belt_asteroid_radius, [0.1, 0.2])
                 add_circle(belt_x, belt_y, radius, belt_color, belt_alpha, 0.09)
                 any_drawn = True
             if any_drawn:
+                if orbit_key not in drawn_orbit_ratios:
+                    draw_orbit_path(shell)
+                    drawn_orbit_ratios.add(orbit_key)
                 generated_belts += 1
 
         return {
@@ -857,9 +997,7 @@ def render_test_run(
         }
 
     quiver_style = build_quiver_style(quiver_geometry)
-    vector_display_mode = str(_cfg(viz_settings, "vector_display_mode", "effective")).strip().lower()
-    if vector_display_mode not in {"effective", "free", "radial_debug"}:
-        vector_display_mode = "effective"
+    vector_display_mode = unit_direction_mode
     radial_debug_neutral_band = 0.05
     radial_debug_len_ratio = 0.75
     radial_debug_inward_color = "#2ca02c"
@@ -874,10 +1012,8 @@ def render_test_run(
     auto_zoom_follow_out_of_bounds = bool(_cfg(auto_zoom_cfg, "follow_out_of_bounds", True))
     auto_zoom_transition_ms = int(_cfg(auto_zoom_cfg, "transition_ms", 1000))
     auto_zoom_zoomin_trigger_ratio = float(_cfg(auto_zoom_cfg, "zoomin_trigger_ratio", 0.8))
-    if auto_zoom_start_delay_ticks < 0:
-        auto_zoom_start_delay_ticks = 0
-    if auto_zoom_centroid_trigger_ratio < 0.0:
-        auto_zoom_centroid_trigger_ratio = 0.0
+    auto_zoom_start_delay_ticks = max(0, auto_zoom_start_delay_ticks)
+    auto_zoom_centroid_trigger_ratio = max(0.0, auto_zoom_centroid_trigger_ratio)
     death_linger_ticks = int(_cfg(death_linger_cfg, "ticks", 3))
     death_ring_radius = float(_cfg(death_linger_cfg, "ring_radius", 1.0))
     death_ring_color = str(_cfg(death_linger_cfg, "ring_color", "#ff0000"))
@@ -1578,10 +1714,7 @@ def render_test_run(
         base = max(theta, 1e-12)
         value = (theta - enemy_cohesion) / base
         if collapse_margin_clip:
-            if value > 1.0:
-                value = 1.0
-            elif value < -1.0:
-                value = -1.0
+            value = min(1.0, max(-1.0, value))
         return value
 
     canonical_cohesion_series_a = [float(v) for v in trajectory.get("A", [])]

@@ -11,46 +11,58 @@ class EngineTickSkeleton:
         damage_per_tick: float = 1.0,
         separation_radius: float = 1.0,
     ) -> None:
+        # Active runtime knobs consumed by the maintained execution path.
         self.attack_range = float(attack_range)
         self.damage_per_tick = float(damage_per_tick)
         self.separation_radius = float(separation_radius)
-        self.CH_ENABLED = True
-        self.contact_hysteresis_h = 0.10
-        self.fire_quality_alpha = 0.0
-        self.debug_contact_assert = False
-        self.debug_contact_sample_ticks = 50
-        self.FSR_ENABLED = False
-        self.BOUNDARY_SOFT_ENABLED = True
-        self.BOUNDARY_HARD_ENABLED = False
-        self.boundary_soft_strength = 1.0
-        self.alpha_sep = 0.6
-        self.fsr_strength = 0.0
-        self.fsr_lambda_delta = 0.10
-        self._fsr_reference = {}
-        self.debug_fsr_diag_enabled = False
-        self.debug_outlier_eta = 1.8
-        self.debug_outlier_persistence_ticks = 20
-        self.debug_diag4_enabled = False
-        self.debug_diag4_topk = 10
-        self.debug_diag4_contact_window = 20
-        self.debug_diag4_return_sector_deg = 30.0
-        self.debug_diag4_neighbor_k = 3
-        self.debug_diag4_rpg_enabled = False
-        self.debug_diag4_rpg_window = 20
-        self._debug_diag_pending = None
-        self.debug_diag_timeseries = []
-        self._debug_state = {}
-        # Phase V.4-b: canonical decision source switches to cohesion_v2.
-        # "v1_debug" is retained only for baseline comparison / diagnostics.
-        self.COHESION_DECISION_SOURCE = "v2"
-        self.debug_cohesion_v1_enabled = False
-        self.debug_cohesion_v3_shadow_enabled = False
-        self.MOVEMENT_MODEL = "v3a"
-        self.MOVEMENT_V3A_EXPERIMENT = "base"
-        self.CENTROID_PROBE_SCALE = 1.0
-        self.ODW_POSTURE_BIAS_ENABLED = False
-        self.ODW_POSTURE_BIAS_K = 0.0
-        self.ODW_POSTURE_BIAS_CLIP_DELTA = 0.2
+
+        self._combat_surface = {
+            "ch_enabled": True,
+            "contact_hysteresis_h": 0.10,
+            "fire_quality_alpha": 0.0,
+        }
+
+        self._boundary_surface = {
+            "soft_enabled": True,
+            "hard_enabled": False,
+            "soft_strength": 1.0,
+        }
+
+        self._fsr_surface = {
+            "enabled": False,
+            "strength": 0.0,
+            "lambda_delta": 0.10,
+        }
+
+        # Active movement surface retained after v1 retirement.
+        self._movement_surface = {
+            "alpha_sep": 0.6,
+            "v3a_experiment": "base",
+            "centroid_probe_scale": 1.0,
+            "odw_posture_bias_enabled": False,
+            "odw_posture_bias_k": 0.0,
+            "odw_posture_bias_clip_delta": 0.2,
+        }
+
+        # Active debug/reference knobs still used by maintained diagnostics.
+        self._diag_surface = {
+            "fsr_diag_enabled": False,
+            "outlier_eta": 1.8,
+            "outlier_persistence_ticks": 20,
+            "diag4_enabled": False,
+            "diag4_topk": 10,
+            "diag4_contact_window": 20,
+            "diag4_return_sector_deg": 30.0,
+            "diag4_neighbor_k": 3,
+            "cohesion_v3_shadow_enabled": False,
+        }
+
+        # Internal-only state is kept behind a single host instead of top-level sprawl.
+        self._debug_state = {
+            "fsr_reference": {},
+            "diag_pending": None,
+            "diag_timeseries": [],
+        }
 
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
@@ -63,11 +75,7 @@ class EngineTickSkeleton:
 
     @staticmethod
     def _clamp01(value: float) -> float:
-        if value < 0.0:
-            return 0.0
-        if value > 1.0:
-            return 1.0
-        return value
+        return min(1.0, max(0.0, value))
 
     @staticmethod
     def _quantile_sorted(sorted_values: list[float], q: float) -> float:
@@ -296,9 +304,7 @@ class EngineTickSkeleton:
         q50 = self._quantile_sorted(sorted_radii, 0.50)
         q75 = self._quantile_sorted(sorted_radii, 0.75)
         q90 = self._quantile_sorted(sorted_radii, 0.90)
-        iqr = q75 - q25
-        if iqr < 0.0:
-            iqr = 0.0
+        iqr = max(0.0, q75 - q25)
 
         if q90 <= eps and q50 <= eps:
             dispersion_ratio = 1.0
@@ -320,9 +326,7 @@ class EngineTickSkeleton:
 
         trace = cov_xx + cov_yy
         det = (cov_xx * cov_yy) - (cov_xy * cov_xy)
-        disc = (trace * trace) - (4.0 * det)
-        if disc < 0.0:
-            disc = 0.0
+        disc = max(0.0, (trace * trace) - (4.0 * det))
         sqrt_disc = math.sqrt(disc)
         lambda_1 = 0.5 * (trace + sqrt_disc)
         lambda_2 = 0.5 * (trace - sqrt_disc)
@@ -519,28 +523,13 @@ class EngineTickSkeleton:
         }
 
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
-        updated_cohesion_v1 = {}
         updated_cohesion_v2 = {}
         shadow_cohesion = {}
         shadow_components = {}
         shadow_cohesion_v3 = {}
         shadow_components_v3 = {}
-        decision_source = str(self.COHESION_DECISION_SOURCE).lower()
-        keep_v1_debug = bool(self.debug_cohesion_v1_enabled) or (decision_source == "v1_debug")
-        keep_v3_shadow = bool(self.debug_cohesion_v3_shadow_enabled)
-        prev_cohesion_v1 = self._debug_state.get("_debug_prev_cohesion_v1")
-        if not isinstance(prev_cohesion_v1, dict):
-            prev_cohesion_v1 = {}
+        keep_v3_shadow = bool(self._diag_surface["cohesion_v3_shadow_enabled"])
         for fleet_id, fleet in state.fleets.items():
-            normalized = fleet.parameters.normalized()
-            kappa = normalized["formation_rigidity"]
-            old_cohesion_v1 = float(prev_cohesion_v1.get(fleet_id, 1.0))
-            new_cohesion = old_cohesion_v1 + (kappa * 0.01) - ((1.0 - kappa) * 0.005)
-            if new_cohesion < 0.0:
-                new_cohesion = 0.0
-            elif new_cohesion > 1.0:
-                new_cohesion = 1.0
-            updated_cohesion_v1[fleet_id] = new_cohesion
             cohesion_v2, v2_components = self._compute_cohesion_v2_geometry(state, fleet_id)
             updated_cohesion_v2[fleet_id] = cohesion_v2
             shadow_cohesion[fleet_id] = cohesion_v2
@@ -549,11 +538,6 @@ class EngineTickSkeleton:
                 cohesion_v3, v3_components = self._compute_cohesion_v3_shadow_geometry(state, fleet_id)
                 shadow_cohesion_v3[fleet_id] = cohesion_v3
                 shadow_components_v3[fleet_id] = v3_components
-        self._debug_state["_debug_prev_cohesion_v1"] = dict(updated_cohesion_v1)
-        if keep_v1_debug:
-            self._debug_state["debug_last_cohesion_v1"] = dict(updated_cohesion_v1)
-        else:
-            self._debug_state["debug_last_cohesion_v1"] = {}
         self._debug_state["debug_last_cohesion_v2"] = shadow_cohesion
         self._debug_state["debug_last_cohesion_v2_components"] = shadow_components
         if keep_v3_shadow:
@@ -563,7 +547,7 @@ class EngineTickSkeleton:
             self.debug_last_cohesion_v3 = {}
             self.debug_last_cohesion_v3_components = {}
 
-        # Canonical active cohesion is v2; v1 is debug-only.
+        # Canonical active cohesion is v2; v3_test remains a maintained shadow path.
         return replace(state, last_fleet_cohesion=updated_cohesion_v2)
 
     def evaluate_target(self, state: BattleState) -> BattleState:
@@ -625,81 +609,32 @@ class EngineTickSkeleton:
         min_unit_spacing: float,
         outlier_eta: float,
         persistence_ticks: int,
-        diag4_legacy_enabled: bool,
-        diag4_rpg_enabled: bool,
     ) -> dict:
-        top_k_raw = int(self.debug_diag4_topk)
-        if diag4_legacy_enabled:
-            if top_k_raw < 1:
-                top_k = 1
-            elif top_k_raw > 50:
-                top_k = 50
-            else:
-                top_k = top_k_raw
+        diag_surface = self._diag_surface
+        top_k_raw = int(diag_surface["diag4_topk"])
+        if top_k_raw < 1:
+            top_k = 1
+        elif top_k_raw > 50:
+            top_k = 50
         else:
-            top_k = 0
+            top_k = top_k_raw
 
-        sector_deg_raw = float(self.debug_diag4_return_sector_deg)
-        if diag4_legacy_enabled:
-            if sector_deg_raw < 5.0:
-                sector_deg = 5.0
-            elif sector_deg_raw > 85.0:
-                sector_deg = 85.0
-            else:
-                sector_deg = sector_deg_raw
+        sector_deg_raw = float(diag_surface["diag4_return_sector_deg"])
+        if sector_deg_raw < 5.0:
+            sector_deg = 5.0
+        elif sector_deg_raw > 85.0:
+            sector_deg = 85.0
         else:
-            sector_deg = 30.0
+            sector_deg = sector_deg_raw
         sector_cos = math.cos(math.radians(sector_deg))
 
-        neighbor_k_raw = int(self.debug_diag4_neighbor_k)
-        if diag4_legacy_enabled:
-            if neighbor_k_raw < 1:
-                neighbor_k = 1
-            elif neighbor_k_raw > 10:
-                neighbor_k = 10
-            else:
-                neighbor_k = neighbor_k_raw
+        neighbor_k_raw = int(diag_surface["diag4_neighbor_k"])
+        if neighbor_k_raw < 1:
+            neighbor_k = 1
+        elif neighbor_k_raw > 10:
+            neighbor_k = 10
         else:
-            neighbor_k = 3
-
-        rpg_window_raw = int(self.debug_diag4_rpg_window)
-        if rpg_window_raw < 5:
-            rpg_window = 5
-        elif rpg_window_raw > 200:
-            rpg_window = 200
-        else:
-            rpg_window = rpg_window_raw
-        rpg_eps = 1e-12
-        rpg_delta = 0.1 * min_unit_spacing
-
-        rpg_outlier_entry = self._ensure_debug_dict("_debug_diag4_rpg_outlier_entry")
-        rpg_return_stats = self._ensure_debug_dict("_debug_diag4_rpg_return_stats")
-        if not isinstance(rpg_return_stats.get("overall"), dict):
-            rpg_return_stats["overall"] = {"success": 0, "fail": 0}
-        if not isinstance(rpg_return_stats.get("by_fleet"), dict):
-            rpg_return_stats["by_fleet"] = {}
-        if not isinstance(rpg_return_stats.get("by_class"), dict):
-            rpg_return_stats["by_class"] = {}
-        for _cls in (
-            "inward_intent",
-            "outward_bias",
-            "tangential_neutral",
-            "suppressed_inward",
-        ):
-            if not isinstance(rpg_return_stats["by_class"].get(_cls), dict):
-                rpg_return_stats["by_class"][_cls] = {"success": 0, "fail": 0}
-
-        tau = 0.0
-        if diag4_rpg_enabled:
-            free_speed_samples = []
-            for unit_id, (final_x, final_y) in final_positions.items():
-                start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-                fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
-                dx_free = fsr_x - start_x
-                dy_free = fsr_y - start_y
-                free_speed_samples.append(math.sqrt((dx_free * dx_free) + (dy_free * dy_free)))
-            if free_speed_samples:
-                tau = 0.05 * self._quantile_sorted(sorted(free_speed_samples), 0.50)
+            neighbor_k = neighbor_k_raw
 
         prev_unit_state = self._ensure_debug_dict("_debug_diag4_prev_unit_state")
         prev_unit_radius = self._ensure_debug_dict("_debug_diag4_prev_unit_radius")
@@ -747,14 +682,8 @@ class EngineTickSkeleton:
         module_b_fleet = {}
         module_d_persistent = []
         persistent_diag4_units = []
-        module_rpg_payload = None
-        module_rpg_fleet = {}
-        rpg_kappa_all = []
-        rpg_gap_all = []
-        rpg_gap_zero_like_count = 0
-        rpg_gap_no_inward_neighbor_count = 0
 
-        # Continued below: per-fleet classification / RPG diagnostics / payload assembly.
+        # Continued below: per-fleet classification / legacy diag4 payload assembly.
         for fleet_id, fleet in state.fleets.items():
             alive_unit_ids = [
                 unit_id
@@ -774,20 +703,6 @@ class EngineTickSkeleton:
                     "outlier_threshold": 0.0,
                     "margin": min_unit_spacing,
                 }
-                if diag4_rpg_enabled:
-                    module_rpg_fleet[fleet_id] = {
-                        "r_shell": 0.0,
-                        "delta": rpg_delta,
-                        "outlier_threshold": rpg_delta,
-                        "outlier_count": 0,
-                        "projection_suppression_candidate_count": 0,
-                        "movement_outward_bias_count": 0,
-                        "inward_free_and_effective_count": 0,
-                        "kappa_distribution": self._dist_summary([]),
-                        "g_distribution": self._dist_summary([]),
-                        "g_zero_like_ratio": 0.0,
-                        "no_inward_neighbor_ratio": 0.0,
-                    }
                 continue
 
             cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
@@ -873,46 +788,43 @@ class EngineTickSkeleton:
             )
             persistent_diag4_units.extend(persistent_ids)
 
-            if diag4_legacy_enabled:
-                ranked_units = sorted(
-                    alive_unit_ids,
-                    key=lambda uid: radius_by_unit.get(uid, 0.0),
-                    reverse=True,
+            ranked_units = sorted(
+                alive_unit_ids,
+                key=lambda uid: radius_by_unit.get(uid, 0.0),
+                reverse=True,
+            )
+            candidates = []
+            for unit_id in ranked_units[:top_k]:
+                ux, uy = final_positions[unit_id]
+                neighbor_sep = 0
+                neighbor_contact = 0
+                for ally_id in alive_unit_ids:
+                    if ally_id == unit_id:
+                        continue
+                    vx, vy = final_positions[ally_id]
+                    dx = vx - ux
+                    dy = vy - uy
+                    if (dx * dx) + (dy * dy) <= r_sep_sq:
+                        neighbor_sep += 1
+                for enemy_id, (ex, ey) in final_positions.items():
+                    enemy_unit = updated_units.get(enemy_id)
+                    if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
+                        continue
+                    dx = ex - ux
+                    dy = ey - uy
+                    if (dx * dx) + (dy * dy) <= attack_range_sq:
+                        neighbor_contact += 1
+                candidates.append(
+                    {
+                        "unit_id": unit_id,
+                        "state": current_states.get(unit_id, "SHELL"),
+                        "radius": radius_by_unit.get(unit_id, 0.0),
+                        "neighbor_count_sep": neighbor_sep,
+                        "neighbor_count_contact": neighbor_contact,
+                        "rolling_in_contact_ratio": 0.0,
+                    }
                 )
-                candidates = []
-                for unit_id in ranked_units[:top_k]:
-                    ux, uy = final_positions[unit_id]
-                    neighbor_sep = 0
-                    neighbor_contact = 0
-                    for ally_id in alive_unit_ids:
-                        if ally_id == unit_id:
-                            continue
-                        vx, vy = final_positions[ally_id]
-                        dx = vx - ux
-                        dy = vy - uy
-                        if (dx * dx) + (dy * dy) <= r_sep_sq:
-                            neighbor_sep += 1
-                    for enemy_id, (ex, ey) in final_positions.items():
-                        enemy_unit = updated_units.get(enemy_id)
-                        if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
-                            continue
-                        dx = ex - ux
-                        dy = ey - uy
-                        if (dx * dx) + (dy * dy) <= attack_range_sq:
-                            neighbor_contact += 1
-                    candidates.append(
-                        {
-                            "unit_id": unit_id,
-                            "state": current_states.get(unit_id, "SHELL"),
-                            "radius": radius_by_unit.get(unit_id, 0.0),
-                            "neighbor_count_sep": neighbor_sep,
-                            "neighbor_count_contact": neighbor_contact,
-                            "rolling_in_contact_ratio": 0.0,
-                        }
-                    )
-                module_a_topk[fleet_id] = candidates
-            else:
-                module_a_topk[fleet_id] = []
+            module_a_topk[fleet_id] = candidates
 
             module_b_fleet[fleet_id] = {
                 "core_count": core_count,
@@ -930,426 +842,117 @@ class EngineTickSkeleton:
                 "persistent_outlier_unit_ids": persistent_ids,
             }
 
-            if diag4_rpg_enabled:
-                overall_stats = rpg_return_stats.get("overall", {})
-                if not isinstance(overall_stats, dict):
-                    overall_stats = {"success": 0, "fail": 0}
-                    rpg_return_stats["overall"] = overall_stats
-                fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id)
-                if not isinstance(fleet_stats, dict):
-                    fleet_stats = {"success": 0, "fail": 0}
-                    rpg_return_stats["by_fleet"][fleet_id] = fleet_stats
-                class_stats_map = rpg_return_stats.get("by_class", {})
-
-                snapshot_cx = (
-                    sum(snapshot_positions.get(unit_id, final_positions[unit_id])[0] for unit_id in alive_unit_ids)
-                    / len(alive_unit_ids)
-                )
-                snapshot_cy = (
-                    sum(snapshot_positions.get(unit_id, final_positions[unit_id])[1] for unit_id in alive_unit_ids)
-                    / len(alive_unit_ids)
-                )
-
-                rpg_outlier_count = 0
-                rpg_projection_suppression_count = 0
-                rpg_outward_bias_count = 0
-                rpg_inward_effective_count = 0
-                rpg_tangential_count = 0
-                rpg_suppressed_count = 0
-                rpg_kappa_values = []
-                rpg_gap_values = []
-                rpg_gap_zero_like_fleet = 0
-                rpg_gap_no_inward_fleet = 0
-                rpg_gap_probe_units = []
-                rpg_gap_sample_cap = 0
-                rpg_outlier_threshold = r_rms + rpg_delta
-
-                for unit_id in alive_unit_ids:
-                    final_x, final_y = final_positions[unit_id]
-                    radius = radius_by_unit.get(unit_id, 0.0)
-                    is_rpg_outlier = radius > rpg_outlier_threshold
-                    entry = rpg_outlier_entry.get(unit_id)
-
-                    if not is_rpg_outlier:
-                        if isinstance(entry, dict):
-                            entry_tick = int(entry.get("tick", state.tick))
-                            entry_class = str(entry.get("class", "tangential_neutral"))
-                            entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
-                            if (state.tick - entry_tick) <= rpg_window:
-                                overall_stats["success"] = int(overall_stats.get("success", 0)) + 1
-                                fleet_stats["success"] = int(fleet_stats.get("success", 0)) + 1
-                                entry_class_stats["success"] = int(entry_class_stats.get("success", 0)) + 1
-                            else:
-                                overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
-                                fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
-                                entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
-                            class_stats_map[entry_class] = entry_class_stats
-                            del rpg_outlier_entry[unit_id]
-                        continue
-
-                    start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-                    fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
-
-                    dir_x = snapshot_cx - start_x
-                    dir_y = snapshot_cy - start_y
-                    dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
-                    if dir_norm <= rpg_eps:
-                        dir_x = cx - final_x
-                        dir_y = cy - final_y
-                        dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
-                    if dir_norm > rpg_eps:
-                        d_hat_x = dir_x / dir_norm
-                        d_hat_y = dir_y / dir_norm
-                    else:
-                        d_hat_x = 0.0
-                        d_hat_y = 0.0
-
-                    v_tilde_x = fsr_x - start_x
-                    v_tilde_y = fsr_y - start_y
-                    v_x = final_x - start_x
-                    v_y = final_y - start_y
-                    v_tilde_r = (v_tilde_x * d_hat_x) + (v_tilde_y * d_hat_y)
-                    v_r = (v_x * d_hat_x) + (v_y * d_hat_y)
-                    if v_tilde_r > tau and v_r <= tau:
-                        current_class = "suppressed_inward"
-                    elif v_tilde_r > tau:
-                        current_class = "inward_intent"
-                    elif v_tilde_r < -tau:
-                        current_class = "outward_bias"
-                    else:
-                        current_class = "tangential_neutral"
-
-                    if not isinstance(entry, dict):
-                        rpg_outlier_entry[unit_id] = {
-                            "tick": state.tick,
-                            "fleet_id": fleet_id,
-                            "class": current_class,
-                        }
-                    else:
-                        entry_tick = int(entry.get("tick", state.tick))
-                        entry_class = str(entry.get("class", "tangential_neutral"))
-                        entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
-                        if (state.tick - entry_tick) >= rpg_window:
-                            overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
-                            fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
-                            entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
-                            class_stats_map[entry_class] = entry_class_stats
-                            rpg_outlier_entry[unit_id] = {
-                                "tick": state.tick,
-                                "fleet_id": fleet_id,
-                                "class": current_class,
-                            }
-
-                    rpg_outlier_count += 1
-                    if current_class == "suppressed_inward":
-                        rpg_projection_suppression_count += 1
-                        rpg_suppressed_count += 1
-                    elif current_class == "outward_bias":
-                        rpg_outward_bias_count += 1
-                    elif current_class == "tangential_neutral":
-                        rpg_tangential_count += 1
-                    else:
-                        rpg_inward_effective_count += 1
-
-                    if abs(v_tilde_r) > rpg_eps and current_class != "tangential_neutral":
-                        kappa_i = v_r / (v_tilde_r + rpg_eps)
-                        rpg_kappa_values.append(kappa_i)
-
-                    rpg_gap_probe_units.append(
-                        (
-                            unit_id,
-                            final_x,
-                            final_y,
-                            d_hat_x,
-                            d_hat_y,
-                            radius,
-                        )
-                    )
-
-                if rpg_gap_probe_units:
-                    rpg_gap_sample_cap = top_k_raw // 3
-                    if rpg_gap_sample_cap < 1:
-                        rpg_gap_sample_cap = 1
-                    elif rpg_gap_sample_cap > 8:
-                        rpg_gap_sample_cap = 8
-                    probe_units = sorted(
-                        rpg_gap_probe_units,
-                        key=lambda row: row[5],
-                        reverse=True,
-                    )[:rpg_gap_sample_cap]
-                    for unit_id, final_x, final_y, d_hat_x, d_hat_y, _radius in probe_units:
-                        gap_candidates = []
-                        for ally_id in alive_unit_ids:
-                            if ally_id == unit_id:
-                                continue
-                            ax, ay = final_positions[ally_id]
-                            proj = ((ax - final_x) * d_hat_x) + ((ay - final_y) * d_hat_y)
-                            if proj > 0.0:
-                                gap_candidates.append(proj)
-                        if gap_candidates:
-                            g_i = min(gap_candidates)
-                            rpg_gap_values.append(g_i)
-                            if g_i <= rpg_eps:
-                                rpg_gap_zero_like_fleet += 1
-                        else:
-                            rpg_gap_no_inward_fleet += 1
-
-                if rpg_outlier_count > 0:
-                    g_zero_like_ratio = rpg_gap_zero_like_fleet / max(1, len(rpg_gap_values))
-                    no_inward_neighbor_ratio = rpg_gap_no_inward_fleet / rpg_outlier_count
+            for unit_id in persistent_ids:
+                ux, uy = final_positions[unit_id]
+                dx_c = cx - ux
+                dy_c = cy - uy
+                norm_c = math.sqrt((dx_c * dx_c) + (dy_c * dy_c))
+                if norm_c > 0.0:
+                    rx = dx_c / norm_c
+                    ry = dy_c / norm_c
                 else:
-                    g_zero_like_ratio = 0.0
-                    no_inward_neighbor_ratio = 0.0
+                    rx = 0.0
+                    ry = 0.0
+                radius_u = radius_by_unit.get(unit_id, 0.0)
 
-                module_rpg_fleet[fleet_id] = {
-                    "r_shell": r_rms,
-                    "delta": rpg_delta,
-                    "tau": tau,
-                    "outlier_threshold": rpg_outlier_threshold,
-                    "outlier_count": rpg_outlier_count,
-                    "projection_suppression_candidate_count": rpg_projection_suppression_count,
-                    "movement_outward_bias_count": rpg_outward_bias_count,
-                    "tangential_neutral_count": rpg_tangential_count,
-                    "inward_free_and_effective_count": rpg_inward_effective_count,
-                    "suppressed_inward_count": rpg_suppressed_count,
-                    "outward_ratio": (rpg_outward_bias_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                    "tangential_ratio": (rpg_tangential_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                    "suppressed_ratio": (rpg_suppressed_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                    "g_probe_cap": rpg_gap_sample_cap,
-                    "g_probe_count": len(rpg_gap_values) + rpg_gap_no_inward_fleet,
-                    "kappa_distribution": self._dist_summary(rpg_kappa_values),
-                    "g_distribution": self._dist_summary(rpg_gap_values),
-                    "g_zero_like_ratio": g_zero_like_ratio,
-                    "no_inward_neighbor_ratio": no_inward_neighbor_ratio,
-                }
-                rpg_kappa_all.extend(rpg_kappa_values)
-                rpg_gap_all.extend(rpg_gap_values)
-                rpg_gap_zero_like_count += rpg_gap_zero_like_fleet
-                rpg_gap_no_inward_neighbor_count += rpg_gap_no_inward_fleet
-
-            if diag4_legacy_enabled:
-                for unit_id in persistent_ids:
-                    ux, uy = final_positions[unit_id]
-                    dx_c = cx - ux
-                    dy_c = cy - uy
-                    norm_c = math.sqrt((dx_c * dx_c) + (dy_c * dy_c))
-                    if norm_c > 0.0:
-                        rx = dx_c / norm_c
-                        ry = dy_c / norm_c
-                    else:
-                        rx = 0.0
-                        ry = 0.0
-                    radius_u = radius_by_unit.get(unit_id, 0.0)
-
-                    sector_count = 0
-                    sector_distances = []
-                    inner_neighbors = 0
-                    outer_neighbors = 0
-                    for ally_id in alive_unit_ids:
-                        if ally_id == unit_id:
-                            continue
-                        ax, ay = final_positions[ally_id]
-                        vx = ax - ux
-                        vy = ay - uy
-                        dist_sq = (vx * vx) + (vy * vy)
-                        if dist_sq <= 0.0:
-                            continue
-                        dist = math.sqrt(dist_sq)
-                        dot = (vx * rx) + (vy * ry)
-                        if dot > 0.0:
-                            cosang = dot / dist
-                            if cosang >= sector_cos:
-                                sector_count += 1
-                                sector_distances.append(dist)
-
-                        radius_ally = radius_by_unit.get(ally_id, 0.0)
-                        if (radius_u - self.attack_range) <= radius_ally < radius_u:
-                            inner_neighbors += 1
-                        elif radius_u < radius_ally <= (radius_u + self.attack_range):
-                            outer_neighbors += 1
-
-                    sector_distances.sort()
-                    nearest_k = sector_distances[:neighbor_k]
-                    if nearest_k:
-                        nearest_k_mean = sum(nearest_k) / len(nearest_k)
-                    else:
-                        nearest_k_mean = 0.0
-
-                    denom = inner_neighbors + outer_neighbors
-                    if denom > 0:
-                        radial_density_gradient = (inner_neighbors - outer_neighbors) / denom
-                    else:
-                        radial_density_gradient = 0.0
-
-                    module_d_persistent.append(
-                        {
-                            "fleet_id": fleet_id,
-                            "unit_id": unit_id,
-                            "sector_neighbor_count": sector_count,
-                            "nearest_k_distance_return_dir": nearest_k_mean,
-                            "radial_density_gradient": radial_density_gradient,
-                            "inner_neighbor_count": inner_neighbors,
-                            "outer_neighbor_count": outer_neighbors,
-                            "return_attempt_count": return_attempt_count.get(unit_id, 0),
-                            "consecutive_outlier_duration": outlier_duration.get(unit_id, 0),
-                            "max_outlier_duration": max_outlier_duration.get(unit_id, 0),
-                            "rolling_in_contact_ratio": 0.0,
-                        }
-                    )
-
-        if diag4_rpg_enabled:
-            alive_final_ids = set(final_positions.keys())
-            for unit_id in list(rpg_outlier_entry.keys()):
-                if unit_id not in alive_final_ids:
-                    del rpg_outlier_entry[unit_id]
-
-            total_rpg_outliers = 0
-            total_rpg_projection_suppression = 0
-            total_rpg_outward_bias = 0
-            total_rpg_inward_effective = 0
-            total_rpg_tangential = 0
-            total_rpg_suppressed = 0
-            by_fleet_return = {}
-            for fleet_id, fleet_payload in module_rpg_fleet.items():
-                total_rpg_outliers += int(fleet_payload.get("outlier_count", 0))
-                total_rpg_projection_suppression += int(
-                    fleet_payload.get("projection_suppression_candidate_count", 0)
-                )
-                total_rpg_outward_bias += int(fleet_payload.get("movement_outward_bias_count", 0))
-                total_rpg_tangential += int(fleet_payload.get("tangential_neutral_count", 0))
-                total_rpg_inward_effective += int(
-                    fleet_payload.get("inward_free_and_effective_count", 0)
-                )
-                total_rpg_suppressed += int(fleet_payload.get("suppressed_inward_count", 0))
-                fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id, {})
-                fleet_success = int(fleet_stats.get("success", 0))
-                fleet_fail = int(fleet_stats.get("fail", 0))
-                fleet_eval = fleet_success + fleet_fail
-                fleet_payload["p_return_window"] = {
-                    "window": rpg_window,
-                    "success_events": fleet_success,
-                    "fail_events": fleet_fail,
-                    "evaluated_events": fleet_eval,
-                    "p_return": (fleet_success / fleet_eval) if fleet_eval > 0 else 0.0,
-                }
-                by_fleet_return[fleet_id] = fleet_payload["p_return_window"]
-
-            overall_stats = rpg_return_stats.get("overall", {})
-            overall_success = int(overall_stats.get("success", 0))
-            overall_fail = int(overall_stats.get("fail", 0))
-            overall_eval = overall_success + overall_fail
-            by_class_return = {}
-            class_stats_map = rpg_return_stats.get("by_class", {})
-            if isinstance(class_stats_map, dict):
-                for cls_name, cls_stats in class_stats_map.items():
-                    if not isinstance(cls_stats, dict):
+                sector_count = 0
+                sector_distances = []
+                inner_neighbors = 0
+                outer_neighbors = 0
+                for ally_id in alive_unit_ids:
+                    if ally_id == unit_id:
                         continue
-                    cls_success = int(cls_stats.get("success", 0))
-                    cls_fail = int(cls_stats.get("fail", 0))
-                    cls_eval = cls_success + cls_fail
-                    by_class_return[cls_name] = {
-                        "success_events": cls_success,
-                        "fail_events": cls_fail,
-                        "evaluated_events": cls_eval,
-                        "p_return": (cls_success / cls_eval) if cls_eval > 0 else 0.0,
-                    }
-            g_zero_like_ratio_global = (
-                rpg_gap_zero_like_count / len(rpg_gap_all)
-                if rpg_gap_all
-                else 0.0
-            )
-            no_inward_neighbor_ratio_global = (
-                rpg_gap_no_inward_neighbor_count / total_rpg_outliers
-                if total_rpg_outliers > 0
-                else 0.0
-            )
+                    ax, ay = final_positions[ally_id]
+                    vx = ax - ux
+                    vy = ay - uy
+                    dist_sq = (vx * vx) + (vy * vy)
+                    if dist_sq <= 0.0:
+                        continue
+                    dist = math.sqrt(dist_sq)
+                    dot = (vx * rx) + (vy * ry)
+                    if dot > 0.0:
+                        cosang = dot / dist
+                        if cosang >= sector_cos:
+                            sector_count += 1
+                            sector_distances.append(dist)
 
-            module_rpg_payload = {
-                "canonical": {
-                    "radial_direction": "d_hat=(C_f-x_i)/||C_f-x_i|| (inward)",
-                    "inward_definition": "v_tilde_r_i > 0",
-                    "r_shell_definition": "R_shell=R_rms",
-                },
-                "constants": {
-                    "epsilon": rpg_eps,
-                    "delta": rpg_delta,
-                    "tau": tau,
-                    "p_return_window": rpg_window,
-                },
-                "separation_counts": {
-                    "projection_suppression_candidate_count": total_rpg_projection_suppression,
-                    "movement_outward_bias_count": total_rpg_outward_bias,
-                    "tangential_neutral_count": total_rpg_tangential,
-                    "inward_free_and_effective_count": total_rpg_inward_effective,
-                    "suppressed_inward_count": total_rpg_suppressed,
-                    "rpg_outlier_count": total_rpg_outliers,
-                },
-                "category_ratios": {
-                    "outward_ratio": (total_rpg_outward_bias / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                    "tangential_ratio": (total_rpg_tangential / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                    "suppressed_ratio": (total_rpg_suppressed / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                },
-                "kappa_distribution": self._dist_summary(rpg_kappa_all),
-                "g_distribution": self._dist_summary(rpg_gap_all),
-                "g_zero_like_ratio": g_zero_like_ratio_global,
-                "no_inward_neighbor_ratio": no_inward_neighbor_ratio_global,
-                "p_return": {
-                    "window": rpg_window,
-                    "overall": {
-                        "success_events": overall_success,
-                        "fail_events": overall_fail,
-                        "evaluated_events": overall_eval,
-                        "p_return": (overall_success / overall_eval) if overall_eval > 0 else 0.0,
-                    },
-                    "by_fleet": by_fleet_return,
-                    "by_class": by_class_return,
-                },
-                "fleet_stats": module_rpg_fleet,
-            }
+                    radius_ally = radius_by_unit.get(ally_id, 0.0)
+                    if (radius_u - self.attack_range) <= radius_ally < radius_u:
+                        inner_neighbors += 1
+                    elif radius_u < radius_ally <= (radius_u + self.attack_range):
+                        outer_neighbors += 1
+
+                sector_distances.sort()
+                nearest_k = sector_distances[:neighbor_k]
+                if nearest_k:
+                    nearest_k_mean = sum(nearest_k) / len(nearest_k)
+                else:
+                    nearest_k_mean = 0.0
+
+                denom = inner_neighbors + outer_neighbors
+                if denom > 0:
+                    radial_density_gradient = (inner_neighbors - outer_neighbors) / denom
+                else:
+                    radial_density_gradient = 0.0
+
+                module_d_persistent.append(
+                    {
+                        "fleet_id": fleet_id,
+                        "unit_id": unit_id,
+                        "sector_neighbor_count": sector_count,
+                        "nearest_k_distance_return_dir": nearest_k_mean,
+                        "radial_density_gradient": radial_density_gradient,
+                        "inner_neighbor_count": inner_neighbors,
+                        "outer_neighbor_count": outer_neighbors,
+                        "return_attempt_count": return_attempt_count.get(unit_id, 0),
+                        "consecutive_outlier_duration": outlier_duration.get(unit_id, 0),
+                        "max_outlier_duration": max_outlier_duration.get(unit_id, 0),
+                        "rolling_in_contact_ratio": 0.0,
+                    }
+                )
 
         module_c_records = []
-        if diag4_legacy_enabled:
-            for unit_id in sorted(set(persistent_diag4_units)):
-                if unit_id in persistent_records:
-                    continue
-                emergence_tick = first_outlier_tick.get(unit_id, state.tick)
-                history = disp_history.get(unit_id, [])
-                window_start = emergence_tick - 3
-                window_end = emergence_tick + 3
-                window = [
-                    sample
-                    for sample in history
-                    if window_start <= sample[0] <= window_end
-                ]
-                cum_move = sum(sample[1] for sample in window)
-                cum_fsr = sum(sample[2] for sample in window)
-                cum_proj = sum(sample[3] for sample in window)
-                total = cum_move + cum_fsr + cum_proj
-                dominant = "move"
-                dominant_val = cum_move
-                if cum_fsr > dominant_val:
-                    dominant = "fsr"
-                    dominant_val = cum_fsr
-                if cum_proj > dominant_val:
-                    dominant = "projection"
-                persistent_records[unit_id] = {
-                    "unit_id": unit_id,
-                    "emergence_tick": emergence_tick,
-                    "window_start_tick": window_start,
-                    "window_end_tick": window_end,
-                    "window_samples": len(window),
-                    "cum_delta_move_norm": cum_move,
-                    "cum_delta_fsr_norm": cum_fsr,
-                    "cum_delta_projection_norm": cum_proj,
-                    "cum_delta_total_norm": total,
-                    "dominant_component": dominant,
-                    "delta_separation_component_available": False,
-                }
+        for unit_id in sorted(set(persistent_diag4_units)):
+            if unit_id in persistent_records:
+                continue
+            emergence_tick = first_outlier_tick.get(unit_id, state.tick)
+            history = disp_history.get(unit_id, [])
+            window_start = emergence_tick - 3
+            window_end = emergence_tick + 3
+            window = [
+                sample
+                for sample in history
+                if window_start <= sample[0] <= window_end
+            ]
+            cum_move = sum(sample[1] for sample in window)
+            cum_fsr = sum(sample[2] for sample in window)
+            cum_proj = sum(sample[3] for sample in window)
+            total = cum_move + cum_fsr + cum_proj
+            dominant = "move"
+            dominant_val = cum_move
+            if cum_fsr > dominant_val:
+                dominant = "fsr"
+                dominant_val = cum_fsr
+            if cum_proj > dominant_val:
+                dominant = "projection"
+            persistent_records[unit_id] = {
+                "unit_id": unit_id,
+                "emergence_tick": emergence_tick,
+                "window_start_tick": window_start,
+                "window_end_tick": window_end,
+                "window_samples": len(window),
+                "cum_delta_move_norm": cum_move,
+                "cum_delta_fsr_norm": cum_fsr,
+                "cum_delta_projection_norm": cum_proj,
+                "cum_delta_total_norm": total,
+                "dominant_component": dominant,
+                "delta_separation_component_available": False,
+            }
 
-            for unit_id in sorted(set(persistent_diag4_units)):
-                record = persistent_records.get(unit_id)
-                if isinstance(record, dict):
-                    module_c_records.append(record)
+        for unit_id in sorted(set(persistent_diag4_units)):
+            record = persistent_records.get(unit_id)
+            if isinstance(record, dict):
+                module_c_records.append(record)
 
         diag4_payload = {
             "module_a": {
@@ -1382,8 +985,6 @@ class EngineTickSkeleton:
                 "persistent_reentry": module_d_persistent,
             },
         }
-        if module_rpg_payload is not None:
-            diag4_payload["module_rpg"] = module_rpg_payload
         return diag4_payload
 
     def _build_movement_diag_pending(
@@ -1406,8 +1007,7 @@ class EngineTickSkeleton:
         post_move_positions: dict,
         post_fsr_positions: dict,
         final_positions: dict,
-        diag4_legacy_enabled: bool,
-        diag4_rpg_enabled: bool,
+        diag4_enabled: bool,
     ) -> dict:
         projection_displacement_sum = 0.0
         projection_displacement_max = 0.0
@@ -1424,7 +1024,8 @@ class EngineTickSkeleton:
         else:
             projection_displacement_mean = 0.0
 
-        eta_raw = float(self.debug_outlier_eta)
+        diag_surface = self._diag_surface
+        eta_raw = float(diag_surface["outlier_eta"])
         if eta_raw < 1.5:
             outlier_eta = 1.5
         elif eta_raw > 2.2:
@@ -1432,7 +1033,7 @@ class EngineTickSkeleton:
         else:
             outlier_eta = eta_raw
 
-        persistence_ticks_raw = int(self.debug_outlier_persistence_ticks)
+        persistence_ticks_raw = int(diag_surface["outlier_persistence_ticks"])
         if persistence_ticks_raw < 1:
             persistence_ticks = 1
         else:
@@ -1468,7 +1069,7 @@ class EngineTickSkeleton:
         self._debug_state["_debug_boundary_force_events_total"] = boundary_force_total
         pending["boundary_soft"]["boundary_force_events_count_total"] = boundary_force_total
 
-        if diag4_legacy_enabled or diag4_rpg_enabled:
+        if diag4_enabled:
             pending["diag4"] = self._build_movement_diag4_payload(
                 state=state,
                 updated_units=updated_units,
@@ -1482,41 +1083,31 @@ class EngineTickSkeleton:
                 min_unit_spacing=min_unit_spacing,
                 outlier_eta=outlier_eta,
                 persistence_ticks=persistence_ticks,
-                diag4_legacy_enabled=diag4_legacy_enabled,
-                diag4_rpg_enabled=diag4_rpg_enabled,
             )
         return pending
 
     def integrate_movement(self, state: BattleState) -> BattleState:
+        movement_surface = self._movement_surface
+        diag_surface = self._diag_surface
+        boundary_surface = self._boundary_surface
+        fsr_surface = self._fsr_surface
         r_sep = self.separation_radius
         r_sep_sq = r_sep * r_sep
         sep_branch_eps = 1e-14
         sep_threshold_sq = r_sep_sq - sep_branch_eps
-        alpha_sep = float(self.alpha_sep)
-        if alpha_sep < 0.0:
-            alpha_sep = 0.0
+        alpha_sep = max(0.0, float(movement_surface["alpha_sep"]))
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
-        diag_enabled = bool(self.debug_fsr_diag_enabled)
-        diag4_enabled = diag_enabled and bool(self.debug_diag4_enabled)
-        diag4_rpg_enabled = diag_enabled and bool(self.debug_diag4_rpg_enabled)
-        diag4_legacy_enabled = diag4_enabled and not diag4_rpg_enabled
-        arena_linear_size = float(state.arena_size)
-        if arena_linear_size < 0.0:
-            arena_linear_size = 0.0
-        boundary_band_width = r_sep
+        diag_enabled = bool(diag_surface["fsr_diag_enabled"])
+        diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
+        arena_linear_size = max(0.0, float(state.arena_size))
         boundary_band_limit = 0.05 * arena_linear_size
-        if boundary_band_limit < boundary_band_width:
-            boundary_band_width = boundary_band_limit
-        if boundary_band_width < 0.0:
-            boundary_band_width = 0.0
+        boundary_band_width = max(0.0, min(r_sep, boundary_band_limit))
         boundary_band_fraction = (boundary_band_width / arena_linear_size) if arena_linear_size > 0.0 else 0.0
         boundary_force_events_count_tick = 0
-        boundary_soft_enabled = bool(self.BOUNDARY_SOFT_ENABLED)
-        boundary_soft_strength = float(self.boundary_soft_strength)
-        if boundary_soft_strength < 0.0:
-            boundary_soft_strength = 0.0
+        boundary_soft_enabled = bool(boundary_surface["soft_enabled"])
+        boundary_soft_strength = max(0.0, float(boundary_surface["soft_strength"]))
 
         snapshot_positions = {
             unit_id: (unit.position.x, unit.position.y)
@@ -1524,25 +1115,14 @@ class EngineTickSkeleton:
             if unit.hit_points > 0.0
         }
 
-        movement_model = str(self.MOVEMENT_MODEL).strip().lower()
-        if movement_model not in {"v1", "v3a"}:
-            movement_model = "v3a"
-        movement_v3a_experiment = str(self.MOVEMENT_V3A_EXPERIMENT).strip().lower()
+        movement_v3a_experiment = str(movement_surface["v3a_experiment"]).strip().lower()
         allowed_v3a_experiments = {"base", "exp_precontact_centroid_probe"}
         if movement_v3a_experiment not in allowed_v3a_experiments:
             movement_v3a_experiment = "base"
-        centroid_probe_scale = float(self.CENTROID_PROBE_SCALE)
-        if centroid_probe_scale < 0.0:
-            centroid_probe_scale = 0.0
-        elif centroid_probe_scale > 1.0:
-            centroid_probe_scale = 1.0
-        cohesion_decision_source = str(self.COHESION_DECISION_SOURCE).lower()
-        debug_cohesion_v1 = self._debug_state.get("debug_last_cohesion_v1", {})
-        if not isinstance(debug_cohesion_v1, dict):
-            debug_cohesion_v1 = {}
-        odw_posture_bias_fleet_enabled = bool(self.ODW_POSTURE_BIAS_ENABLED)
-        odw_posture_bias_k_fleet = max(0.0, float(self.ODW_POSTURE_BIAS_K))
-        odw_posture_bias_clip_delta_fleet = max(0.0, float(self.ODW_POSTURE_BIAS_CLIP_DELTA))
+        centroid_probe_scale = min(1.0, max(0.0, float(movement_surface["centroid_probe_scale"])))
+        odw_posture_bias_fleet_enabled = bool(movement_surface["odw_posture_bias_enabled"])
+        odw_posture_bias_k_fleet = max(0.0, float(movement_surface["odw_posture_bias_k"]))
+        odw_posture_bias_clip_delta_fleet = max(0.0, float(movement_surface["odw_posture_bias_clip_delta"]))
 
         updated_units = dict(state.units)
         for fleet_id, fleet in state.fleets.items():
@@ -1586,47 +1166,8 @@ class EngineTickSkeleton:
             else:
                 fleet_rms_radius = 0.0
 
-            # Fleet major-axis geometry metrics for observer diagnostics.
-            major_hat_x = 1.0
-            major_hat_y = 0.0
-            ar_ratio = 1.0
-            ar_forward_ratio = 1.0
             if len(alive_units) >= 2:
-                n_alive_f = float(len(alive_units))
-                var_x = 0.0
-                var_y = 0.0
-                cov_xy = 0.0
-                for unit in alive_units:
-                    dxm = unit.position.x - centroid_x
-                    dym = unit.position.y - centroid_y
-                    var_x += dxm * dxm
-                    var_y += dym * dym
-                    cov_xy += dxm * dym
-                var_x /= n_alive_f
-                var_y /= n_alive_f
-                cov_xy /= n_alive_f
-                trace = var_x + var_y
-                delta_sq = ((var_x - var_y) * (var_x - var_y)) + (4.0 * cov_xy * cov_xy)
-                if delta_sq < 0.0:
-                    delta_sq = 0.0
-                delta = math.sqrt(delta_sq)
-                lam1 = max(0.0, 0.5 * (trace + delta))
-                lam2 = max(0.0, 0.5 * (trace - delta))
-                sigma1 = math.sqrt(lam1)
-                sigma2 = math.sqrt(lam2)
-                ar_ratio = sigma1 / (sigma2 + 1e-12)
-                if abs(cov_xy) > 1e-12 or abs(lam1 - var_y) > 1e-12:
-                    evx = lam1 - var_y
-                    evy = cov_xy
-                else:
-                    evx = 1.0
-                    evy = 0.0
-                ev_norm = math.sqrt((evx * evx) + (evy * evy))
-                if ev_norm > 1e-12:
-                    major_hat_x = evx / ev_norm
-                    major_hat_y = evy / ev_norm
-
-                # Forward-axis AR: anisotropy in enemy-facing frame.
+                # Enemy-facing lateral span reference for ODW width redistribution.
                 fdx = enemy_centroid_x - centroid_x
                 fdy = enemy_centroid_y - centroid_y
                 f_norm = math.sqrt((fdx * fdx) + (fdy * fdy))
@@ -1655,9 +1196,6 @@ class EngineTickSkeleton:
                             var_l += (dl * dl)
                         var_f /= n_ff
                         var_l /= n_ff
-                        sigma_f = math.sqrt(max(0.0, var_f))
-                        sigma_l = math.sqrt(max(0.0, var_l))
-                        ar_forward_ratio = sigma_f / (sigma_l + 1e-12)
                     lateral_span_ref = max((abs(value) for value in lateral_values), default=0.0)
                 else:
                     lateral_span_ref = 0.0
@@ -1673,11 +1211,7 @@ class EngineTickSkeleton:
             else:
                 engaged_fraction = 0.0
             contact_gate = engaged_fraction / 0.25
-            if contact_gate < 0.0:
-                contact_gate = 0.0
-            elif contact_gate > 1.0:
-                contact_gate = 1.0
-            precontact_gate = 1.0 - contact_gate
+            contact_gate = min(1.0, max(0.0, contact_gate))
 
             separation_accumulator = {unit_id: [0.0, 0.0] for unit_id in alive_unit_ids}
             for i in range(len(alive_unit_ids)):
@@ -1723,10 +1257,7 @@ class EngineTickSkeleton:
                     continue
                 if len(other_fleet.unit_ids) == 0:
                     continue
-                if cohesion_decision_source == "v1_debug":
-                    cohesion_value = float(debug_cohesion_v1.get(other_fleet_id, state.last_fleet_cohesion.get(other_fleet_id, 1.0)))
-                else:
-                    cohesion_value = float(state.last_fleet_cohesion.get(other_fleet_id, 1.0))
+                cohesion_value = float(state.last_fleet_cohesion.get(other_fleet_id, 1.0))
                 enemy_cohesion_values.append(cohesion_value)
             if enemy_cohesion_values:
                 enemy_cohesion = sum(enemy_cohesion_values) / len(enemy_cohesion_values)
@@ -1742,10 +1273,7 @@ class EngineTickSkeleton:
                     pursuit_intensity = 1.0
                 else:
                     pursuit_intensity = collapse_excess / collapse_span
-                if pursuit_intensity < 0.0:
-                    pursuit_intensity = 0.0
-                elif pursuit_intensity > 1.0:
-                    pursuit_intensity = 1.0
+                pursuit_intensity = min(1.0, max(0.0, pursuit_intensity))
             else:
                 pursuit_intensity = 0.0
             # DeepPursuitMode effects are movement-only:
@@ -1823,141 +1351,98 @@ class EngineTickSkeleton:
                     if diag_enabled and (phi_left > 0.0 or phi_right > 0.0 or phi_bottom > 0.0 or phi_top > 0.0):
                         boundary_force_events_count_tick += 1
 
-                if movement_model == "v3a":
-                    enemy_vec_x = enemy_centroid_x - unit.position.x
-                    enemy_vec_y = enemy_centroid_y - unit.position.y
-                    enemy_vec_norm = math.sqrt((enemy_vec_x * enemy_vec_x) + (enemy_vec_y * enemy_vec_y))
-                    if enemy_vec_norm > 1e-12:
-                        enemy_dir_x = enemy_vec_x / enemy_vec_norm
-                        enemy_dir_y = enemy_vec_y / enemy_vec_norm
-                    else:
-                        enemy_dir_x = target_direction[0]
-                        enemy_dir_y = target_direction[1]
-
-                    if fleet_rms_radius > 1e-12:
-                        stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
-                    else:
-                        stray_ratio_raw = 0.0
-                    if stray_ratio_raw <= stray_threshold_ratio:
-                        stray_factor = 0.0
-                    else:
-                        stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
-                    if stray_factor < 0.0:
-                        stray_factor = 0.0
-                    elif stray_factor > 1.0:
-                        stray_factor = 1.0
-
-                    anti_stretch = 0.0
-
-                    attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
-                    cohesion_scale = 1.0 + (0.40 * anti_stretch)
-                    cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
-                    cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
-                    if movement_v3a_experiment == "exp_precontact_centroid_probe":
-                        # A-line causal probe: only scale centroid restoration term.
-                        cohesion_x *= centroid_probe_scale
-                        cohesion_y *= centroid_probe_scale
-                    enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
-                    attract_x = attract_gain * (
-                        (enemy_pull_gain * enemy_dir_x) + ((1.0 - enemy_pull_gain) * target_direction[0])
-                    )
-                    attract_y = attract_gain * (
-                        (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
-                    )
-                    maneuver_x = (
-                        (forward_gain * target_direction[0])
-                        + attract_x
-                        + (alpha_sep * separation_dir[0])
-                        + (alpha_sep * boundary_x)
-                    )
-                    maneuver_y = (
-                        (forward_gain * target_direction[1])
-                        + attract_y
-                        + (alpha_sep * separation_dir[1])
-                        + (alpha_sep * boundary_y)
-                    )
-                    if has_target_axis:
-                        dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
-                        m_parallel_x = dot_mt * t_hat_x
-                        m_parallel_y = dot_mt * t_hat_y
-                        m_tangent_x = maneuver_x - m_parallel_x
-                        m_tangent_y = maneuver_y - m_parallel_y
-                        if odw_posture_bias_active:
-                            odw_raw = float(fleet.parameters.offense_defense_weight)
-                            odw_centered = (odw_raw - 5.0) / 4.0
-                            if odw_centered < -1.0:
-                                odw_centered = -1.0
-                            elif odw_centered > 1.0:
-                                odw_centered = 1.0
-                            if lateral_span_ref > 1e-12:
-                                lateral_offset = ((unit.position.x - centroid_x) * (-t_hat_y)) + (
-                                    (unit.position.y - centroid_y) * t_hat_x
-                                )
-                                lateral_norm = abs(lateral_offset) / lateral_span_ref
-                                if lateral_norm > 1.0:
-                                    lateral_norm = 1.0
-                            else:
-                                lateral_norm = 0.0
-                            # ODW redistributes forward pressure across the fleet width:
-                            # center-heavy for offensive posture, wing-heavy for defensive posture.
-                            width_profile = 1.0 - (2.0 * lateral_norm)
-                            odw_parallel_scale = 1.0 + (odw_posture_bias_k_fleet * odw_centered * width_profile)
-                            odw_parallel_scale_min = max(0.0, 1.0 - odw_posture_bias_clip_delta_fleet)
-                            odw_parallel_scale_max = 1.0 + odw_posture_bias_clip_delta_fleet
-                            if odw_parallel_scale < odw_parallel_scale_min:
-                                odw_parallel_scale = odw_parallel_scale_min
-                            elif odw_parallel_scale > odw_parallel_scale_max:
-                                odw_parallel_scale = odw_parallel_scale_max
-                        else:
-                            odw_parallel_scale = 1.0
-                        tangent_scale = 1.0 + mb
-                        tangent_scale -= (lateral_damping_base * stray_factor)
-                        parallel_scale = 1.0
-                        if tangent_scale < 0.05:
-                            tangent_scale = 0.05
-                        maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
-                        maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
-                    if deep_pursuit_mode:
-                        extension_gain_effective = extension_gain
-                        maneuver_x *= extension_gain_effective
-                        maneuver_y *= extension_gain_effective
-                    axial_pull_x = 0.0
-                    axial_pull_y = 0.0
-                    total_x = cohesion_x + maneuver_x + axial_pull_x
-                    total_y = cohesion_y + maneuver_y + axial_pull_y
+                enemy_vec_x = enemy_centroid_x - unit.position.x
+                enemy_vec_y = enemy_centroid_y - unit.position.y
+                enemy_vec_norm = math.sqrt((enemy_vec_x * enemy_vec_x) + (enemy_vec_y * enemy_vec_y))
+                if enemy_vec_norm > 1e-12:
+                    enemy_dir_x = enemy_vec_x / enemy_vec_norm
+                    enemy_dir_y = enemy_vec_y / enemy_vec_norm
                 else:
-                    # Keep MB=0 on the exact legacy path for bitwise regression.
-                    if mb_is_zero and not deep_pursuit_mode:
-                        total_x = (
-                            target_direction[0]
-                            + (kappa * cohesion_dir[0])
-                            + (alpha_sep * separation_dir[0])
-                            + (alpha_sep * boundary_x)
-                        )
-                        total_y = (
-                            target_direction[1]
-                            + (kappa * cohesion_dir[1])
-                            + (alpha_sep * separation_dir[1])
-                            + (alpha_sep * boundary_y)
-                        )
+                    enemy_dir_x = target_direction[0]
+                    enemy_dir_y = target_direction[1]
+
+                if fleet_rms_radius > 1e-12:
+                    stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
+                else:
+                    stray_ratio_raw = 0.0
+                if stray_ratio_raw <= stray_threshold_ratio:
+                    stray_factor = 0.0
+                else:
+                    stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
+                stray_factor = min(1.0, max(0.0, stray_factor))
+
+                anti_stretch = 0.0
+
+                attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
+                cohesion_scale = 1.0 + (0.40 * anti_stretch)
+                cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
+                cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
+                if movement_v3a_experiment == "exp_precontact_centroid_probe":
+                    # A-line causal probe: only scale centroid restoration term.
+                    cohesion_x *= centroid_probe_scale
+                    cohesion_y *= centroid_probe_scale
+                enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
+                attract_x = attract_gain * (
+                    (enemy_pull_gain * enemy_dir_x) + ((1.0 - enemy_pull_gain) * target_direction[0])
+                )
+                attract_y = attract_gain * (
+                    (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
+                )
+                maneuver_x = (
+                    (forward_gain * target_direction[0])
+                    + attract_x
+                    + (alpha_sep * separation_dir[0])
+                    + (alpha_sep * boundary_x)
+                )
+                maneuver_y = (
+                    (forward_gain * target_direction[1])
+                    + attract_y
+                    + (alpha_sep * separation_dir[1])
+                    + (alpha_sep * boundary_y)
+                )
+                if has_target_axis:
+                    dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
+                    m_parallel_x = dot_mt * t_hat_x
+                    m_parallel_y = dot_mt * t_hat_y
+                    m_tangent_x = maneuver_x - m_parallel_x
+                    m_tangent_y = maneuver_y - m_parallel_y
+                    if odw_posture_bias_active:
+                        odw_raw = float(fleet.parameters.offense_defense_weight)
+                        odw_centered = (odw_raw - 5.0) / 4.0
+                        odw_centered = min(1.0, max(-1.0, odw_centered))
+                        if lateral_span_ref > 1e-12:
+                            lateral_offset = ((unit.position.x - centroid_x) * (-t_hat_y)) + (
+                                (unit.position.y - centroid_y) * t_hat_x
+                            )
+                            lateral_norm = abs(lateral_offset) / lateral_span_ref
+                            lateral_norm = min(1.0, lateral_norm)
+                        else:
+                            lateral_norm = 0.0
+                        # ODW redistributes forward pressure across the fleet width:
+                        # center-heavy for offensive posture, wing-heavy for defensive posture.
+                        width_profile = 1.0 - (2.0 * lateral_norm)
+                        odw_parallel_scale = 1.0 + (odw_posture_bias_k_fleet * odw_centered * width_profile)
+                        odw_parallel_scale_min = max(0.0, 1.0 - odw_posture_bias_clip_delta_fleet)
+                        odw_parallel_scale_max = 1.0 + odw_posture_bias_clip_delta_fleet
+                        if odw_parallel_scale < odw_parallel_scale_min:
+                            odw_parallel_scale = odw_parallel_scale_min
+                        elif odw_parallel_scale > odw_parallel_scale_max:
+                            odw_parallel_scale = odw_parallel_scale_max
                     else:
-                        cohesion_x = (kappa * cohesion_gain) * cohesion_dir[0]
-                        cohesion_y = (kappa * cohesion_gain) * cohesion_dir[1]
-                        maneuver_x = (forward_gain * target_direction[0]) + (alpha_sep * separation_dir[0]) + (alpha_sep * boundary_x)
-                        maneuver_y = (forward_gain * target_direction[1]) + (alpha_sep * separation_dir[1]) + (alpha_sep * boundary_y)
-                        if has_target_axis:
-                            dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
-                            m_parallel_x = dot_mt * t_hat_x
-                            m_parallel_y = dot_mt * t_hat_y
-                            m_tangent_x = maneuver_x - m_parallel_x
-                            m_tangent_y = maneuver_y - m_parallel_y
-                            maneuver_x = ((1.0 - mb) * m_parallel_x) + ((1.0 + mb) * m_tangent_x)
-                            maneuver_y = ((1.0 - mb) * m_parallel_y) + ((1.0 + mb) * m_tangent_y)
-                        if deep_pursuit_mode:
-                            maneuver_x *= extension_gain
-                            maneuver_y *= extension_gain
-                        total_x = cohesion_x + maneuver_x
-                        total_y = cohesion_y + maneuver_y
+                        odw_parallel_scale = 1.0
+                    tangent_scale = 1.0 + mb
+                    tangent_scale -= (lateral_damping_base * stray_factor)
+                    parallel_scale = 1.0
+                    if tangent_scale < 0.05:
+                        tangent_scale = 0.05
+                    maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
+                    maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
+                if deep_pursuit_mode:
+                    extension_gain_effective = extension_gain
+                    maneuver_x *= extension_gain_effective
+                    maneuver_y *= extension_gain_effective
+                total_x = cohesion_x + maneuver_x
+                total_y = cohesion_y + maneuver_y
                 total_norm = math.sqrt((total_x * total_x) + (total_y * total_y))
                 if total_norm > 0.0:
                     total_direction = (total_x / total_norm, total_y / total_norm)
@@ -1986,7 +1471,7 @@ class EngineTickSkeleton:
                     orientation_vector=orientation,
                 )
 
-        if diag4_enabled or diag4_rpg_enabled:
+        if diag4_enabled:
             post_move_positions = {
                 unit_id: (unit.position.x, unit.position.y)
                 for unit_id, unit in updated_units.items()
@@ -1995,30 +1480,20 @@ class EngineTickSkeleton:
         else:
             post_move_positions = {}
 
-        fsr_enabled = bool(self.FSR_ENABLED)
-        fsr_strength_raw = float(self.fsr_strength)
-        if fsr_strength_raw < 0.0:
-            fsr_strength = 0.0
-        elif fsr_strength_raw > 0.3:
-            fsr_strength = 0.3
-        else:
-            fsr_strength = fsr_strength_raw
+        fsr_enabled = bool(fsr_surface["enabled"])
+        fsr_strength_raw = float(fsr_surface["strength"])
+        fsr_strength = min(0.3, max(0.0, fsr_strength_raw))
 
         # FSR block: one centroid + one lambda + one isotropic scale per fleet per tick.
         if fsr_enabled and fsr_strength > 0.0:
-            delta_raw = float(self.fsr_lambda_delta)
-            if delta_raw < 0.0:
-                delta_lambda = 0.0
-            elif delta_raw > 0.5:
-                delta_lambda = 0.5
-            else:
-                delta_lambda = delta_raw
+            delta_raw = float(fsr_surface["lambda_delta"])
+            delta_lambda = min(0.5, max(0.0, delta_raw))
             fsr_eps = 1e-12
 
-            fsr_reference = self._fsr_reference
+            fsr_reference = self._debug_state.get("fsr_reference")
             if not isinstance(fsr_reference, dict):
                 fsr_reference = {}
-                self._fsr_reference = fsr_reference
+                self._debug_state["fsr_reference"] = fsr_reference
 
             fsr_tick_stats = {}
             for fleet_id, fleet in state.fleets.items():
@@ -2098,7 +1573,7 @@ class EngineTickSkeleton:
                 }
             self._debug_state["debug_last_fsr_stats"] = fsr_tick_stats
 
-        if diag4_enabled or diag4_rpg_enabled:
+        if diag4_enabled:
             post_fsr_positions = {
                 unit_id: (unit.position.x, unit.position.y)
                 for unit_id, unit in updated_units.items()
@@ -2179,7 +1654,7 @@ class EngineTickSkeleton:
                 updated_units[unit_id] = replace(unit, position=Vec2(x=base_x + dx_proj, y=base_y + dy_proj))
 
         # Optional hard boundary: clamp units into map domain [0, arena_size].
-        if bool(self.BOUNDARY_HARD_ENABLED):
+        if bool(boundary_surface["hard_enabled"]):
             arena_min = 0.0
             arena_max = float(state.arena_size)
             if arena_max < arena_min:
@@ -2200,7 +1675,7 @@ class EngineTickSkeleton:
                 if px != unit.position.x or py != unit.position.y:
                     updated_units[unit_id] = replace(unit, position=Vec2(x=px, y=py))
 
-        if diag4_enabled or diag4_rpg_enabled:
+        if diag4_enabled:
             final_positions = {
                 unit_id: (unit.position.x, unit.position.y)
                 for unit_id, unit in updated_units.items()
@@ -2210,7 +1685,7 @@ class EngineTickSkeleton:
             final_positions = {}
 
         if diag_enabled:
-            self._debug_diag_pending = self._build_movement_diag_pending(
+            self._debug_state["diag_pending"] = self._build_movement_diag_pending(
                 state=state,
                 updated_units=updated_units,
                 tentative_positions=tentative_positions,
@@ -2228,42 +1703,34 @@ class EngineTickSkeleton:
                 post_move_positions=post_move_positions,
                 post_fsr_positions=post_fsr_positions,
                 final_positions=final_positions,
-                diag4_legacy_enabled=diag4_legacy_enabled,
-                diag4_rpg_enabled=diag4_rpg_enabled,
+                diag4_enabled=diag4_enabled,
             )
         else:
-            self._debug_diag_pending = None
+            self._debug_state["diag_pending"] = None
 
         return replace(state, units=updated_units)
 
     def resolve_combat(self, state: BattleState) -> BattleState:
+        combat_surface = self._combat_surface
+        diag_surface = self._diag_surface
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
         geom_gamma = 0.3
-        CH_ENABLED = bool(self.CH_ENABLED)
-        h_raw = float(self.contact_hysteresis_h)
-        if h_raw < 0.0:
-            h = 0.0
-        elif h_raw > 0.2:
-            h = 0.2
-        else:
-            h = h_raw
+        CH_ENABLED = bool(combat_surface["ch_enabled"])
+        h_raw = float(combat_surface["contact_hysteresis_h"])
+        h = min(0.2, max(0.0, h_raw))
         r_exit = self.attack_range
         r_enter = self.attack_range * (1.0 - h)
         r_exit_sq = r_exit * r_exit
         r_enter_sq = r_enter * r_enter
-        alpha_raw = float(self.fire_quality_alpha)
-        if alpha_raw < 0.0:
-            fire_quality_alpha = 0.0
-        elif alpha_raw > 0.2:
-            fire_quality_alpha = 0.2
-        else:
-            fire_quality_alpha = alpha_raw
-        diag_enabled = bool(self.debug_fsr_diag_enabled)
-        diag4_enabled = diag_enabled and bool(self.debug_diag4_enabled)
+        alpha_raw = float(combat_surface["fire_quality_alpha"])
+        fire_quality_alpha = min(0.2, max(0.0, alpha_raw))
+        diag_enabled = bool(diag_surface["fsr_diag_enabled"])
+        diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
 
         snapshot_positions = {unit_id: (unit.position.x, unit.position.y) for unit_id, unit in state.units.items()}
         snapshot_hp = {unit_id: unit.hit_points for unit_id, unit in state.units.items()}
+        snapshot_max_hp = {unit_id: unit.max_hit_points for unit_id, unit in state.units.items()}
         snapshot_alive = {unit_id: (unit.hit_points > 0.0) for unit_id, unit in state.units.items()}
         snapshot_engaged = {
             unit_id: (unit.engaged, unit.engaged_target_id)
@@ -2276,6 +1743,14 @@ class EngineTickSkeleton:
                 target_local_rank[unit_id] = self._fleet_local_numeric_index(unit_id, rank)
 
         alive_units = {unit_id: unit for unit_id, unit in state.units.items() if snapshot_alive[unit_id]}
+        alive_by_fleet = {}
+        for unit in alive_units.values():
+            alive_by_fleet[unit.fleet_id] = alive_by_fleet.get(unit.fleet_id, 0) + 1
+        all_alive_unit_ids = tuple(alive_units.keys())
+        enemy_alive_ids_by_fleet = {
+            fleet_id: tuple(unit_id for unit_id in all_alive_unit_ids if alive_units[unit_id].fleet_id != fleet_id)
+            for fleet_id in alive_by_fleet
+        }
         incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
         total_hp_before = sum(snapshot_hp[uid] for uid in alive_units)
         in_contact_count = 0
@@ -2291,75 +1766,61 @@ class EngineTickSkeleton:
         orientation_override = {}
         for attacker_id, attacker in alive_units.items():
             attacker_pos = snapshot_positions[attacker_id]
-            enemy_ids = [
-                enemy_id
-                for enemy_id, enemy in state.units.items()
-                if snapshot_alive[enemy_id] and enemy.fleet_id != attacker.fleet_id
-            ]
+            enemy_ids = enemy_alive_ids_by_fleet.get(attacker.fleet_id, ())
             if not enemy_ids:
                 assigned_target[attacker_id] = None
                 continue
 
-            in_range = []
+            best_enemy_id = None
+            best_score = 0.0
+            best_dist_sq = 0.0
+            best_rank = 0
             for enemy_id in enemy_ids:
                 enemy_pos = snapshot_positions[enemy_id]
                 dx = enemy_pos[0] - attacker_pos[0]
                 dy = enemy_pos[1] - attacker_pos[1]
                 distance_sq = (dx * dx) + (dy * dy)
-                if distance_sq <= (attack_range_sq - combat_cmp_eps):
-                    in_range.append((enemy_id, snapshot_hp[enemy_id], distance_sq, target_local_rank.get(enemy_id, 0)))
+                if distance_sq > (attack_range_sq - combat_cmp_eps):
+                    continue
+                enemy_max_hp = snapshot_max_hp[enemy_id]
+                if enemy_max_hp > 0.0:
+                    normalized_hp = snapshot_hp[enemy_id] / enemy_max_hp
+                else:
+                    normalized_hp = 0.0
+                normalized_distance = distance_sq / attack_range_sq if attack_range_sq > 0.0 else 0.0
+                score = (w_hp * normalized_hp) + (w_dist * normalized_distance)
+                rank = target_local_rank.get(enemy_id, 0)
 
-            if in_range:
-                best_enemy_id = None
-                best_score = 0.0
-                best_dist_sq = 0.0
-                best_rank = 0
-                for enemy_id, hp, dist_sq, rank in in_range:
-                    enemy_max_hp = state.units[enemy_id].max_hit_points
-                    if enemy_max_hp > 0.0:
-                        normalized_hp = hp / enemy_max_hp
-                    else:
-                        normalized_hp = 0.0
-                    normalized_distance = dist_sq / attack_range_sq if attack_range_sq > 0.0 else 0.0
-                    score = (w_hp * normalized_hp) + (w_dist * normalized_distance)
-
-                    if best_enemy_id is None:
+                if best_enemy_id is None:
+                    best_enemy_id = enemy_id
+                    best_score = score
+                    best_dist_sq = distance_sq
+                    best_rank = rank
+                    continue
+                if score < (best_score - combat_cmp_eps):
+                    best_enemy_id = enemy_id
+                    best_score = score
+                    best_dist_sq = distance_sq
+                    best_rank = rank
+                    continue
+                if abs(score - best_score) <= combat_cmp_eps:
+                    if distance_sq < (best_dist_sq - combat_cmp_eps):
                         best_enemy_id = enemy_id
                         best_score = score
-                        best_dist_sq = dist_sq
+                        best_dist_sq = distance_sq
                         best_rank = rank
                         continue
-                    if score < (best_score - combat_cmp_eps):
+                    if abs(distance_sq - best_dist_sq) <= combat_cmp_eps and rank < best_rank:
                         best_enemy_id = enemy_id
                         best_score = score
-                        best_dist_sq = dist_sq
+                        best_dist_sq = distance_sq
                         best_rank = rank
-                        continue
-                    if abs(score - best_score) <= combat_cmp_eps:
-                        if dist_sq < (best_dist_sq - combat_cmp_eps):
-                            best_enemy_id = enemy_id
-                            best_score = score
-                            best_dist_sq = dist_sq
-                            best_rank = rank
-                            continue
-                        if abs(dist_sq - best_dist_sq) <= combat_cmp_eps and rank < best_rank:
-                            best_enemy_id = enemy_id
-                            best_score = score
-                            best_dist_sq = dist_sq
-                            best_rank = rank
-                assigned_target[attacker_id] = best_enemy_id
-            else:
-                assigned_target[attacker_id] = None
+            assigned_target[attacker_id] = best_enemy_id
 
-        attackers_to_target = {unit_id: 0 for unit_id in alive_units}
         attackers_by_fleet = {}
-        alive_by_fleet = {}
-        for unit in alive_units.values():
-            alive_by_fleet[unit.fleet_id] = alive_by_fleet.get(unit.fleet_id, 0) + 1
 
         for attacker_id, target_id in assigned_target.items():
             if target_id is not None:
-                attackers_to_target[target_id] += 1
                 attacker_fleet = alive_units[attacker_id].fleet_id
                 attackers_by_fleet[attacker_fleet] = attackers_by_fleet.get(attacker_fleet, 0) + 1
 
@@ -2399,47 +1860,31 @@ class EngineTickSkeleton:
                 continue
 
             in_contact_count += 1
+            target = alive_units[target_id]
             if diag_enabled:
                 in_contact_units_by_fleet.setdefault(attacker.fleet_id, set()).add(attacker_id)
-                in_contact_units_by_fleet.setdefault(alive_units[target_id].fleet_id, set()).add(target_id)
-            attacker = replace(
-                attacker,
-                engaged=engaged_updates[attacker_id][0],
-                engaged_target_id=engaged_updates[attacker_id][1],
-            )
-            target = alive_units[target_id]
+                in_contact_units_by_fleet.setdefault(target.fleet_id, set()).add(target_id)
             p_attacker = participation_by_fleet.get(attacker.fleet_id, 0.0)
             p_target = participation_by_fleet.get(target.fleet_id, 0.0)
             coupling = 1.0 + (geom_gamma * (p_attacker - p_target))
 
             q = 1.0
-            if fire_quality_alpha > 0.0:
-                attacker_pos = snapshot_positions[attacker_id]
-                target_pos = snapshot_positions[target_id]
-                vx = target_pos[0] - attacker_pos[0]
-                vy = target_pos[1] - attacker_pos[1]
-                v_norm_sq = (vx * vx) + (vy * vy)
-                if v_norm_sq > 0.0:
-                    v_norm = math.sqrt(v_norm_sq)
-                    ux = vx / v_norm
-                    uy = vy / v_norm
+            if fire_quality_alpha > 0.0 and d_sq > 0.0:
+                v_norm = math.sqrt(d_sq)
+                ux = dx_contact / v_norm
+                uy = dy_contact / v_norm
 
-                    orient = attacker.orientation_vector
-                    ox = orient.x
-                    oy = orient.y
-                    o_norm_sq = (ox * ox) + (oy * oy)
-                    if o_norm_sq > 0.0:
-                        o_norm = math.sqrt(o_norm_sq)
-                        nox = ox / o_norm
-                        noy = oy / o_norm
-                        cos_theta = (nox * ux) + (noy * uy)
-                        if cos_theta > 1.0:
-                            cos_theta = 1.0
-                        elif cos_theta < -1.0:
-                            cos_theta = -1.0
-                        q = 1.0 + (fire_quality_alpha * cos_theta)
-                if q < 0.0:
-                    q = 0.0
+                orient = attacker.orientation_vector
+                ox = orient.x
+                oy = orient.y
+                o_norm_sq = (ox * ox) + (oy * oy)
+                if o_norm_sq > 0.0:
+                    o_norm = math.sqrt(o_norm_sq)
+                    nox = ox / o_norm
+                    noy = oy / o_norm
+                    cos_theta = max(-1.0, min(1.0, (nox * ux) + (noy * uy)))
+                    q = 1.0 + (fire_quality_alpha * cos_theta)
+                q = max(0.0, q)
 
             event_damage = self.damage_per_tick * coupling * q
             incoming_damage[target_id] += event_damage
@@ -2455,16 +1900,12 @@ class EngineTickSkeleton:
                 }
 
             velocity_norm_sq = (attacker.velocity.x * attacker.velocity.x) + (attacker.velocity.y * attacker.velocity.y)
-            if velocity_norm_sq <= 1e-12:
-                attacker_pos = snapshot_positions[attacker_id]
-                target_pos = snapshot_positions[target_id]
-                orient_x = target_pos[0] - attacker_pos[0]
-                orient_y = target_pos[1] - attacker_pos[1]
-                orient_norm = math.sqrt((orient_x * orient_x) + (orient_y * orient_y))
+            if velocity_norm_sq <= 1e-12 and d_sq > 0.0:
+                orient_norm = math.sqrt(d_sq)
                 if orient_norm > 0.0:
                     orientation_override[attacker_id] = Vec2(
-                        x=orient_x / orient_norm,
-                        y=orient_y / orient_norm,
+                        x=dx_contact / orient_norm,
+                        y=dy_contact / orient_norm,
                     )
 
         updated_units = {}
@@ -2496,19 +1937,6 @@ class EngineTickSkeleton:
             "sample": sample_contact_debug,
             "tick": state.tick,
         }
-        if (
-            self.debug_contact_assert
-            and state.tick <= self.debug_contact_sample_ticks
-            and in_contact_count > 0
-            and not (total_hp_after < total_hp_before)
-        ):
-            raise RuntimeError(
-                f"Combat assert failed at tick={state.tick}: "
-                f"in_contact_count={in_contact_count}, "
-                f"damage_events_count={damage_events_count}, "
-                f"total_hp_before={total_hp_before}, total_hp_after={total_hp_after}, "
-                f"sample={sample_contact_debug}"
-            )
         if diag_enabled:
             fleet_centroids = {}
             for fleet_id, fleet in state.fleets.items():
@@ -2555,8 +1983,7 @@ class EngineTickSkeleton:
                 vmax = max(values)
                 mean_v = sum(values) / len(values)
                 var_v = sum((v - mean_v) * (v - mean_v) for v in values) / len(values)
-                if var_v < 0.0:
-                    var_v = 0.0
+                var_v = max(0.0, var_v)
                 return vmax - vmin, math.sqrt(var_v)
 
             frontline_per_fleet = {}
@@ -2578,19 +2005,14 @@ class EngineTickSkeleton:
                 }
 
             combined_width, combined_width_std = _span_std(combined_offsets)
-            pending_diag = self._debug_diag_pending
+            pending_diag = self._debug_state.get("diag_pending")
             if pending_diag is not None and pending_diag.get("tick") == state.tick:
                 tick_diag = pending_diag
             else:
                 tick_diag = {"tick": state.tick}
             if diag4_enabled:
-                contact_window_raw = int(self.debug_diag4_contact_window)
-                if contact_window_raw < 20:
-                    contact_window = 20
-                elif contact_window_raw > 200:
-                    contact_window = 200
-                else:
-                    contact_window = contact_window_raw
+                contact_window_raw = int(diag_surface["diag4_contact_window"])
+                contact_window = min(200, max(20, contact_window_raw))
                 contact_history = self._ensure_debug_dict("_debug_diag4_contact_history")
 
                 in_contact_units = set()
@@ -2669,7 +2091,11 @@ class EngineTickSkeleton:
                 "per_fleet": frontline_per_fleet,
             }
             self.debug_diag_last_tick = tick_diag
-            self.debug_diag_timeseries.append(tick_diag)
+            diag_timeseries = self._debug_state.get("diag_timeseries")
+            if not isinstance(diag_timeseries, list):
+                diag_timeseries = []
+                self._debug_state["diag_timeseries"] = diag_timeseries
+            diag_timeseries.append(tick_diag)
 
         updated_fleets = {}
         for fleet_id, fleet in state.fleets.items():

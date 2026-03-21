@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 from datetime import datetime
 from functools import partial
@@ -45,6 +46,16 @@ def _get_env_bool(name: str) -> bool | None:
     if value in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def _get_env_int(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
 
 
 def _resolve_timestamped_video_output_path(
@@ -204,6 +215,134 @@ def _render_animation(
     )
 
 
+def _export_map_batch(
+    *,
+    base_dir: Path,
+    viz_settings: dict,
+    prepared: dict,
+    runtime_cfg: dict,
+    viz_cfg: dict,
+    display_language: str,
+    fleet_a_label: str,
+    fleet_b_label: str,
+    fleet_a_full_name: str,
+    fleet_b_full_name: str,
+    fleet_a_avatar: str,
+    fleet_b_avatar: str,
+    fleet_a_color: str,
+    fleet_b_color: str,
+    batch_count: int,
+    batch_seed: int,
+) -> None:
+    import matplotlib.pyplot as plt
+    from test_run.test_run_v1_0_viz import render_test_run
+
+    if batch_count <= 0:
+        raise ValueError(f"LOGH_VIZ_EXPORT_MAP_COUNT must be > 0, got {batch_count}")
+
+    initial_state = prepared["initial_state"]
+    prepared_summary = prepared["summary"]
+    contact_cfg = runtime_cfg["contact"]
+    boundary_cfg = runtime_cfg["boundary"]
+    output_root = (base_dir.parent / "analysis" / "exports" / "viz_maps" / datetime.now().strftime("%Y%m%d")).resolve()
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    position_frame = {
+        "A": [
+            (
+                unit_id,
+                initial_state.units[unit_id].position.x,
+                initial_state.units[unit_id].position.y,
+                initial_state.units[unit_id].orientation_vector.x,
+                initial_state.units[unit_id].orientation_vector.y,
+                initial_state.units[unit_id].velocity.x,
+                initial_state.units[unit_id].velocity.y,
+            )
+            for unit_id in initial_state.fleets["A"].unit_ids
+            if unit_id in initial_state.units
+        ],
+        "B": [
+            (
+                unit_id,
+                initial_state.units[unit_id].position.x,
+                initial_state.units[unit_id].position.y,
+                initial_state.units[unit_id].orientation_vector.x,
+                initial_state.units[unit_id].orientation_vector.y,
+                initial_state.units[unit_id].velocity.x,
+                initial_state.units[unit_id].velocity.y,
+            )
+            for unit_id in initial_state.fleets["B"].unit_ids
+            if unit_id in initial_state.units
+        ],
+    }
+    position_frames = [position_frame]
+    initial_fleet_sizes = {
+        "A": float(len(initial_state.fleets["A"].unit_ids)),
+        "B": float(len(initial_state.fleets["B"].unit_ids)),
+    }
+    alive_trajectory = {
+        "A": [len(initial_state.fleets["A"].unit_ids)],
+        "B": [len(initial_state.fleets["B"].unit_ids)],
+    }
+    fleet_size_trajectory = {
+        "A": [float(len(initial_state.fleets["A"].unit_ids))],
+        "B": [float(len(initial_state.fleets["B"].unit_ids))],
+    }
+    trajectory = {"A": [1.0], "B": [1.0]}
+    seed_rng = random.Random(batch_seed)
+    map_seeds = [seed_rng.randrange(0, 2**32) for _ in range(batch_count)]
+
+    original_show = plt.show
+    plt.ioff()
+    plt.show = lambda *args, **kwargs: None
+    try:
+        print(f"[viz-map-batch] exporting count={batch_count} base_seed={batch_seed} output_dir={output_root}")
+        for index, map_seed in enumerate(map_seeds, start=1):
+            plt.close("all")
+            render_test_run(
+                arena_size=float(initial_state.arena_size),
+                trajectory=trajectory,
+                alive_trajectory=alive_trajectory,
+                fleet_size_trajectory=fleet_size_trajectory,
+                initial_fleet_sizes=initial_fleet_sizes,
+                position_frames=position_frames,
+                final_state=initial_state,
+                fleet_a_label=fleet_a_label,
+                fleet_b_label=fleet_b_label,
+                fleet_a_full_name=fleet_a_full_name,
+                fleet_b_full_name=fleet_b_full_name,
+                fleet_a_avatar=fleet_a_avatar,
+                fleet_b_avatar=fleet_b_avatar,
+                fleet_a_color=fleet_a_color,
+                fleet_b_color=fleet_b_color,
+                auto_zoom_2d=viz_cfg["auto_zoom_2d"],
+                frame_interval_ms=viz_cfg["frame_interval_ms"],
+                background_seed=int(map_seed),
+                viz_settings=viz_settings,
+                tick_plots_follow_battlefield_tick=viz_cfg["tick_plots_follow_battlefield_tick"],
+                display_language=display_language,
+                unit_direction_mode=viz_cfg["unit_direction_mode"],
+                show_attack_target_lines=viz_cfg["show_attack_target_lines"],
+                observer_telemetry={},
+                bridge_telemetry={},
+                observer_enabled=prepared_summary["observer_enabled"],
+                plot_profile=viz_cfg["plot_profile"],
+                plot_smoothing_ticks=viz_cfg["plot_smoothing_ticks"],
+                combat_telemetry={"in_contact_count": [0]},
+                debug_context={},
+                export_video_cfg={"enabled": False},
+                boundary_enabled=bool(boundary_cfg["enabled"]),
+                boundary_hard_enabled=bool(boundary_cfg["hard_enabled"]),
+                damage_per_tick=float(contact_cfg["damage_per_tick"]),
+            )
+            output_path = output_root / f"viz_map_runtime_{index:02d}_seed_{map_seed}.png"
+            plt.gcf().savefig(output_path, dpi=120, bbox_inches="tight")
+            print(f"[viz-map-batch] exported={output_path}")
+        plt.close("all")
+    finally:
+        plt.show = original_show
+
+
 def run_active_surface(
     *,
     base_dir: Path | None = None,
@@ -309,7 +448,7 @@ def main() -> None:
         "unit_direction_mode": _require_choice(
             "visualization.vector_display_mode",
             get_viz("vector_display_mode", get_viz("unit_direction_mode", "effective")),
-            {"effective", "free", "attack", "composite"},
+            {"effective", "free", "attack", "composite", "radial_debug"},
         ),
         "show_attack_target_lines": bool(get_viz("show_attack_target_lines", False)),
         "tick_plots_follow_battlefield_tick": bool(get_viz("tick_plots_follow_battlefield_tick", False)),
@@ -346,6 +485,33 @@ def main() -> None:
         runtime_decision_source_effective,
     )
     export_battle_report = int(test_mode) >= 1
+    map_batch_count = _get_env_int("LOGH_VIZ_EXPORT_MAP_COUNT")
+    map_batch_seed_override = _get_env_int("LOGH_VIZ_EXPORT_MAP_BASE_SEED")
+
+    if map_batch_count is not None:
+        _export_map_batch(
+            base_dir=base_dir,
+            viz_settings=viz_settings,
+            prepared=prepared,
+            runtime_cfg=runtime_cfg,
+            viz_cfg=viz_cfg,
+            display_language=display_language,
+            fleet_a_label=fleet_a_label,
+            fleet_b_label=fleet_b_label,
+            fleet_a_full_name=fleet_a_full_name,
+            fleet_b_full_name=fleet_b_full_name,
+            fleet_a_avatar=fleet_a_avatar,
+            fleet_b_avatar=fleet_b_avatar,
+            fleet_a_color=fleet_a_color,
+            fleet_b_color=fleet_b_color,
+            batch_count=map_batch_count,
+            batch_seed=(
+                map_batch_seed_override
+                if map_batch_seed_override is not None
+                else effective_background_map_seed
+            ),
+        )
+        return
 
     capture_target_directions = (
         viz_cfg["show_attack_target_lines"]

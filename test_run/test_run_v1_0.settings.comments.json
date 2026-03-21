@@ -34,7 +34,7 @@
       "random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to run_control.random_seed. If -1, use true randomness."
     },
     "selectors": {
-      "movement_model": "Runtime movement selector: baseline | v3a | v1. baseline follows current movement baseline; legacy v1 is remapped out of standard test runs.",
+      "movement_model": "Runtime movement selector: baseline | v3a. baseline follows the current maintained movement baseline.",
       "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
     },
     "movement": {

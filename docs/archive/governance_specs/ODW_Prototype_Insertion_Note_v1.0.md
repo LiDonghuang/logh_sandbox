@@ -27,7 +27,7 @@ The goal is to choose the cleanest insertion point that preserves:
 
 Reference:
 
-- `docs/architecture/ODW_Runtime_Mapping_Review_v1.0.md`
+- `docs/archive/governance_specs/ODW_Runtime_Mapping_Review_v1.0.md`
 
 That review established:
 

@@ -351,13 +351,15 @@ def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str
 
 def resolve_movement_model(raw_value) -> tuple[str, str]:
     requested = str(raw_value).strip().lower()
-    if requested not in {"baseline", "v1", "v3a"}:
-        requested = "baseline"
+    if requested == "v1":
+        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline or v3a")
+    if requested not in {"baseline", "v3a"}:
+        allowed_text = ", ".join(sorted({"baseline", "v3a"}))
+        raise ValueError(
+            f"runtime.selectors.movement_model must be one of {{{allowed_text}}}, got {raw_value!r}"
+        )
     baseline_model = "v3a"
     if requested == "baseline":
-        effective = baseline_model
-    elif requested == "v1":
-        print("[mode] movement_model=v1 requested in standard test run; remapping to v3a after baseline activation")
         effective = baseline_model
     else:
         effective = requested
@@ -365,11 +367,7 @@ def resolve_movement_model(raw_value) -> tuple[str, str]:
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
-    if v < lo:
-        return lo
-    if v > hi:
-        return hi
-    return v
+    return max(lo, min(hi, v))
 
 
 def _direction_from_angle_deg(angle_deg: float) -> tuple[float, float]:

@@ -8,11 +8,7 @@ BRIDGE_EPSILON = 1e-9
 
 
 def _clamp01(value: float) -> float:
-    if value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
+    return min(1.0, max(0.0, value))
 
 
 def compute_hostile_intermix_metrics(

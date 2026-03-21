@@ -36,7 +36,7 @@ VS-side files remain authoritative with structured paths.
 | `30_Analysis_Scripts_Index_v1.0.md` | `analysis/engineering_reports/_standards/Analysis_Scripts_Index_v1.0.md` | 30 | active |
 | `30_BRF_Template_v1.0.md` | `analysis/engineering_reports/_standards/Battle_Report_Framework_v1.0.template.md` | 30 | active |
 | `30_Behavior_Event_Layer_Spec_v1.0.md` | `analysis/engineering_reports/_standards/Behavior_Event_Layer_Spec_v1.0.template.md` | 30 | active |
-| `90_Engagement_Drag_B1_Advisory_v1.0.md` | `docs/Engagement_Drag_B1_Advisory_v1.0.md` | 90 | historical |
+| `90_Engagement_Drag_B1_Advisory_v1.0.md` | `docs/governance/Engagement_Drag_B1_Advisory_v1.0.md` | 90 | historical |
 | `90_Return_Probability_Geometry_Spec_v1.0.md` | `docs/archive/governance_specs/Return_Probability_Geometry_Spec_v1.0.md` | 90 | historical |
 | `90_cohesion_v2_geometry_exploitability_note.html` | `docs/archive/governance_specs/cohesion_v2_geometry_exploitability_note.html` | 90 | historical |
 | `90_v5.0-alpha1_Contact_Hysteresis_Execution_Spec.md` | `docs/archive/governance_specs/v5.0-alpha1_Contact_Hysteresis_Execution_Spec.md` | 90 | historical |

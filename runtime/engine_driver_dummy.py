@@ -24,13 +24,13 @@ def run_dummy_ticks(
         damage_per_tick=damage_per_tick,
         separation_radius=separation_radius,
     )
-    engine.fire_quality_alpha = float(fire_quality_alpha)
-    engine.contact_hysteresis_h = float(contact_hysteresis_h)
-    engine.CH_ENABLED = bool(ch_enabled)
-    engine.FSR_ENABLED = bool(fsr_enabled)
-    engine.fsr_strength = float(fsr_strength)
-    engine.BOUNDARY_SOFT_ENABLED = bool(boundary_enabled)
-    engine.BOUNDARY_HARD_ENABLED = bool(boundary_enabled)
+    engine._combat_surface["fire_quality_alpha"] = float(fire_quality_alpha)
+    engine._combat_surface["contact_hysteresis_h"] = float(contact_hysteresis_h)
+    engine._combat_surface["ch_enabled"] = bool(ch_enabled)
+    engine._fsr_surface["enabled"] = bool(fsr_enabled)
+    engine._fsr_surface["strength"] = float(fsr_strength)
+    engine._boundary_surface["soft_enabled"] = bool(boundary_enabled)
+    engine._boundary_surface["hard_enabled"] = bool(boundary_enabled)
     state = replace(
         initial_state,
         last_target_direction={

@@ -81,11 +81,7 @@ SimulationObserverConfig = dict
 
 
 def _clamp01(value: float) -> float:
-    if value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
+    return min(1.0, max(0.0, value))
 
 
 def _require_mapping(cfg: Mapping[str, Any], key: str) -> Mapping[str, Any]:
@@ -555,9 +551,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 envelope_radius=envelope_radius,
             )
             signal = max(0.0, post_occ - pre_occ)
-            speed_scale = 1.0 - (strength * signal)
-            if speed_scale < 0.0:
-                speed_scale = 0.0
+            speed_scale = max(0.0, 1.0 - (strength * signal))
             if speed_scale >= 0.999999:
                 continue
             updated_units[unit.unit_id] = replace(unit, max_speed=float(unit.max_speed) * speed_scale)
@@ -771,15 +765,14 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
     def _build_continuous_fr_proxy_state(
         self, state: BattleState
     ) -> tuple[BattleState, dict[str, dict[str, float | bool | str]]]:
-        movement_model = str(getattr(self, "MOVEMENT_MODEL", "v3a")).strip().lower()
-        movement_v3a_experiment = str(getattr(self, "MOVEMENT_V3A_EXPERIMENT", "base")).strip().lower()
+        movement_surface = getattr(self, "_movement_surface", {})
+        movement_v3a_experiment = str(movement_surface.get("v3a_experiment", "base")).strip().lower()
         shaping_enabled = bool(getattr(self, "CONTINUOUS_FR_SHAPING_ENABLED", False))
         shaping_mode = str(
             getattr(self, "CONTINUOUS_FR_SHAPING_MODE", CONTINUOUS_FR_SHAPING_OFF)
         ).strip().lower()
         if (
             not shaping_enabled
-            or movement_model != "v3a"
             or movement_v3a_experiment != V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
             or shaping_mode not in CONTINUOUS_FR_SHAPING_LABELS
             or shaping_mode == CONTINUOUS_FR_SHAPING_OFF
@@ -934,9 +927,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         q50 = self._quantile_sorted(sorted_radii, 0.50)
         q75 = self._quantile_sorted(sorted_radii, 0.75)
         q90 = self._quantile_sorted(sorted_radii, 0.90)
-        iqr = q75 - q25
-        if iqr < 0.0:
-            iqr = 0.0
+        iqr = max(0.0, q75 - q25)
 
         if q90 <= eps and q50 <= eps:
             dispersion_ratio = 1.0
@@ -957,9 +948,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
 
         trace = cov_xx + cov_yy
         det = (cov_xx * cov_yy) - (cov_xy * cov_xy)
-        disc = (trace * trace) - (4.0 * det)
-        if disc < 0.0:
-            disc = 0.0
+        disc = max(0.0, (trace * trace) - (4.0 * det))
         sqrt_disc = math.sqrt(disc)
         lambda_1 = 0.5 * (trace + sqrt_disc)
         lambda_2 = 0.5 * (trace - sqrt_disc)
@@ -1179,7 +1168,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
 
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
         next_state = super().evaluate_cohesion(state)
-        decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
+        decision_source = str(getattr(self, "runtime_cohesion_decision_source", "v2")).lower()
         if decision_source != "v3_test":
             return next_state
         shadow_v3 = getattr(self, "debug_last_cohesion_v3", {})
@@ -1228,6 +1217,11 @@ def run_simulation(
     print_tick_summary = bool(execution_cfg["print_tick_summary"])
     observer_enabled = bool(observer_cfg["enabled"])
     post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
+    movement_model = str(runtime_cfg["movement_model"]).strip().lower() or "v3a"
+    if movement_model != "v3a":
+        raise ValueError(
+            f"test_run maintained path only supports runtime_cfg['movement_model']=v3a, got {runtime_cfg['movement_model']!r}"
+        )
 
     engine = engine_cls(
         attack_range=float(contact_cfg["attack_range"]),
@@ -1235,18 +1229,11 @@ def run_simulation(
         separation_radius=float(contact_cfg["separation_radius"]),
     )
     for attr, value in (
-        ("COHESION_DECISION_SOURCE", str(runtime_cfg["decision_source"]).strip().lower() or "v2"),
-        ("MOVEMENT_MODEL", str(runtime_cfg["movement_model"]).strip().lower() or "v3a"),
-        ("MOVEMENT_V3A_EXPERIMENT", str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"),
-        ("CENTROID_PROBE_SCALE", float(movement_cfg.get("centroid_probe_scale_effective", 1.0))),
         (
             "PRE_TL_TARGET_SUBSTRATE",
             str(movement_cfg.get("pre_tl_target_substrate", PRE_TL_TARGET_SUBSTRATE_DEFAULT)).strip().lower()
             or PRE_TL_TARGET_SUBSTRATE_DEFAULT,
         ),
-        ("ODW_POSTURE_BIAS_ENABLED", bool(odw_posture_bias_cfg.get("enabled_effective", False))),
-        ("ODW_POSTURE_BIAS_K", max(0.0, float(odw_posture_bias_cfg.get("k_effective", 0.0)))),
-        ("ODW_POSTURE_BIAS_CLIP_DELTA", max(0.0, float(odw_posture_bias_cfg.get("clip_delta_effective", 0.2)))),
         ("SYMMETRIC_MOVEMENT_SYNC_ENABLED", bool(movement_cfg.get("symmetric_movement_sync_enabled", True))),
         (
             "HOSTILE_CONTACT_IMPEDANCE_MODE",
@@ -1293,26 +1280,55 @@ def run_simulation(
         ("V2_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v2_connect_radius_multiplier", 1.0)))),
         ("V3_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_connect_radius_multiplier_effective", 1.0)))),
         ("V3_R_REF_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_r_ref_radius_multiplier_effective", 1.0)))),
-        ("fire_quality_alpha", float(contact_cfg["fire_quality_alpha"])),
-        ("contact_hysteresis_h", float(contact_cfg["contact_hysteresis_h"])),
-        ("CH_ENABLED", bool(contact_cfg["ch_enabled"])),
-        ("FSR_ENABLED", bool(contact_cfg["fsr_enabled"])),
-        ("fsr_strength", float(contact_cfg["fsr_strength"])),
-        ("BOUNDARY_SOFT_ENABLED", bool(boundary_cfg["enabled"])),
-        ("BOUNDARY_HARD_ENABLED", bool(boundary_cfg["enabled"]) and bool(boundary_cfg["hard_enabled"])),
-        ("boundary_soft_strength", max(0.0, float(boundary_cfg["soft_strength"]))),
-        ("alpha_sep", max(0.0, float(contact_cfg["alpha_sep"]))),
     ):
         setattr(engine, attr, value)
+
+    engine.runtime_cohesion_decision_source = str(runtime_cfg["decision_source"]).strip().lower() or "v2"
+    movement_surface = getattr(engine, "_movement_surface", None)
+    if not isinstance(movement_surface, dict):
+        raise TypeError("EngineTickSkeleton._movement_surface missing or invalid")
+    movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
+    movement_surface["v3a_experiment"] = (
+        str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
+    )
+    movement_surface["centroid_probe_scale"] = float(movement_cfg.get("centroid_probe_scale_effective", 1.0))
+    movement_surface["odw_posture_bias_enabled"] = bool(odw_posture_bias_cfg.get("enabled_effective", False))
+    movement_surface["odw_posture_bias_k"] = max(0.0, float(odw_posture_bias_cfg.get("k_effective", 0.0)))
+    movement_surface["odw_posture_bias_clip_delta"] = max(
+        0.0,
+        float(odw_posture_bias_cfg.get("clip_delta_effective", 0.2)),
+    )
+
+    combat_surface = getattr(engine, "_combat_surface", None)
+    if not isinstance(combat_surface, dict):
+        raise TypeError("EngineTickSkeleton._combat_surface missing or invalid")
+    combat_surface["fire_quality_alpha"] = float(contact_cfg["fire_quality_alpha"])
+    combat_surface["contact_hysteresis_h"] = float(contact_cfg["contact_hysteresis_h"])
+    combat_surface["ch_enabled"] = bool(contact_cfg["ch_enabled"])
+
+    fsr_surface = getattr(engine, "_fsr_surface", None)
+    if not isinstance(fsr_surface, dict):
+        raise TypeError("EngineTickSkeleton._fsr_surface missing or invalid")
+    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"])
+    fsr_surface["strength"] = float(contact_cfg["fsr_strength"])
+
+    boundary_surface = getattr(engine, "_boundary_surface", None)
+    if not isinstance(boundary_surface, dict):
+        raise TypeError("EngineTickSkeleton._boundary_surface missing or invalid")
+    boundary_surface["soft_enabled"] = bool(boundary_cfg["enabled"])
+    boundary_surface["hard_enabled"] = bool(boundary_cfg["enabled"]) and bool(boundary_cfg["hard_enabled"])
+    boundary_surface["soft_strength"] = max(0.0, float(boundary_cfg["soft_strength"]))
 
     diagnostics_enabled = bool(observer_enabled) or bool(execution_cfg["plot_diagnostics_enabled"])
     observer_active = bool(diagnostics_enabled) and (
         bool(capture_positions) or bool(observer_cfg.get("runtime_diag_enabled", False))
     )
-    engine.debug_fsr_diag_enabled = observer_active
-    engine.debug_diag4_enabled = observer_active
-    engine.debug_diag4_rpg_enabled = False
-    engine.debug_cohesion_v3_shadow_enabled = bool(diagnostics_enabled)
+    diag_surface = getattr(engine, "_diag_surface", None)
+    if not isinstance(diag_surface, dict):
+        raise TypeError("EngineTickSkeleton._diag_surface missing or invalid")
+    diag_surface["fsr_diag_enabled"] = observer_active
+    diag_surface["diag4_enabled"] = observer_active
+    diag_surface["cohesion_v3_shadow_enabled"] = bool(diagnostics_enabled)
 
     state = replace(
         initial_state,

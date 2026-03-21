@@ -17,7 +17,7 @@
     8
   ],
 
-  "_comment_layout": "layout_width_ratios: [battlefield, plot-column-2 (slots 01-06), column-3 (slots 07-09 + bottom DEBUG)]. Column-2/3 widths are fixed equal by averaging prior [55,35] -> [45,45]. Suggested baseline for 1920x1080 is [100, 45, 45]. Plot slot positions are fixed; only which metric is shown in each slot should change later.",
+  "_comment_layout": "layout_width_ratios: [battlefield, plot-column-2 (slots 01-06), column-3 (slots 07-10 + bottom DEBUG)]. layout_height_ratios: [top-two-rows, middle-two-rows, bottom-two-rows] shared by both plot columns. Suggested baseline for 1920x1080 is [100, 45, 45] and [1.0, 1.0, 0.2]. Plot slot positions are fixed; only which metric is shown in each slot should change later.",
   "layout_width_ratios": [
     100,
     45,
@@ -49,7 +49,7 @@
     "shaft_length": 0.4,
     "shaft_width": 0.8
   },
-  "_comment_vector_display_mode": "vector_display_mode: effective=post-projection displacement; free=pre-projection composite movement; radial_debug=fixed radial arrows with sign colors (green inward / red outward / yellow near-zero).",
+  "_comment_vector_display_mode": "vector_display_mode: effective=post-projection displacement; free=pre-projection composite movement; attack=attack-target direction only; composite=effective displacement plus attack-target direction; radial_debug=fixed radial arrows with sign colors (green inward / red outward / yellow near-zero).",
   "vector_display_mode": "effective",
 
   "_comment_death_linger": "death_linger: ticks=linger duration, ring_radius=red circle radius, ring_color=red circle color.",
@@ -60,23 +60,6 @@
   },
   "_comment_post_elimination_extra_ticks": "post_elimination_extra_ticks: after a winner is decided in auto-run mode (max_time_steps<=0), keep capturing/animating this many extra ticks before stopping.",
   "post_elimination_extra_ticks": 10,
-  "_comment_shape_metric_clip": "shape_metric_clip: visualization-only clipping for AR/WedgeRatio to keep curves readable under late-tick singular peaks. shape_metric_alive_floor=0 keeps all ticks; set >0 only if you explicitly want low-alive masking.",
-  "shape_metric_alive_floor": 0,
-  "shape_metric_clip_enabled": true,
-  "shape_metric_clip_bounds": {
-    "ar": [
-      0.0,
-      3.0
-    ],
-    "wedge_ratio": [
-      0.0,
-      3.0
-    ]
-  },
-  "shape_metric_axis_quantiles": [
-    0.0,
-    1.0
-  ],
 
   "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; start_delay_ticks=keep initial full 1x view before auto-zoom activates; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
   "auto_zoom": {

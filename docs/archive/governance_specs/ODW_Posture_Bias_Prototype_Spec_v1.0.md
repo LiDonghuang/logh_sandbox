@@ -9,8 +9,8 @@ Implementation: Not authorized by this document
 
 This document specifies the first bounded ODW prototype implied by:
 
-- `docs/architecture/ODW_Runtime_Mapping_Review_v1.0.md`
-- `docs/architecture/ODW_Prototype_Insertion_Note_v1.0.md`
+- `docs/archive/governance_specs/ODW_Runtime_Mapping_Review_v1.0.md`
+- `docs/archive/governance_specs/ODW_Prototype_Insertion_Note_v1.0.md`
 
 The goal is to define one implementation-ready prototype path without broadening scope.
 
