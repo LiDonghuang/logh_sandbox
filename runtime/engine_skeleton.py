@@ -103,6 +103,117 @@ class EngineTickSkeleton:
         w = pos - lo
         return (sorted_values[lo] * (1.0 - w)) + (sorted_values[hi] * w)
 
+    @staticmethod
+    def _dist_summary(values: list[float]) -> dict:
+        if not values:
+            return {
+                "count": 0,
+                "mean": 0.0,
+                "min": 0.0,
+                "p10": 0.0,
+                "p50": 0.0,
+                "p90": 0.0,
+                "max": 0.0,
+            }
+        vals = sorted(values)
+        return {
+            "count": len(vals),
+            "mean": sum(vals) / len(vals),
+            "min": vals[0],
+            "p10": EngineTickSkeleton._quantile_sorted(vals, 0.10),
+            "p50": EngineTickSkeleton._quantile_sorted(vals, 0.50),
+            "p90": EngineTickSkeleton._quantile_sorted(vals, 0.90),
+            "max": vals[-1],
+        }
+
+    def _ensure_debug_dict(self, attr_name: str) -> dict:
+        value = getattr(self, attr_name, None)
+        if not isinstance(value, dict):
+            value = {}
+            setattr(self, attr_name, value)
+        return value
+
+    def _collect_movement_outlier_stats(
+        self,
+        *,
+        state: BattleState,
+        updated_units: dict,
+        outlier_eta: float,
+        persistence_ticks: int,
+    ) -> tuple[dict, list[str], int]:
+        outlier_streaks = self._ensure_debug_dict("_debug_outlier_streaks")
+        outlier_stats = {}
+        persistent_outlier_units = []
+        max_outlier_persistence = 0
+        for fleet_id, fleet in state.fleets.items():
+            alive_unit_ids = [
+                unit_id
+                for unit_id in fleet.unit_ids
+                if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
+            ]
+            if not alive_unit_ids:
+                outlier_streaks[fleet_id] = {}
+                outlier_stats[fleet_id] = {
+                    "outlier_count": 0,
+                    "max_outlier_persistence": 0,
+                    "persistent_outlier_unit_ids": [],
+                    "centroid_x": 0.0,
+                    "centroid_y": 0.0,
+                    "r_rms": 0.0,
+                    "outlier_threshold": 0.0,
+                }
+                continue
+
+            centroid_x = sum(updated_units[unit_id].position.x for unit_id in alive_unit_ids) / len(alive_unit_ids)
+            centroid_y = sum(updated_units[unit_id].position.y for unit_id in alive_unit_ids) / len(alive_unit_ids)
+            radius_sq_sum = 0.0
+            for unit_id in alive_unit_ids:
+                unit = updated_units[unit_id]
+                dx = unit.position.x - centroid_x
+                dy = unit.position.y - centroid_y
+                radius_sq_sum += (dx * dx) + (dy * dy)
+            r_rms = math.sqrt(radius_sq_sum / len(alive_unit_ids))
+            outlier_threshold = outlier_eta * r_rms
+
+            current_outliers = []
+            for unit_id in alive_unit_ids:
+                unit = updated_units[unit_id]
+                dx = unit.position.x - centroid_x
+                dy = unit.position.y - centroid_y
+                if math.sqrt((dx * dx) + (dy * dy)) > outlier_threshold:
+                    current_outliers.append(unit_id)
+
+            prev_streaks = outlier_streaks.get(fleet_id, {})
+            next_streaks = {}
+            for unit_id in current_outliers:
+                next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
+            outlier_streaks[fleet_id] = next_streaks
+
+            fleet_max_persistence = 0
+            for value in next_streaks.values():
+                if value > fleet_max_persistence:
+                    fleet_max_persistence = value
+            if fleet_max_persistence > max_outlier_persistence:
+                max_outlier_persistence = fleet_max_persistence
+
+            persistent_ids = sorted(
+                unit_id
+                for unit_id, streak in next_streaks.items()
+                if streak >= persistence_ticks
+            )
+            persistent_outlier_units.extend(persistent_ids)
+
+            outlier_stats[fleet_id] = {
+                "outlier_count": len(current_outliers),
+                "max_outlier_persistence": fleet_max_persistence,
+                "persistent_outlier_unit_ids": persistent_ids,
+                "centroid_x": centroid_x,
+                "centroid_y": centroid_y,
+                "r_rms": r_rms,
+                "outlier_threshold": outlier_threshold,
+            }
+        return outlier_stats, persistent_outlier_units, max_outlier_persistence
+
     def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
         eps = 1e-12
         fleet = state.fleets.get(fleet_id)
@@ -495,6 +606,883 @@ class EngineTickSkeleton:
     def evaluate_utility(self, state: BattleState) -> BattleState:
         return state
 
+    def _build_movement_diag4_payload(
+        self,
+        *,
+        state: BattleState,
+        updated_units: dict,
+        snapshot_positions: dict,
+        post_move_positions: dict,
+        post_fsr_positions: dict,
+        final_positions: dict,
+        r_sep: float,
+        r_sep_sq: float,
+        attack_range_sq: float,
+        min_unit_spacing: float,
+        outlier_eta: float,
+        persistence_ticks: int,
+        diag4_legacy_enabled: bool,
+        diag4_rpg_enabled: bool,
+    ) -> dict:
+        top_k_raw = int(getattr(self, "debug_diag4_topk", 10))
+        if diag4_legacy_enabled:
+            if top_k_raw < 1:
+                top_k = 1
+            elif top_k_raw > 50:
+                top_k = 50
+            else:
+                top_k = top_k_raw
+        else:
+            top_k = 0
+
+        sector_deg_raw = float(getattr(self, "debug_diag4_return_sector_deg", 30.0))
+        if diag4_legacy_enabled:
+            if sector_deg_raw < 5.0:
+                sector_deg = 5.0
+            elif sector_deg_raw > 85.0:
+                sector_deg = 85.0
+            else:
+                sector_deg = sector_deg_raw
+        else:
+            sector_deg = 30.0
+        sector_cos = math.cos(math.radians(sector_deg))
+
+        neighbor_k_raw = int(getattr(self, "debug_diag4_neighbor_k", 3))
+        if diag4_legacy_enabled:
+            if neighbor_k_raw < 1:
+                neighbor_k = 1
+            elif neighbor_k_raw > 10:
+                neighbor_k = 10
+            else:
+                neighbor_k = neighbor_k_raw
+        else:
+            neighbor_k = 3
+
+        rpg_window_raw = int(getattr(self, "debug_diag4_rpg_window", 20))
+        if rpg_window_raw < 5:
+            rpg_window = 5
+        elif rpg_window_raw > 200:
+            rpg_window = 200
+        else:
+            rpg_window = rpg_window_raw
+        rpg_eps = 1e-12
+        rpg_delta = 0.1 * min_unit_spacing
+
+        rpg_outlier_entry = self._ensure_debug_dict("_debug_diag4_rpg_outlier_entry")
+        rpg_return_stats = self._ensure_debug_dict("_debug_diag4_rpg_return_stats")
+        if not isinstance(rpg_return_stats.get("overall"), dict):
+            rpg_return_stats["overall"] = {"success": 0, "fail": 0}
+        if not isinstance(rpg_return_stats.get("by_fleet"), dict):
+            rpg_return_stats["by_fleet"] = {}
+        if not isinstance(rpg_return_stats.get("by_class"), dict):
+            rpg_return_stats["by_class"] = {}
+        for _cls in (
+            "inward_intent",
+            "outward_bias",
+            "tangential_neutral",
+            "suppressed_inward",
+        ):
+            if not isinstance(rpg_return_stats["by_class"].get(_cls), dict):
+                rpg_return_stats["by_class"][_cls] = {"success": 0, "fail": 0}
+
+        tau = 0.0
+        if diag4_rpg_enabled:
+            free_speed_samples = []
+            for unit_id, (final_x, final_y) in final_positions.items():
+                start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
+                fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
+                dx_free = fsr_x - start_x
+                dy_free = fsr_y - start_y
+                free_speed_samples.append(math.sqrt((dx_free * dx_free) + (dy_free * dy_free)))
+            if free_speed_samples:
+                tau = 0.05 * self._quantile_sorted(sorted(free_speed_samples), 0.50)
+
+        prev_unit_state = self._ensure_debug_dict("_debug_diag4_prev_unit_state")
+        prev_unit_radius = self._ensure_debug_dict("_debug_diag4_prev_unit_radius")
+        transition_counts = self._ensure_debug_dict("_debug_diag4_transition_counts")
+        first_outlier_tick = self._ensure_debug_dict("_debug_diag4_first_outlier_tick")
+        return_attempt_count = self._ensure_debug_dict("_debug_diag4_return_attempt_count")
+        outlier_return_count = self._ensure_debug_dict("_debug_diag4_outlier_return_count")
+        outlier_duration = self._ensure_debug_dict("_debug_diag4_outlier_duration")
+        max_outlier_duration = self._ensure_debug_dict("_debug_diag4_max_outlier_duration")
+        disp_history = self._ensure_debug_dict("_debug_diag4_disp_history")
+        persistent_records = self._ensure_debug_dict("_debug_diag4_persistent_records")
+        diag4_outlier_streaks = self._ensure_debug_dict("_debug_diag4_outlier_streaks")
+
+        for unit_id, (final_x, final_y) in final_positions.items():
+            start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
+            move_x, move_y = post_move_positions.get(unit_id, (start_x, start_y))
+            fsr_x, fsr_y = post_fsr_positions.get(unit_id, (move_x, move_y))
+            proj_x = final_x
+            proj_y = final_y
+
+            dx_move = move_x - start_x
+            dy_move = move_y - start_y
+            dx_fsr = fsr_x - move_x
+            dy_fsr = fsr_y - move_y
+            dx_proj = proj_x - fsr_x
+            dy_proj = proj_y - fsr_y
+            dx_total = proj_x - start_x
+            dy_total = proj_y - start_y
+
+            history = disp_history.get(unit_id, [])
+            history.append(
+                (
+                    state.tick,
+                    math.sqrt((dx_move * dx_move) + (dy_move * dy_move)),
+                    math.sqrt((dx_fsr * dx_fsr) + (dy_fsr * dy_fsr)),
+                    math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj)),
+                    math.sqrt((dx_total * dx_total) + (dy_total * dy_total)),
+                )
+            )
+            if len(history) > 96:
+                history = history[-96:]
+            disp_history[unit_id] = history
+
+        module_a_topk = {}
+        module_b_fleet = {}
+        module_d_persistent = []
+        persistent_diag4_units = []
+        module_rpg_payload = None
+        module_rpg_fleet = {}
+        rpg_kappa_all = []
+        rpg_gap_all = []
+        rpg_gap_zero_like_count = 0
+        rpg_gap_no_inward_neighbor_count = 0
+
+        # Continued below: per-fleet classification / RPG diagnostics / payload assembly.
+        for fleet_id, fleet in state.fleets.items():
+            alive_unit_ids = [
+                unit_id
+                for unit_id in fleet.unit_ids
+                if unit_id in final_positions
+            ]
+            if not alive_unit_ids:
+                diag4_outlier_streaks[fleet_id] = {}
+                module_a_topk[fleet_id] = []
+                module_b_fleet[fleet_id] = {
+                    "core_count": 0,
+                    "shell_count": 0,
+                    "outlier_count": 0,
+                    "r_rms": 0.0,
+                    "r_p50": 0.0,
+                    "r_p90": 0.0,
+                    "outlier_threshold": 0.0,
+                    "margin": min_unit_spacing,
+                }
+                if diag4_rpg_enabled:
+                    module_rpg_fleet[fleet_id] = {
+                        "r_shell": 0.0,
+                        "delta": rpg_delta,
+                        "outlier_threshold": rpg_delta,
+                        "outlier_count": 0,
+                        "projection_suppression_candidate_count": 0,
+                        "movement_outward_bias_count": 0,
+                        "inward_free_and_effective_count": 0,
+                        "kappa_distribution": self._dist_summary([]),
+                        "g_distribution": self._dist_summary([]),
+                        "g_zero_like_ratio": 0.0,
+                        "no_inward_neighbor_ratio": 0.0,
+                    }
+                continue
+
+            cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
+            cy = sum(final_positions[unit_id][1] for unit_id in alive_unit_ids) / len(alive_unit_ids)
+
+            radius_by_unit = {}
+            radii = []
+            for unit_id in alive_unit_ids:
+                ux, uy = final_positions[unit_id]
+                dx = ux - cx
+                dy = uy - cy
+                radius = math.sqrt((dx * dx) + (dy * dy))
+                radius_by_unit[unit_id] = radius
+                radii.append(radius)
+
+            radii_sorted = sorted(radii)
+            r_p50 = self._quantile_sorted(radii_sorted, 0.50)
+            r_p90 = self._quantile_sorted(radii_sorted, 0.90)
+            r_rms = math.sqrt(sum(r * r for r in radii) / len(radii))
+            outlier_threshold_diag4 = max(r_p90 + min_unit_spacing, outlier_eta * r_rms)
+
+            current_states = {}
+            current_outliers = []
+            core_count = 0
+            shell_count = 0
+            outlier_count = 0
+            transitions = transition_counts.get(fleet_id, {})
+            if not isinstance(transitions, dict):
+                transitions = {}
+            for unit_id in alive_unit_ids:
+                radius = radius_by_unit[unit_id]
+                if radius <= r_p50:
+                    state_class = "CORE"
+                    core_count += 1
+                elif radius > outlier_threshold_diag4:
+                    state_class = "OUTLIER"
+                    outlier_count += 1
+                    current_outliers.append(unit_id)
+                else:
+                    state_class = "SHELL"
+                    shell_count += 1
+                current_states[unit_id] = state_class
+
+                prev_state = prev_unit_state.get(unit_id)
+                if prev_state is not None and prev_state != state_class:
+                    key = f"{prev_state}->{state_class}"
+                    transitions[key] = transitions.get(key, 0) + 1
+
+                prev_radius = prev_unit_radius.get(unit_id, radius)
+                if prev_state == "OUTLIER" and state_class == "OUTLIER" and radius < (prev_radius - 1e-9):
+                    return_attempt_count[unit_id] = return_attempt_count.get(unit_id, 0) + 1
+                if prev_state == "OUTLIER" and state_class == "SHELL":
+                    outlier_return_count[unit_id] = outlier_return_count.get(unit_id, 0) + 1
+
+                prev_duration = outlier_duration.get(unit_id, 0)
+                if state_class == "OUTLIER":
+                    next_duration = prev_duration + 1
+                    outlier_duration[unit_id] = next_duration
+                    if next_duration > max_outlier_duration.get(unit_id, 0):
+                        max_outlier_duration[unit_id] = next_duration
+                    if unit_id not in first_outlier_tick:
+                        first_outlier_tick[unit_id] = state.tick
+                else:
+                    outlier_duration[unit_id] = 0
+                    if unit_id not in max_outlier_duration:
+                        max_outlier_duration[unit_id] = max_outlier_duration.get(unit_id, 0)
+
+                prev_unit_state[unit_id] = state_class
+                prev_unit_radius[unit_id] = radius
+
+            transition_counts[fleet_id] = transitions
+
+            prev_streaks = diag4_outlier_streaks.get(fleet_id, {})
+            next_streaks = {}
+            for unit_id in current_outliers:
+                next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
+            diag4_outlier_streaks[fleet_id] = next_streaks
+
+            persistent_ids = sorted(
+                unit_id
+                for unit_id, streak in next_streaks.items()
+                if streak >= persistence_ticks
+            )
+            persistent_diag4_units.extend(persistent_ids)
+
+            if diag4_legacy_enabled:
+                ranked_units = sorted(
+                    alive_unit_ids,
+                    key=lambda uid: radius_by_unit.get(uid, 0.0),
+                    reverse=True,
+                )
+                candidates = []
+                for unit_id in ranked_units[:top_k]:
+                    ux, uy = final_positions[unit_id]
+                    neighbor_sep = 0
+                    neighbor_contact = 0
+                    for ally_id in alive_unit_ids:
+                        if ally_id == unit_id:
+                            continue
+                        vx, vy = final_positions[ally_id]
+                        dx = vx - ux
+                        dy = vy - uy
+                        if (dx * dx) + (dy * dy) <= r_sep_sq:
+                            neighbor_sep += 1
+                    for enemy_id, (ex, ey) in final_positions.items():
+                        enemy_unit = updated_units.get(enemy_id)
+                        if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
+                            continue
+                        dx = ex - ux
+                        dy = ey - uy
+                        if (dx * dx) + (dy * dy) <= attack_range_sq:
+                            neighbor_contact += 1
+                    candidates.append(
+                        {
+                            "unit_id": unit_id,
+                            "state": current_states.get(unit_id, "SHELL"),
+                            "radius": radius_by_unit.get(unit_id, 0.0),
+                            "neighbor_count_sep": neighbor_sep,
+                            "neighbor_count_contact": neighbor_contact,
+                            "rolling_in_contact_ratio": 0.0,
+                        }
+                    )
+                module_a_topk[fleet_id] = candidates
+            else:
+                module_a_topk[fleet_id] = []
+
+            module_b_fleet[fleet_id] = {
+                "core_count": core_count,
+                "shell_count": shell_count,
+                "outlier_count": outlier_count,
+                "r_rms": r_rms,
+                "r_p50": r_p50,
+                "r_p90": r_p90,
+                "outlier_threshold": outlier_threshold_diag4,
+                "margin": min_unit_spacing,
+                "first_outlier_tick": min(
+                    (first_outlier_tick.get(unit_id, state.tick) for unit_id in current_outliers),
+                    default=None,
+                ),
+                "persistent_outlier_unit_ids": persistent_ids,
+            }
+
+            if diag4_rpg_enabled:
+                overall_stats = rpg_return_stats.get("overall", {})
+                if not isinstance(overall_stats, dict):
+                    overall_stats = {"success": 0, "fail": 0}
+                    rpg_return_stats["overall"] = overall_stats
+                fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id)
+                if not isinstance(fleet_stats, dict):
+                    fleet_stats = {"success": 0, "fail": 0}
+                    rpg_return_stats["by_fleet"][fleet_id] = fleet_stats
+                class_stats_map = rpg_return_stats.get("by_class", {})
+
+                snapshot_cx = (
+                    sum(snapshot_positions.get(unit_id, final_positions[unit_id])[0] for unit_id in alive_unit_ids)
+                    / len(alive_unit_ids)
+                )
+                snapshot_cy = (
+                    sum(snapshot_positions.get(unit_id, final_positions[unit_id])[1] for unit_id in alive_unit_ids)
+                    / len(alive_unit_ids)
+                )
+
+                rpg_outlier_count = 0
+                rpg_projection_suppression_count = 0
+                rpg_outward_bias_count = 0
+                rpg_inward_effective_count = 0
+                rpg_tangential_count = 0
+                rpg_suppressed_count = 0
+                rpg_kappa_values = []
+                rpg_gap_values = []
+                rpg_gap_zero_like_fleet = 0
+                rpg_gap_no_inward_fleet = 0
+                rpg_gap_probe_units = []
+                rpg_gap_sample_cap = 0
+                rpg_outlier_threshold = r_rms + rpg_delta
+
+                for unit_id in alive_unit_ids:
+                    final_x, final_y = final_positions[unit_id]
+                    radius = radius_by_unit.get(unit_id, 0.0)
+                    is_rpg_outlier = radius > rpg_outlier_threshold
+                    entry = rpg_outlier_entry.get(unit_id)
+
+                    if not is_rpg_outlier:
+                        if isinstance(entry, dict):
+                            entry_tick = int(entry.get("tick", state.tick))
+                            entry_class = str(entry.get("class", "tangential_neutral"))
+                            entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
+                            if (state.tick - entry_tick) <= rpg_window:
+                                overall_stats["success"] = int(overall_stats.get("success", 0)) + 1
+                                fleet_stats["success"] = int(fleet_stats.get("success", 0)) + 1
+                                entry_class_stats["success"] = int(entry_class_stats.get("success", 0)) + 1
+                            else:
+                                overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
+                                fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
+                                entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
+                            class_stats_map[entry_class] = entry_class_stats
+                            del rpg_outlier_entry[unit_id]
+                        continue
+
+                    start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
+                    fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
+
+                    dir_x = snapshot_cx - start_x
+                    dir_y = snapshot_cy - start_y
+                    dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
+                    if dir_norm <= rpg_eps:
+                        dir_x = cx - final_x
+                        dir_y = cy - final_y
+                        dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
+                    if dir_norm > rpg_eps:
+                        d_hat_x = dir_x / dir_norm
+                        d_hat_y = dir_y / dir_norm
+                    else:
+                        d_hat_x = 0.0
+                        d_hat_y = 0.0
+
+                    v_tilde_x = fsr_x - start_x
+                    v_tilde_y = fsr_y - start_y
+                    v_x = final_x - start_x
+                    v_y = final_y - start_y
+                    v_tilde_r = (v_tilde_x * d_hat_x) + (v_tilde_y * d_hat_y)
+                    v_r = (v_x * d_hat_x) + (v_y * d_hat_y)
+                    if v_tilde_r > tau and v_r <= tau:
+                        current_class = "suppressed_inward"
+                    elif v_tilde_r > tau:
+                        current_class = "inward_intent"
+                    elif v_tilde_r < -tau:
+                        current_class = "outward_bias"
+                    else:
+                        current_class = "tangential_neutral"
+
+                    if not isinstance(entry, dict):
+                        rpg_outlier_entry[unit_id] = {
+                            "tick": state.tick,
+                            "fleet_id": fleet_id,
+                            "class": current_class,
+                        }
+                    else:
+                        entry_tick = int(entry.get("tick", state.tick))
+                        entry_class = str(entry.get("class", "tangential_neutral"))
+                        entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
+                        if (state.tick - entry_tick) >= rpg_window:
+                            overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
+                            fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
+                            entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
+                            class_stats_map[entry_class] = entry_class_stats
+                            rpg_outlier_entry[unit_id] = {
+                                "tick": state.tick,
+                                "fleet_id": fleet_id,
+                                "class": current_class,
+                            }
+
+                    rpg_outlier_count += 1
+                    if current_class == "suppressed_inward":
+                        rpg_projection_suppression_count += 1
+                        rpg_suppressed_count += 1
+                    elif current_class == "outward_bias":
+                        rpg_outward_bias_count += 1
+                    elif current_class == "tangential_neutral":
+                        rpg_tangential_count += 1
+                    else:
+                        rpg_inward_effective_count += 1
+
+                    if abs(v_tilde_r) > rpg_eps and current_class != "tangential_neutral":
+                        kappa_i = v_r / (v_tilde_r + rpg_eps)
+                        rpg_kappa_values.append(kappa_i)
+
+                    rpg_gap_probe_units.append(
+                        (
+                            unit_id,
+                            final_x,
+                            final_y,
+                            d_hat_x,
+                            d_hat_y,
+                            radius,
+                        )
+                    )
+
+                if rpg_gap_probe_units:
+                    rpg_gap_sample_cap = top_k_raw // 3
+                    if rpg_gap_sample_cap < 1:
+                        rpg_gap_sample_cap = 1
+                    elif rpg_gap_sample_cap > 8:
+                        rpg_gap_sample_cap = 8
+                    probe_units = sorted(
+                        rpg_gap_probe_units,
+                        key=lambda row: row[5],
+                        reverse=True,
+                    )[:rpg_gap_sample_cap]
+                    for unit_id, final_x, final_y, d_hat_x, d_hat_y, _radius in probe_units:
+                        gap_candidates = []
+                        for ally_id in alive_unit_ids:
+                            if ally_id == unit_id:
+                                continue
+                            ax, ay = final_positions[ally_id]
+                            proj = ((ax - final_x) * d_hat_x) + ((ay - final_y) * d_hat_y)
+                            if proj > 0.0:
+                                gap_candidates.append(proj)
+                        if gap_candidates:
+                            g_i = min(gap_candidates)
+                            rpg_gap_values.append(g_i)
+                            if g_i <= rpg_eps:
+                                rpg_gap_zero_like_fleet += 1
+                        else:
+                            rpg_gap_no_inward_fleet += 1
+
+                if rpg_outlier_count > 0:
+                    g_zero_like_ratio = rpg_gap_zero_like_fleet / max(1, len(rpg_gap_values))
+                    no_inward_neighbor_ratio = rpg_gap_no_inward_fleet / rpg_outlier_count
+                else:
+                    g_zero_like_ratio = 0.0
+                    no_inward_neighbor_ratio = 0.0
+
+                module_rpg_fleet[fleet_id] = {
+                    "r_shell": r_rms,
+                    "delta": rpg_delta,
+                    "tau": tau,
+                    "outlier_threshold": rpg_outlier_threshold,
+                    "outlier_count": rpg_outlier_count,
+                    "projection_suppression_candidate_count": rpg_projection_suppression_count,
+                    "movement_outward_bias_count": rpg_outward_bias_count,
+                    "tangential_neutral_count": rpg_tangential_count,
+                    "inward_free_and_effective_count": rpg_inward_effective_count,
+                    "suppressed_inward_count": rpg_suppressed_count,
+                    "outward_ratio": (rpg_outward_bias_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
+                    "tangential_ratio": (rpg_tangential_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
+                    "suppressed_ratio": (rpg_suppressed_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
+                    "g_probe_cap": rpg_gap_sample_cap,
+                    "g_probe_count": len(rpg_gap_values) + rpg_gap_no_inward_fleet,
+                    "kappa_distribution": self._dist_summary(rpg_kappa_values),
+                    "g_distribution": self._dist_summary(rpg_gap_values),
+                    "g_zero_like_ratio": g_zero_like_ratio,
+                    "no_inward_neighbor_ratio": no_inward_neighbor_ratio,
+                }
+                rpg_kappa_all.extend(rpg_kappa_values)
+                rpg_gap_all.extend(rpg_gap_values)
+                rpg_gap_zero_like_count += rpg_gap_zero_like_fleet
+                rpg_gap_no_inward_neighbor_count += rpg_gap_no_inward_fleet
+
+            if diag4_legacy_enabled:
+                for unit_id in persistent_ids:
+                    ux, uy = final_positions[unit_id]
+                    dx_c = cx - ux
+                    dy_c = cy - uy
+                    norm_c = math.sqrt((dx_c * dx_c) + (dy_c * dy_c))
+                    if norm_c > 0.0:
+                        rx = dx_c / norm_c
+                        ry = dy_c / norm_c
+                    else:
+                        rx = 0.0
+                        ry = 0.0
+                    radius_u = radius_by_unit.get(unit_id, 0.0)
+
+                    sector_count = 0
+                    sector_distances = []
+                    inner_neighbors = 0
+                    outer_neighbors = 0
+                    for ally_id in alive_unit_ids:
+                        if ally_id == unit_id:
+                            continue
+                        ax, ay = final_positions[ally_id]
+                        vx = ax - ux
+                        vy = ay - uy
+                        dist_sq = (vx * vx) + (vy * vy)
+                        if dist_sq <= 0.0:
+                            continue
+                        dist = math.sqrt(dist_sq)
+                        dot = (vx * rx) + (vy * ry)
+                        if dot > 0.0:
+                            cosang = dot / dist
+                            if cosang >= sector_cos:
+                                sector_count += 1
+                                sector_distances.append(dist)
+
+                        radius_ally = radius_by_unit.get(ally_id, 0.0)
+                        if (radius_u - self.attack_range) <= radius_ally < radius_u:
+                            inner_neighbors += 1
+                        elif radius_u < radius_ally <= (radius_u + self.attack_range):
+                            outer_neighbors += 1
+
+                    sector_distances.sort()
+                    nearest_k = sector_distances[:neighbor_k]
+                    if nearest_k:
+                        nearest_k_mean = sum(nearest_k) / len(nearest_k)
+                    else:
+                        nearest_k_mean = 0.0
+
+                    denom = inner_neighbors + outer_neighbors
+                    if denom > 0:
+                        radial_density_gradient = (inner_neighbors - outer_neighbors) / denom
+                    else:
+                        radial_density_gradient = 0.0
+
+                    module_d_persistent.append(
+                        {
+                            "fleet_id": fleet_id,
+                            "unit_id": unit_id,
+                            "sector_neighbor_count": sector_count,
+                            "nearest_k_distance_return_dir": nearest_k_mean,
+                            "radial_density_gradient": radial_density_gradient,
+                            "inner_neighbor_count": inner_neighbors,
+                            "outer_neighbor_count": outer_neighbors,
+                            "return_attempt_count": return_attempt_count.get(unit_id, 0),
+                            "consecutive_outlier_duration": outlier_duration.get(unit_id, 0),
+                            "max_outlier_duration": max_outlier_duration.get(unit_id, 0),
+                            "rolling_in_contact_ratio": 0.0,
+                        }
+                    )
+
+        if diag4_rpg_enabled:
+            alive_final_ids = set(final_positions.keys())
+            for unit_id in list(rpg_outlier_entry.keys()):
+                if unit_id not in alive_final_ids:
+                    del rpg_outlier_entry[unit_id]
+
+            total_rpg_outliers = 0
+            total_rpg_projection_suppression = 0
+            total_rpg_outward_bias = 0
+            total_rpg_inward_effective = 0
+            total_rpg_tangential = 0
+            total_rpg_suppressed = 0
+            by_fleet_return = {}
+            for fleet_id, fleet_payload in module_rpg_fleet.items():
+                total_rpg_outliers += int(fleet_payload.get("outlier_count", 0))
+                total_rpg_projection_suppression += int(
+                    fleet_payload.get("projection_suppression_candidate_count", 0)
+                )
+                total_rpg_outward_bias += int(fleet_payload.get("movement_outward_bias_count", 0))
+                total_rpg_tangential += int(fleet_payload.get("tangential_neutral_count", 0))
+                total_rpg_inward_effective += int(
+                    fleet_payload.get("inward_free_and_effective_count", 0)
+                )
+                total_rpg_suppressed += int(fleet_payload.get("suppressed_inward_count", 0))
+                fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id, {})
+                fleet_success = int(fleet_stats.get("success", 0))
+                fleet_fail = int(fleet_stats.get("fail", 0))
+                fleet_eval = fleet_success + fleet_fail
+                fleet_payload["p_return_window"] = {
+                    "window": rpg_window,
+                    "success_events": fleet_success,
+                    "fail_events": fleet_fail,
+                    "evaluated_events": fleet_eval,
+                    "p_return": (fleet_success / fleet_eval) if fleet_eval > 0 else 0.0,
+                }
+                by_fleet_return[fleet_id] = fleet_payload["p_return_window"]
+
+            overall_stats = rpg_return_stats.get("overall", {})
+            overall_success = int(overall_stats.get("success", 0))
+            overall_fail = int(overall_stats.get("fail", 0))
+            overall_eval = overall_success + overall_fail
+            by_class_return = {}
+            class_stats_map = rpg_return_stats.get("by_class", {})
+            if isinstance(class_stats_map, dict):
+                for cls_name, cls_stats in class_stats_map.items():
+                    if not isinstance(cls_stats, dict):
+                        continue
+                    cls_success = int(cls_stats.get("success", 0))
+                    cls_fail = int(cls_stats.get("fail", 0))
+                    cls_eval = cls_success + cls_fail
+                    by_class_return[cls_name] = {
+                        "success_events": cls_success,
+                        "fail_events": cls_fail,
+                        "evaluated_events": cls_eval,
+                        "p_return": (cls_success / cls_eval) if cls_eval > 0 else 0.0,
+                    }
+            g_zero_like_ratio_global = (
+                rpg_gap_zero_like_count / len(rpg_gap_all)
+                if rpg_gap_all
+                else 0.0
+            )
+            no_inward_neighbor_ratio_global = (
+                rpg_gap_no_inward_neighbor_count / total_rpg_outliers
+                if total_rpg_outliers > 0
+                else 0.0
+            )
+
+            module_rpg_payload = {
+                "canonical": {
+                    "radial_direction": "d_hat=(C_f-x_i)/||C_f-x_i|| (inward)",
+                    "inward_definition": "v_tilde_r_i > 0",
+                    "r_shell_definition": "R_shell=R_rms",
+                },
+                "constants": {
+                    "epsilon": rpg_eps,
+                    "delta": rpg_delta,
+                    "tau": tau,
+                    "p_return_window": rpg_window,
+                },
+                "separation_counts": {
+                    "projection_suppression_candidate_count": total_rpg_projection_suppression,
+                    "movement_outward_bias_count": total_rpg_outward_bias,
+                    "tangential_neutral_count": total_rpg_tangential,
+                    "inward_free_and_effective_count": total_rpg_inward_effective,
+                    "suppressed_inward_count": total_rpg_suppressed,
+                    "rpg_outlier_count": total_rpg_outliers,
+                },
+                "category_ratios": {
+                    "outward_ratio": (total_rpg_outward_bias / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
+                    "tangential_ratio": (total_rpg_tangential / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
+                    "suppressed_ratio": (total_rpg_suppressed / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
+                },
+                "kappa_distribution": self._dist_summary(rpg_kappa_all),
+                "g_distribution": self._dist_summary(rpg_gap_all),
+                "g_zero_like_ratio": g_zero_like_ratio_global,
+                "no_inward_neighbor_ratio": no_inward_neighbor_ratio_global,
+                "p_return": {
+                    "window": rpg_window,
+                    "overall": {
+                        "success_events": overall_success,
+                        "fail_events": overall_fail,
+                        "evaluated_events": overall_eval,
+                        "p_return": (overall_success / overall_eval) if overall_eval > 0 else 0.0,
+                    },
+                    "by_fleet": by_fleet_return,
+                    "by_class": by_class_return,
+                },
+                "fleet_stats": module_rpg_fleet,
+            }
+
+        module_c_records = []
+        if diag4_legacy_enabled:
+            for unit_id in sorted(set(persistent_diag4_units)):
+                if unit_id in persistent_records:
+                    continue
+                emergence_tick = first_outlier_tick.get(unit_id, state.tick)
+                history = disp_history.get(unit_id, [])
+                window_start = emergence_tick - 3
+                window_end = emergence_tick + 3
+                window = [
+                    sample
+                    for sample in history
+                    if window_start <= sample[0] <= window_end
+                ]
+                cum_move = sum(sample[1] for sample in window)
+                cum_fsr = sum(sample[2] for sample in window)
+                cum_proj = sum(sample[3] for sample in window)
+                total = cum_move + cum_fsr + cum_proj
+                dominant = "move"
+                dominant_val = cum_move
+                if cum_fsr > dominant_val:
+                    dominant = "fsr"
+                    dominant_val = cum_fsr
+                if cum_proj > dominant_val:
+                    dominant = "projection"
+                persistent_records[unit_id] = {
+                    "unit_id": unit_id,
+                    "emergence_tick": emergence_tick,
+                    "window_start_tick": window_start,
+                    "window_end_tick": window_end,
+                    "window_samples": len(window),
+                    "cum_delta_move_norm": cum_move,
+                    "cum_delta_fsr_norm": cum_fsr,
+                    "cum_delta_projection_norm": cum_proj,
+                    "cum_delta_total_norm": total,
+                    "dominant_component": dominant,
+                    "delta_separation_component_available": False,
+                }
+
+            for unit_id in sorted(set(persistent_diag4_units)):
+                record = persistent_records.get(unit_id)
+                if isinstance(record, dict):
+                    module_c_records.append(record)
+
+        diag4_payload = {
+            "module_a": {
+                "top_k": top_k,
+                "neighbor_radius_sep": r_sep,
+                "neighbor_radius_contact": self.attack_range,
+                "topk_candidates": module_a_topk,
+            },
+            "module_b": {
+                "state_def": {
+                    "core": "r <= R_p50",
+                    "shell": "R_p50 < r <= max(R_p90 + margin, eta*R_rms)",
+                    "outlier": "r > max(R_p90 + margin, eta*R_rms)",
+                },
+                "margin": min_unit_spacing,
+                "eta": outlier_eta,
+                "fleet_state_stats": module_b_fleet,
+                "transition_counts_cumulative": transition_counts,
+                "return_attempt_count": return_attempt_count,
+                "outlier_return_count": outlier_return_count,
+            },
+            "module_c": {
+                "displacement_note": "delta_move/fsr/projection are directly measured from stage boundaries in the single-pass pipeline.",
+                "separation_component_available": False,
+                "persistent_emergence_records": module_c_records,
+            },
+            "module_d": {
+                "return_sector_deg": sector_deg,
+                "nearest_k": neighbor_k,
+                "persistent_reentry": module_d_persistent,
+            },
+        }
+        if module_rpg_payload is not None:
+            diag4_payload["module_rpg"] = module_rpg_payload
+        return diag4_payload
+
+    def _build_movement_diag_pending(
+        self,
+        *,
+        state: BattleState,
+        updated_units: dict,
+        tentative_positions: dict,
+        delta_position: dict,
+        projection_pairs_count: int,
+        boundary_band_width: float,
+        boundary_band_fraction: float,
+        boundary_soft_strength: float,
+        boundary_force_events_count_tick: int,
+        min_unit_spacing: float,
+        r_sep: float,
+        r_sep_sq: float,
+        attack_range_sq: float,
+        snapshot_positions: dict,
+        post_move_positions: dict,
+        post_fsr_positions: dict,
+        final_positions: dict,
+        diag4_legacy_enabled: bool,
+        diag4_rpg_enabled: bool,
+    ) -> dict:
+        projection_displacement_sum = 0.0
+        projection_displacement_max = 0.0
+        projection_displacement_count = 0
+        for unit_id in tentative_positions:
+            dx_proj, dy_proj = delta_position[unit_id]
+            displacement = math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
+            projection_displacement_sum += displacement
+            projection_displacement_count += 1
+            if displacement > projection_displacement_max:
+                projection_displacement_max = displacement
+        if projection_displacement_count > 0:
+            projection_displacement_mean = projection_displacement_sum / projection_displacement_count
+        else:
+            projection_displacement_mean = 0.0
+
+        eta_raw = float(getattr(self, "debug_outlier_eta", 1.8))
+        if eta_raw < 1.5:
+            outlier_eta = 1.5
+        elif eta_raw > 2.2:
+            outlier_eta = 2.2
+        else:
+            outlier_eta = eta_raw
+
+        persistence_ticks_raw = int(getattr(self, "debug_outlier_persistence_ticks", 20))
+        if persistence_ticks_raw < 1:
+            persistence_ticks = 1
+        else:
+            persistence_ticks = persistence_ticks_raw
+
+        outlier_stats, persistent_outlier_units, max_outlier_persistence = self._collect_movement_outlier_stats(
+            state=state,
+            updated_units=updated_units,
+            outlier_eta=outlier_eta,
+            persistence_ticks=persistence_ticks,
+        )
+
+        pending = {
+            "tick": state.tick,
+            "projection": {
+                "max_projection_displacement": projection_displacement_max,
+                "mean_projection_displacement": projection_displacement_mean,
+                "projection_pairs_count": projection_pairs_count,
+                "collision_pairs_count": projection_pairs_count,
+            },
+            "boundary_soft": {
+                "boundary_band_width_w": boundary_band_width,
+                "boundary_band_fraction": boundary_band_fraction,
+                "boundary_soft_strength": boundary_soft_strength,
+                "boundary_force_events_count_tick": boundary_force_events_count_tick,
+            },
+            "outliers": outlier_stats,
+            "max_outlier_persistence": max_outlier_persistence,
+            "persistent_outlier_unit_ids": sorted(set(persistent_outlier_units)),
+        }
+        boundary_force_total = getattr(self, "_debug_boundary_force_events_total", 0)
+        boundary_force_total += boundary_force_events_count_tick
+        self._debug_boundary_force_events_total = boundary_force_total
+        pending["boundary_soft"]["boundary_force_events_count_total"] = boundary_force_total
+
+        if diag4_legacy_enabled or diag4_rpg_enabled:
+            pending["diag4"] = self._build_movement_diag4_payload(
+                state=state,
+                updated_units=updated_units,
+                snapshot_positions=snapshot_positions,
+                post_move_positions=post_move_positions,
+                post_fsr_positions=post_fsr_positions,
+                final_positions=final_positions,
+                r_sep=r_sep,
+                r_sep_sq=r_sep_sq,
+                attack_range_sq=attack_range_sq,
+                min_unit_spacing=min_unit_spacing,
+                outlier_eta=outlier_eta,
+                persistence_ticks=persistence_ticks,
+                diag4_legacy_enabled=diag4_legacy_enabled,
+                diag4_rpg_enabled=diag4_rpg_enabled,
+            )
+        return pending
+
     def integrate_movement(self, state: BattleState) -> BattleState:
         r_sep = self.separation_radius
         r_sep_sq = r_sep * r_sep
@@ -525,44 +1513,6 @@ class EngineTickSkeleton:
         if boundary_soft_strength < 0.0:
             boundary_soft_strength = 0.0
 
-        def _quantile(sorted_values: list[float], q: float) -> float:
-            if not sorted_values:
-                return 0.0
-            if len(sorted_values) == 1:
-                return sorted_values[0]
-            if q <= 0.0:
-                return sorted_values[0]
-            if q >= 1.0:
-                return sorted_values[-1]
-            pos = (len(sorted_values) - 1) * q
-            lo = int(math.floor(pos))
-            hi = int(math.ceil(pos))
-            if lo == hi:
-                return sorted_values[lo]
-            w = pos - lo
-            return (sorted_values[lo] * (1.0 - w)) + (sorted_values[hi] * w)
-
-        def _dist_summary(values: list[float]) -> dict:
-            if not values:
-                return {
-                    "count": 0,
-                    "mean": 0.0,
-                    "min": 0.0,
-                    "p10": 0.0,
-                    "p50": 0.0,
-                    "p90": 0.0,
-                    "max": 0.0,
-                }
-            vals = sorted(values)
-            return {
-                "count": len(vals),
-                "mean": sum(vals) / len(vals),
-                "min": vals[0],
-                "p10": _quantile(vals, 0.10),
-                "p50": _quantile(vals, 0.50),
-                "p90": _quantile(vals, 0.90),
-                "max": vals[-1],
-            }
 
         snapshot_positions = {
             unit_id: (unit.position.x, unit.position.y)
@@ -1280,948 +2230,27 @@ class EngineTickSkeleton:
             final_positions = {}
 
         if diag_enabled:
-            projection_displacement_sum = 0.0
-            projection_displacement_max = 0.0
-            projection_displacement_count = 0
-            for unit_id in tentative_positions:
-                dx_proj, dy_proj = delta_position[unit_id]
-                displacement = math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
-                projection_displacement_sum += displacement
-                projection_displacement_count += 1
-                if displacement > projection_displacement_max:
-                    projection_displacement_max = displacement
-            if projection_displacement_count > 0:
-                projection_displacement_mean = projection_displacement_sum / projection_displacement_count
-            else:
-                projection_displacement_mean = 0.0
-            diag4_payload = None
-
-            eta_raw = float(getattr(self, "debug_outlier_eta", 1.8))
-            if eta_raw < 1.5:
-                outlier_eta = 1.5
-            elif eta_raw > 2.2:
-                outlier_eta = 2.2
-            else:
-                outlier_eta = eta_raw
-
-            persistence_ticks_raw = int(getattr(self, "debug_outlier_persistence_ticks", 20))
-            if persistence_ticks_raw < 1:
-                persistence_ticks = 1
-            else:
-                persistence_ticks = persistence_ticks_raw
-
-            outlier_streaks = getattr(self, "_debug_outlier_streaks", None)
-            if outlier_streaks is None:
-                outlier_streaks = {}
-                self._debug_outlier_streaks = outlier_streaks
-
-            outlier_stats = {}
-            persistent_outlier_units = []
-            max_outlier_persistence = 0
-            for fleet_id, fleet in state.fleets.items():
-                alive_unit_ids = [
-                    unit_id
-                    for unit_id in fleet.unit_ids
-                    if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
-                ]
-                if not alive_unit_ids:
-                    outlier_streaks[fleet_id] = {}
-                    outlier_stats[fleet_id] = {
-                        "outlier_count": 0,
-                        "max_outlier_persistence": 0,
-                        "persistent_outlier_unit_ids": [],
-                        "centroid_x": 0.0,
-                        "centroid_y": 0.0,
-                        "r_rms": 0.0,
-                        "outlier_threshold": 0.0,
-                    }
-                    continue
-
-                centroid_x = sum(updated_units[unit_id].position.x for unit_id in alive_unit_ids) / len(alive_unit_ids)
-                centroid_y = sum(updated_units[unit_id].position.y for unit_id in alive_unit_ids) / len(alive_unit_ids)
-                radius_sq_sum = 0.0
-                for unit_id in alive_unit_ids:
-                    unit = updated_units[unit_id]
-                    dx = unit.position.x - centroid_x
-                    dy = unit.position.y - centroid_y
-                    radius_sq_sum += (dx * dx) + (dy * dy)
-                r_rms = math.sqrt(radius_sq_sum / len(alive_unit_ids))
-                outlier_threshold = outlier_eta * r_rms
-
-                current_outliers = []
-                for unit_id in alive_unit_ids:
-                    unit = updated_units[unit_id]
-                    dx = unit.position.x - centroid_x
-                    dy = unit.position.y - centroid_y
-                    if math.sqrt((dx * dx) + (dy * dy)) > outlier_threshold:
-                        current_outliers.append(unit_id)
-
-                prev_streaks = outlier_streaks.get(fleet_id, {})
-                next_streaks = {}
-                for unit_id in current_outliers:
-                    next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
-                outlier_streaks[fleet_id] = next_streaks
-
-                fleet_max_persistence = 0
-                for value in next_streaks.values():
-                    if value > fleet_max_persistence:
-                        fleet_max_persistence = value
-                if fleet_max_persistence > max_outlier_persistence:
-                    max_outlier_persistence = fleet_max_persistence
-
-                persistent_ids = sorted(
-                    unit_id
-                    for unit_id, streak in next_streaks.items()
-                    if streak >= persistence_ticks
-                )
-                persistent_outlier_units.extend(persistent_ids)
-
-                outlier_stats[fleet_id] = {
-                    "outlier_count": len(current_outliers),
-                    "max_outlier_persistence": fleet_max_persistence,
-                    "persistent_outlier_unit_ids": persistent_ids,
-                    "centroid_x": centroid_x,
-                    "centroid_y": centroid_y,
-                    "r_rms": r_rms,
-                    "outlier_threshold": outlier_threshold,
-                }
-
-            if diag4_enabled or diag4_rpg_enabled:
-                top_k_raw = int(getattr(self, "debug_diag4_topk", 10))
-                if diag4_legacy_enabled:
-                    if top_k_raw < 1:
-                        top_k = 1
-                    elif top_k_raw > 50:
-                        top_k = 50
-                    else:
-                        top_k = top_k_raw
-                else:
-                    top_k = 0
-
-                sector_deg_raw = float(getattr(self, "debug_diag4_return_sector_deg", 30.0))
-                if diag4_legacy_enabled:
-                    if sector_deg_raw < 5.0:
-                        sector_deg = 5.0
-                    elif sector_deg_raw > 85.0:
-                        sector_deg = 85.0
-                    else:
-                        sector_deg = sector_deg_raw
-                else:
-                    sector_deg = 30.0
-                sector_cos = math.cos(math.radians(sector_deg))
-
-                neighbor_k_raw = int(getattr(self, "debug_diag4_neighbor_k", 3))
-                if diag4_legacy_enabled:
-                    if neighbor_k_raw < 1:
-                        neighbor_k = 1
-                    elif neighbor_k_raw > 10:
-                        neighbor_k = 10
-                    else:
-                        neighbor_k = neighbor_k_raw
-                else:
-                    neighbor_k = 3
-
-                rpg_window_raw = int(getattr(self, "debug_diag4_rpg_window", 20))
-                if rpg_window_raw < 5:
-                    rpg_window = 5
-                elif rpg_window_raw > 200:
-                    rpg_window = 200
-                else:
-                    rpg_window = rpg_window_raw
-                rpg_eps = 1e-12
-                rpg_delta = 0.1 * min_unit_spacing
-
-                rpg_outlier_entry = getattr(self, "_debug_diag4_rpg_outlier_entry", None)
-                if rpg_outlier_entry is None:
-                    rpg_outlier_entry = {}
-                    self._debug_diag4_rpg_outlier_entry = rpg_outlier_entry
-
-                rpg_return_stats = getattr(self, "_debug_diag4_rpg_return_stats", None)
-                if not isinstance(rpg_return_stats, dict):
-                    rpg_return_stats = {}
-                if not isinstance(rpg_return_stats.get("overall"), dict):
-                    rpg_return_stats["overall"] = {"success": 0, "fail": 0}
-                if not isinstance(rpg_return_stats.get("by_fleet"), dict):
-                    rpg_return_stats["by_fleet"] = {}
-                if not isinstance(rpg_return_stats.get("by_class"), dict):
-                    rpg_return_stats["by_class"] = {}
-                for _cls in (
-                    "inward_intent",
-                    "outward_bias",
-                    "tangential_neutral",
-                    "suppressed_inward",
-                ):
-                    if not isinstance(rpg_return_stats["by_class"].get(_cls), dict):
-                        rpg_return_stats["by_class"][_cls] = {"success": 0, "fail": 0}
-                self._debug_diag4_rpg_return_stats = rpg_return_stats
-
-                tau = 0.0
-                if diag4_rpg_enabled:
-                    free_speed_samples = []
-                    for unit_id, (final_x, final_y) in final_positions.items():
-                        start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-                        fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
-                        dx_free = fsr_x - start_x
-                        dy_free = fsr_y - start_y
-                        free_speed_samples.append(math.sqrt((dx_free * dx_free) + (dy_free * dy_free)))
-                    if free_speed_samples:
-                        tau = 0.05 * _quantile(sorted(free_speed_samples), 0.50)
-
-                prev_unit_state = getattr(self, "_debug_diag4_prev_unit_state", None)
-                if prev_unit_state is None:
-                    prev_unit_state = {}
-                    self._debug_diag4_prev_unit_state = prev_unit_state
-
-                prev_unit_radius = getattr(self, "_debug_diag4_prev_unit_radius", None)
-                if prev_unit_radius is None:
-                    prev_unit_radius = {}
-                    self._debug_diag4_prev_unit_radius = prev_unit_radius
-
-                transition_counts = getattr(self, "_debug_diag4_transition_counts", None)
-                if transition_counts is None:
-                    transition_counts = {}
-                    self._debug_diag4_transition_counts = transition_counts
-
-                first_outlier_tick = getattr(self, "_debug_diag4_first_outlier_tick", None)
-                if first_outlier_tick is None:
-                    first_outlier_tick = {}
-                    self._debug_diag4_first_outlier_tick = first_outlier_tick
-
-                return_attempt_count = getattr(self, "_debug_diag4_return_attempt_count", None)
-                if return_attempt_count is None:
-                    return_attempt_count = {}
-                    self._debug_diag4_return_attempt_count = return_attempt_count
-
-                outlier_return_count = getattr(self, "_debug_diag4_outlier_return_count", None)
-                if outlier_return_count is None:
-                    outlier_return_count = {}
-                    self._debug_diag4_outlier_return_count = outlier_return_count
-
-                outlier_duration = getattr(self, "_debug_diag4_outlier_duration", None)
-                if outlier_duration is None:
-                    outlier_duration = {}
-                    self._debug_diag4_outlier_duration = outlier_duration
-
-                max_outlier_duration = getattr(self, "_debug_diag4_max_outlier_duration", None)
-                if max_outlier_duration is None:
-                    max_outlier_duration = {}
-                    self._debug_diag4_max_outlier_duration = max_outlier_duration
-
-                disp_history = getattr(self, "_debug_diag4_disp_history", None)
-                if disp_history is None:
-                    disp_history = {}
-                    self._debug_diag4_disp_history = disp_history
-
-                persistent_records = getattr(self, "_debug_diag4_persistent_records", None)
-                if persistent_records is None:
-                    persistent_records = {}
-                    self._debug_diag4_persistent_records = persistent_records
-
-                diag4_outlier_streaks = getattr(self, "_debug_diag4_outlier_streaks", None)
-                if diag4_outlier_streaks is None:
-                    diag4_outlier_streaks = {}
-                    self._debug_diag4_outlier_streaks = diag4_outlier_streaks
-
-                # Module C: per-tick displacement decomposition (movement / fsr / projection).
-                for unit_id, (final_x, final_y) in final_positions.items():
-                    start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-                    move_x, move_y = post_move_positions.get(unit_id, (start_x, start_y))
-                    fsr_x, fsr_y = post_fsr_positions.get(unit_id, (move_x, move_y))
-                    proj_x = final_x
-                    proj_y = final_y
-
-                    dx_move = move_x - start_x
-                    dy_move = move_y - start_y
-                    dx_fsr = fsr_x - move_x
-                    dy_fsr = fsr_y - move_y
-                    dx_proj = proj_x - fsr_x
-                    dy_proj = proj_y - fsr_y
-                    dx_total = proj_x - start_x
-                    dy_total = proj_y - start_y
-
-                    history = disp_history.get(unit_id, [])
-                    history.append(
-                        (
-                            state.tick,
-                            math.sqrt((dx_move * dx_move) + (dy_move * dy_move)),
-                            math.sqrt((dx_fsr * dx_fsr) + (dy_fsr * dy_fsr)),
-                            math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj)),
-                            math.sqrt((dx_total * dx_total) + (dy_total * dy_total)),
-                        )
-                    )
-                    if len(history) > 96:
-                        history = history[-96:]
-                    disp_history[unit_id] = history
-
-                module_a_topk = {}
-                module_b_fleet = {}
-                module_d_persistent = []
-                persistent_diag4_units = []
-                module_rpg_payload = None
-                module_rpg_fleet = {}
-                rpg_kappa_all = []
-                rpg_gap_all = []
-                rpg_gap_zero_like_count = 0
-                rpg_gap_no_inward_neighbor_count = 0
-
-                for fleet_id, fleet in state.fleets.items():
-                    alive_unit_ids = [
-                        unit_id
-                        for unit_id in fleet.unit_ids
-                        if unit_id in final_positions
-                    ]
-                    if not alive_unit_ids:
-                        diag4_outlier_streaks[fleet_id] = {}
-                        module_a_topk[fleet_id] = []
-                        module_b_fleet[fleet_id] = {
-                            "core_count": 0,
-                            "shell_count": 0,
-                            "outlier_count": 0,
-                            "r_rms": 0.0,
-                            "r_p50": 0.0,
-                            "r_p90": 0.0,
-                            "outlier_threshold": 0.0,
-                            "margin": min_unit_spacing,
-                        }
-                        if diag4_rpg_enabled:
-                            module_rpg_fleet[fleet_id] = {
-                                "r_shell": 0.0,
-                                "delta": rpg_delta,
-                                "outlier_threshold": rpg_delta,
-                                "outlier_count": 0,
-                                "projection_suppression_candidate_count": 0,
-                                "movement_outward_bias_count": 0,
-                                "inward_free_and_effective_count": 0,
-                                "kappa_distribution": _dist_summary([]),
-                                "g_distribution": _dist_summary([]),
-                                "g_zero_like_ratio": 0.0,
-                                "no_inward_neighbor_ratio": 0.0,
-                            }
-                        continue
-
-                    cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
-                    cy = sum(final_positions[unit_id][1] for unit_id in alive_unit_ids) / len(alive_unit_ids)
-
-                    radius_by_unit = {}
-                    radii = []
-                    for unit_id in alive_unit_ids:
-                        ux, uy = final_positions[unit_id]
-                        dx = ux - cx
-                        dy = uy - cy
-                        radius = math.sqrt((dx * dx) + (dy * dy))
-                        radius_by_unit[unit_id] = radius
-                        radii.append(radius)
-
-                    radii_sorted = sorted(radii)
-                    r_p50 = _quantile(radii_sorted, 0.50)
-                    r_p90 = _quantile(radii_sorted, 0.90)
-                    r_rms = math.sqrt(sum(r * r for r in radii) / len(radii))
-                    outlier_threshold_diag4 = max(r_p90 + min_unit_spacing, outlier_eta * r_rms)
-
-                    current_states = {}
-                    current_outliers = []
-                    core_count = 0
-                    shell_count = 0
-                    outlier_count = 0
-                    transitions = transition_counts.get(fleet_id, {})
-                    if not isinstance(transitions, dict):
-                        transitions = {}
-                    for unit_id in alive_unit_ids:
-                        radius = radius_by_unit[unit_id]
-                        if radius <= r_p50:
-                            state_class = "CORE"
-                            core_count += 1
-                        elif radius > outlier_threshold_diag4:
-                            state_class = "OUTLIER"
-                            outlier_count += 1
-                            current_outliers.append(unit_id)
-                        else:
-                            state_class = "SHELL"
-                            shell_count += 1
-                        current_states[unit_id] = state_class
-
-                        prev_state = prev_unit_state.get(unit_id)
-                        if prev_state is not None and prev_state != state_class:
-                            key = f"{prev_state}->{state_class}"
-                            transitions[key] = transitions.get(key, 0) + 1
-
-                        prev_radius = prev_unit_radius.get(unit_id, radius)
-                        if prev_state == "OUTLIER" and state_class == "OUTLIER" and radius < (prev_radius - 1e-9):
-                            return_attempt_count[unit_id] = return_attempt_count.get(unit_id, 0) + 1
-                        if prev_state == "OUTLIER" and state_class == "SHELL":
-                            outlier_return_count[unit_id] = outlier_return_count.get(unit_id, 0) + 1
-
-                        prev_duration = outlier_duration.get(unit_id, 0)
-                        if state_class == "OUTLIER":
-                            next_duration = prev_duration + 1
-                            outlier_duration[unit_id] = next_duration
-                            if next_duration > max_outlier_duration.get(unit_id, 0):
-                                max_outlier_duration[unit_id] = next_duration
-                            if unit_id not in first_outlier_tick:
-                                first_outlier_tick[unit_id] = state.tick
-                        else:
-                            outlier_duration[unit_id] = 0
-                            if unit_id not in max_outlier_duration:
-                                max_outlier_duration[unit_id] = max_outlier_duration.get(unit_id, 0)
-
-                        prev_unit_state[unit_id] = state_class
-                        prev_unit_radius[unit_id] = radius
-
-                    transition_counts[fleet_id] = transitions
-
-                    prev_streaks = diag4_outlier_streaks.get(fleet_id, {})
-                    next_streaks = {}
-                    for unit_id in current_outliers:
-                        next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
-                    diag4_outlier_streaks[fleet_id] = next_streaks
-
-                    persistent_ids = sorted(
-                        unit_id
-                        for unit_id, streak in next_streaks.items()
-                        if streak >= persistence_ticks
-                    )
-                    persistent_diag4_units.extend(persistent_ids)
-
-                    if diag4_legacy_enabled:
-                        # Module A: top-K candidate outliers and neighborhood/contact opportunity.
-                        ranked_units = sorted(
-                            alive_unit_ids,
-                            key=lambda uid: radius_by_unit.get(uid, 0.0),
-                            reverse=True,
-                        )
-                        candidates = []
-                        for unit_id in ranked_units[:top_k]:
-                            ux, uy = final_positions[unit_id]
-                            neighbor_sep = 0
-                            neighbor_contact = 0
-                            for ally_id in alive_unit_ids:
-                                if ally_id == unit_id:
-                                    continue
-                                vx, vy = final_positions[ally_id]
-                                dx = vx - ux
-                                dy = vy - uy
-                                if (dx * dx) + (dy * dy) <= r_sep_sq:
-                                    neighbor_sep += 1
-                            for enemy_id, (ex, ey) in final_positions.items():
-                                enemy_unit = updated_units.get(enemy_id)
-                                if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
-                                    continue
-                                dx = ex - ux
-                                dy = ey - uy
-                                if (dx * dx) + (dy * dy) <= attack_range_sq:
-                                    neighbor_contact += 1
-                            candidates.append(
-                                {
-                                    "unit_id": unit_id,
-                                    "state": current_states.get(unit_id, "SHELL"),
-                                    "radius": radius_by_unit.get(unit_id, 0.0),
-                                    "neighbor_count_sep": neighbor_sep,
-                                    "neighbor_count_contact": neighbor_contact,
-                                    "rolling_in_contact_ratio": 0.0,
-                                }
-                            )
-                        module_a_topk[fleet_id] = candidates
-                    else:
-                        module_a_topk[fleet_id] = []
-
-                    module_b_fleet[fleet_id] = {
-                        "core_count": core_count,
-                        "shell_count": shell_count,
-                        "outlier_count": outlier_count,
-                        "r_rms": r_rms,
-                        "r_p50": r_p50,
-                        "r_p90": r_p90,
-                        "outlier_threshold": outlier_threshold_diag4,
-                        "margin": min_unit_spacing,
-                        "first_outlier_tick": min(
-                            (first_outlier_tick.get(unit_id, state.tick) for unit_id in current_outliers),
-                            default=None,
-                        ),
-                        "persistent_outlier_unit_ids": persistent_ids,
-                    }
-
-                    if diag4_rpg_enabled:
-                        overall_stats = rpg_return_stats.get("overall", {})
-                        if not isinstance(overall_stats, dict):
-                            overall_stats = {"success": 0, "fail": 0}
-                            rpg_return_stats["overall"] = overall_stats
-                        fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id)
-                        if not isinstance(fleet_stats, dict):
-                            fleet_stats = {"success": 0, "fail": 0}
-                            rpg_return_stats["by_fleet"][fleet_id] = fleet_stats
-                        class_stats_map = rpg_return_stats.get("by_class", {})
-
-                        snapshot_cx = (
-                            sum(snapshot_positions.get(unit_id, final_positions[unit_id])[0] for unit_id in alive_unit_ids)
-                            / len(alive_unit_ids)
-                        )
-                        snapshot_cy = (
-                            sum(snapshot_positions.get(unit_id, final_positions[unit_id])[1] for unit_id in alive_unit_ids)
-                            / len(alive_unit_ids)
-                        )
-
-                        rpg_outlier_count = 0
-                        rpg_projection_suppression_count = 0
-                        rpg_outward_bias_count = 0
-                        rpg_inward_effective_count = 0
-                        rpg_tangential_count = 0
-                        rpg_suppressed_count = 0
-                        rpg_kappa_values = []
-                        rpg_gap_values = []
-                        rpg_gap_zero_like_fleet = 0
-                        rpg_gap_no_inward_fleet = 0
-                        rpg_gap_probe_units = []
-                        rpg_gap_sample_cap = 0
-                        rpg_outlier_threshold = r_rms + rpg_delta
-
-                        for unit_id in alive_unit_ids:
-                            final_x, final_y = final_positions[unit_id]
-                            radius = radius_by_unit.get(unit_id, 0.0)
-                            is_rpg_outlier = radius > rpg_outlier_threshold
-                            entry = rpg_outlier_entry.get(unit_id)
-
-                            if not is_rpg_outlier:
-                                if isinstance(entry, dict):
-                                    entry_tick = int(entry.get("tick", state.tick))
-                                    entry_class = str(entry.get("class", "tangential_neutral"))
-                                    entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
-                                    if (state.tick - entry_tick) <= rpg_window:
-                                        overall_stats["success"] = int(overall_stats.get("success", 0)) + 1
-                                        fleet_stats["success"] = int(fleet_stats.get("success", 0)) + 1
-                                        entry_class_stats["success"] = int(entry_class_stats.get("success", 0)) + 1
-                                    else:
-                                        overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
-                                        fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
-                                        entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
-                                    class_stats_map[entry_class] = entry_class_stats
-                                    del rpg_outlier_entry[unit_id]
-                                continue
-
-                            start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-                            fsr_x, fsr_y = post_fsr_positions.get(unit_id, (start_x, start_y))
-
-                            dir_x = snapshot_cx - start_x
-                            dir_y = snapshot_cy - start_y
-                            dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
-                            if dir_norm <= rpg_eps:
-                                dir_x = cx - final_x
-                                dir_y = cy - final_y
-                                dir_norm = math.sqrt((dir_x * dir_x) + (dir_y * dir_y))
-                            if dir_norm > rpg_eps:
-                                d_hat_x = dir_x / dir_norm
-                                d_hat_y = dir_y / dir_norm
-                            else:
-                                d_hat_x = 0.0
-                                d_hat_y = 0.0
-
-                            v_tilde_x = fsr_x - start_x
-                            v_tilde_y = fsr_y - start_y
-                            v_x = final_x - start_x
-                            v_y = final_y - start_y
-                            v_tilde_r = (v_tilde_x * d_hat_x) + (v_tilde_y * d_hat_y)
-                            v_r = (v_x * d_hat_x) + (v_y * d_hat_y)
-                            if v_tilde_r > tau and v_r <= tau:
-                                current_class = "suppressed_inward"
-                            elif v_tilde_r > tau:
-                                current_class = "inward_intent"
-                            elif v_tilde_r < -tau:
-                                current_class = "outward_bias"
-                            else:
-                                current_class = "tangential_neutral"
-
-                            if not isinstance(entry, dict):
-                                rpg_outlier_entry[unit_id] = {
-                                    "tick": state.tick,
-                                    "fleet_id": fleet_id,
-                                    "class": current_class,
-                                }
-                            else:
-                                entry_tick = int(entry.get("tick", state.tick))
-                                entry_class = str(entry.get("class", "tangential_neutral"))
-                                entry_class_stats = class_stats_map.get(entry_class, {"success": 0, "fail": 0})
-                                if (state.tick - entry_tick) >= rpg_window:
-                                    overall_stats["fail"] = int(overall_stats.get("fail", 0)) + 1
-                                    fleet_stats["fail"] = int(fleet_stats.get("fail", 0)) + 1
-                                    entry_class_stats["fail"] = int(entry_class_stats.get("fail", 0)) + 1
-                                    class_stats_map[entry_class] = entry_class_stats
-                                    rpg_outlier_entry[unit_id] = {
-                                        "tick": state.tick,
-                                        "fleet_id": fleet_id,
-                                        "class": current_class,
-                                    }
-
-                            rpg_outlier_count += 1
-                            if current_class == "suppressed_inward":
-                                rpg_projection_suppression_count += 1
-                                rpg_suppressed_count += 1
-                            elif current_class == "outward_bias":
-                                rpg_outward_bias_count += 1
-                            elif current_class == "tangential_neutral":
-                                rpg_tangential_count += 1
-                            else:
-                                rpg_inward_effective_count += 1
-
-                            if abs(v_tilde_r) > rpg_eps and current_class != "tangential_neutral":
-                                kappa_i = v_r / (v_tilde_r + rpg_eps)
-                                rpg_kappa_values.append(kappa_i)
-
-                            rpg_gap_probe_units.append(
-                                (
-                                    unit_id,
-                                    final_x,
-                                    final_y,
-                                    d_hat_x,
-                                    d_hat_y,
-                                    radius,
-                                )
-                            )
-
-                        if rpg_gap_probe_units:
-                            rpg_gap_sample_cap = top_k_raw // 3
-                            if rpg_gap_sample_cap < 1:
-                                rpg_gap_sample_cap = 1
-                            elif rpg_gap_sample_cap > 8:
-                                rpg_gap_sample_cap = 8
-                            # Deterministic probe set: farthest outliers first.
-                            probe_units = sorted(
-                                rpg_gap_probe_units,
-                                key=lambda row: row[5],
-                                reverse=True,
-                            )[:rpg_gap_sample_cap]
-                            for unit_id, final_x, final_y, d_hat_x, d_hat_y, _radius in probe_units:
-                                gap_candidates = []
-                                for ally_id in alive_unit_ids:
-                                    if ally_id == unit_id:
-                                        continue
-                                    ax, ay = final_positions[ally_id]
-                                    proj = ((ax - final_x) * d_hat_x) + ((ay - final_y) * d_hat_y)
-                                    if proj > 0.0:
-                                        gap_candidates.append(proj)
-                                if gap_candidates:
-                                    g_i = min(gap_candidates)
-                                    rpg_gap_values.append(g_i)
-                                    if g_i <= rpg_eps:
-                                        rpg_gap_zero_like_fleet += 1
-                                else:
-                                    rpg_gap_no_inward_fleet += 1
-
-                        if rpg_outlier_count > 0:
-                            g_zero_like_ratio = rpg_gap_zero_like_fleet / max(1, len(rpg_gap_values))
-                            no_inward_neighbor_ratio = rpg_gap_no_inward_fleet / rpg_outlier_count
-                        else:
-                            g_zero_like_ratio = 0.0
-                            no_inward_neighbor_ratio = 0.0
-
-                        module_rpg_fleet[fleet_id] = {
-                            "r_shell": r_rms,
-                            "delta": rpg_delta,
-                            "tau": tau,
-                            "outlier_threshold": rpg_outlier_threshold,
-                            "outlier_count": rpg_outlier_count,
-                            "projection_suppression_candidate_count": rpg_projection_suppression_count,
-                            "movement_outward_bias_count": rpg_outward_bias_count,
-                            "tangential_neutral_count": rpg_tangential_count,
-                            "inward_free_and_effective_count": rpg_inward_effective_count,
-                            "suppressed_inward_count": rpg_suppressed_count,
-                            "outward_ratio": (rpg_outward_bias_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                            "tangential_ratio": (rpg_tangential_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                            "suppressed_ratio": (rpg_suppressed_count / rpg_outlier_count) if rpg_outlier_count > 0 else 0.0,
-                            "g_probe_cap": rpg_gap_sample_cap,
-                            "g_probe_count": len(rpg_gap_values) + rpg_gap_no_inward_fleet,
-                            "kappa_distribution": _dist_summary(rpg_kappa_values),
-                            "g_distribution": _dist_summary(rpg_gap_values),
-                            "g_zero_like_ratio": g_zero_like_ratio,
-                            "no_inward_neighbor_ratio": no_inward_neighbor_ratio,
-                        }
-                        rpg_kappa_all.extend(rpg_kappa_values)
-                        rpg_gap_all.extend(rpg_gap_values)
-                        rpg_gap_zero_like_count += rpg_gap_zero_like_fleet
-                        rpg_gap_no_inward_neighbor_count += rpg_gap_no_inward_fleet
-
-                    if diag4_legacy_enabled:
-                        # Module D: re-entry obstruction for persistent outliers.
-                        for unit_id in persistent_ids:
-                            ux, uy = final_positions[unit_id]
-                            dx_c = cx - ux
-                            dy_c = cy - uy
-                            norm_c = math.sqrt((dx_c * dx_c) + (dy_c * dy_c))
-                            if norm_c > 0.0:
-                                rx = dx_c / norm_c
-                                ry = dy_c / norm_c
-                            else:
-                                rx = 0.0
-                                ry = 0.0
-                            radius_u = radius_by_unit.get(unit_id, 0.0)
-
-                            sector_count = 0
-                            sector_distances = []
-                            inner_neighbors = 0
-                            outer_neighbors = 0
-                            for ally_id in alive_unit_ids:
-                                if ally_id == unit_id:
-                                    continue
-                                ax, ay = final_positions[ally_id]
-                                vx = ax - ux
-                                vy = ay - uy
-                                dist_sq = (vx * vx) + (vy * vy)
-                                if dist_sq <= 0.0:
-                                    continue
-                                dist = math.sqrt(dist_sq)
-                                dot = (vx * rx) + (vy * ry)
-                                if dot > 0.0:
-                                    cosang = dot / dist
-                                    if cosang >= sector_cos:
-                                        sector_count += 1
-                                        sector_distances.append(dist)
-
-                                radius_ally = radius_by_unit.get(ally_id, 0.0)
-                                if (radius_u - self.attack_range) <= radius_ally < radius_u:
-                                    inner_neighbors += 1
-                                elif radius_u < radius_ally <= (radius_u + self.attack_range):
-                                    outer_neighbors += 1
-
-                            sector_distances.sort()
-                            nearest_k = sector_distances[:neighbor_k]
-                            if nearest_k:
-                                nearest_k_mean = sum(nearest_k) / len(nearest_k)
-                            else:
-                                nearest_k_mean = 0.0
-
-                            denom = inner_neighbors + outer_neighbors
-                            if denom > 0:
-                                radial_density_gradient = (inner_neighbors - outer_neighbors) / denom
-                            else:
-                                radial_density_gradient = 0.0
-
-                            module_d_persistent.append(
-                                {
-                                    "fleet_id": fleet_id,
-                                    "unit_id": unit_id,
-                                    "sector_neighbor_count": sector_count,
-                                    "nearest_k_distance_return_dir": nearest_k_mean,
-                                    "radial_density_gradient": radial_density_gradient,
-                                    "inner_neighbor_count": inner_neighbors,
-                                    "outer_neighbor_count": outer_neighbors,
-                                    "return_attempt_count": return_attempt_count.get(unit_id, 0),
-                                    "consecutive_outlier_duration": outlier_duration.get(unit_id, 0),
-                                    "max_outlier_duration": max_outlier_duration.get(unit_id, 0),
-                                    "rolling_in_contact_ratio": 0.0,
-                                }
-                            )
-
-                if diag4_rpg_enabled:
-                    alive_final_ids = set(final_positions.keys())
-                    for unit_id in list(rpg_outlier_entry.keys()):
-                        if unit_id not in alive_final_ids:
-                            del rpg_outlier_entry[unit_id]
-
-                    total_rpg_outliers = 0
-                    total_rpg_projection_suppression = 0
-                    total_rpg_outward_bias = 0
-                    total_rpg_inward_effective = 0
-                    total_rpg_tangential = 0
-                    total_rpg_suppressed = 0
-                    by_fleet_return = {}
-                    for fleet_id, fleet_payload in module_rpg_fleet.items():
-                        total_rpg_outliers += int(fleet_payload.get("outlier_count", 0))
-                        total_rpg_projection_suppression += int(
-                            fleet_payload.get("projection_suppression_candidate_count", 0)
-                        )
-                        total_rpg_outward_bias += int(fleet_payload.get("movement_outward_bias_count", 0))
-                        total_rpg_tangential += int(fleet_payload.get("tangential_neutral_count", 0))
-                        total_rpg_inward_effective += int(
-                            fleet_payload.get("inward_free_and_effective_count", 0)
-                        )
-                        total_rpg_suppressed += int(fleet_payload.get("suppressed_inward_count", 0))
-                        fleet_stats = rpg_return_stats["by_fleet"].get(fleet_id, {})
-                        fleet_success = int(fleet_stats.get("success", 0))
-                        fleet_fail = int(fleet_stats.get("fail", 0))
-                        fleet_eval = fleet_success + fleet_fail
-                        fleet_payload["p_return_window"] = {
-                            "window": rpg_window,
-                            "success_events": fleet_success,
-                            "fail_events": fleet_fail,
-                            "evaluated_events": fleet_eval,
-                            "p_return": (fleet_success / fleet_eval) if fleet_eval > 0 else 0.0,
-                        }
-                        by_fleet_return[fleet_id] = fleet_payload["p_return_window"]
-
-                    overall_stats = rpg_return_stats.get("overall", {})
-                    overall_success = int(overall_stats.get("success", 0))
-                    overall_fail = int(overall_stats.get("fail", 0))
-                    overall_eval = overall_success + overall_fail
-                    by_class_return = {}
-                    class_stats_map = rpg_return_stats.get("by_class", {})
-                    if isinstance(class_stats_map, dict):
-                        for cls_name, cls_stats in class_stats_map.items():
-                            if not isinstance(cls_stats, dict):
-                                continue
-                            cls_success = int(cls_stats.get("success", 0))
-                            cls_fail = int(cls_stats.get("fail", 0))
-                            cls_eval = cls_success + cls_fail
-                            by_class_return[cls_name] = {
-                                "success_events": cls_success,
-                                "fail_events": cls_fail,
-                                "evaluated_events": cls_eval,
-                                "p_return": (cls_success / cls_eval) if cls_eval > 0 else 0.0,
-                            }
-                    g_zero_like_ratio_global = (
-                        rpg_gap_zero_like_count / len(rpg_gap_all)
-                        if rpg_gap_all
-                        else 0.0
-                    )
-                    no_inward_neighbor_ratio_global = (
-                        rpg_gap_no_inward_neighbor_count / total_rpg_outliers
-                        if total_rpg_outliers > 0
-                        else 0.0
-                    )
-
-                    module_rpg_payload = {
-                        "canonical": {
-                            "radial_direction": "d_hat=(C_f-x_i)/||C_f-x_i|| (inward)",
-                            "inward_definition": "v_tilde_r_i > 0",
-                            "r_shell_definition": "R_shell=R_rms",
-                        },
-                        "constants": {
-                            "epsilon": rpg_eps,
-                            "delta": rpg_delta,
-                            "tau": tau,
-                            "p_return_window": rpg_window,
-                        },
-                        "separation_counts": {
-                            "projection_suppression_candidate_count": total_rpg_projection_suppression,
-                            "movement_outward_bias_count": total_rpg_outward_bias,
-                            "tangential_neutral_count": total_rpg_tangential,
-                            "inward_free_and_effective_count": total_rpg_inward_effective,
-                            "suppressed_inward_count": total_rpg_suppressed,
-                            "rpg_outlier_count": total_rpg_outliers,
-                        },
-                        "category_ratios": {
-                            "outward_ratio": (total_rpg_outward_bias / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                            "tangential_ratio": (total_rpg_tangential / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                            "suppressed_ratio": (total_rpg_suppressed / total_rpg_outliers) if total_rpg_outliers > 0 else 0.0,
-                        },
-                        "kappa_distribution": _dist_summary(rpg_kappa_all),
-                        "g_distribution": _dist_summary(rpg_gap_all),
-                        "g_zero_like_ratio": g_zero_like_ratio_global,
-                        "no_inward_neighbor_ratio": no_inward_neighbor_ratio_global,
-                        "p_return": {
-                            "window": rpg_window,
-                            "overall": {
-                                "success_events": overall_success,
-                                "fail_events": overall_fail,
-                                "evaluated_events": overall_eval,
-                                "p_return": (overall_success / overall_eval) if overall_eval > 0 else 0.0,
-                            },
-                            "by_fleet": by_fleet_return,
-                            "by_class": by_class_return,
-                        },
-                        "fleet_stats": module_rpg_fleet,
-                    }
-
-                module_c_records = []
-                if diag4_legacy_enabled:
-                    # Module C window attribution for persistent outlier emergence.
-                    for unit_id in sorted(set(persistent_diag4_units)):
-                        if unit_id in persistent_records:
-                            continue
-                        emergence_tick = first_outlier_tick.get(unit_id, state.tick)
-                        history = disp_history.get(unit_id, [])
-                        window_start = emergence_tick - 3
-                        window_end = emergence_tick + 3
-                        window = [
-                            sample
-                            for sample in history
-                            if window_start <= sample[0] <= window_end
-                        ]
-                        cum_move = sum(sample[1] for sample in window)
-                        cum_fsr = sum(sample[2] for sample in window)
-                        cum_proj = sum(sample[3] for sample in window)
-                        total = cum_move + cum_fsr + cum_proj
-                        dominant = "move"
-                        dominant_val = cum_move
-                        if cum_fsr > dominant_val:
-                            dominant = "fsr"
-                            dominant_val = cum_fsr
-                        if cum_proj > dominant_val:
-                            dominant = "projection"
-                        persistent_records[unit_id] = {
-                            "unit_id": unit_id,
-                            "emergence_tick": emergence_tick,
-                            "window_start_tick": window_start,
-                            "window_end_tick": window_end,
-                            "window_samples": len(window),
-                            "cum_delta_move_norm": cum_move,
-                            "cum_delta_fsr_norm": cum_fsr,
-                            "cum_delta_projection_norm": cum_proj,
-                            "cum_delta_total_norm": total,
-                            "dominant_component": dominant,
-                            "delta_separation_component_available": False,
-                        }
-
-                    for unit_id in sorted(set(persistent_diag4_units)):
-                        record = persistent_records.get(unit_id)
-                        if isinstance(record, dict):
-                            module_c_records.append(record)
-
-                diag4_payload = {
-                    "module_a": {
-                        "top_k": top_k,
-                        "neighbor_radius_sep": r_sep,
-                        "neighbor_radius_contact": self.attack_range,
-                        "topk_candidates": module_a_topk,
-                    },
-                    "module_b": {
-                        "state_def": {
-                            "core": "r <= R_p50",
-                            "shell": "R_p50 < r <= max(R_p90 + margin, eta*R_rms)",
-                            "outlier": "r > max(R_p90 + margin, eta*R_rms)",
-                        },
-                        "margin": min_unit_spacing,
-                        "eta": outlier_eta,
-                        "fleet_state_stats": module_b_fleet,
-                        "transition_counts_cumulative": transition_counts,
-                        "return_attempt_count": return_attempt_count,
-                        "outlier_return_count": outlier_return_count,
-                    },
-                    "module_c": {
-                        "displacement_note": "delta_move/fsr/projection are directly measured from stage boundaries in the single-pass pipeline.",
-                        "separation_component_available": False,
-                        "persistent_emergence_records": module_c_records,
-                    },
-                    "module_d": {
-                        "return_sector_deg": sector_deg,
-                        "nearest_k": neighbor_k,
-                        "persistent_reentry": module_d_persistent,
-                    },
-                }
-                if module_rpg_payload is not None:
-                    diag4_payload["module_rpg"] = module_rpg_payload
-
-            self._debug_diag_pending = {
-                "tick": state.tick,
-                "projection": {
-                    "max_projection_displacement": projection_displacement_max,
-                    "mean_projection_displacement": projection_displacement_mean,
-                    "projection_pairs_count": projection_pairs_count,
-                    "collision_pairs_count": projection_pairs_count,
-                },
-                "boundary_soft": {
-                    "boundary_band_width_w": boundary_band_width,
-                    "boundary_band_fraction": boundary_band_fraction,
-                    "boundary_soft_strength": boundary_soft_strength,
-                    "boundary_force_events_count_tick": boundary_force_events_count_tick,
-                },
-                "outliers": outlier_stats,
-                "max_outlier_persistence": max_outlier_persistence,
-                "persistent_outlier_unit_ids": sorted(set(persistent_outlier_units)),
-            }
-            boundary_force_total = getattr(self, "_debug_boundary_force_events_total", 0)
-            boundary_force_total += boundary_force_events_count_tick
-            self._debug_boundary_force_events_total = boundary_force_total
-            self._debug_diag_pending["boundary_soft"]["boundary_force_events_count_total"] = boundary_force_total
-            if diag4_payload is not None:
-                self._debug_diag_pending["diag4"] = diag4_payload
+            self._debug_diag_pending = self._build_movement_diag_pending(
+                state=state,
+                updated_units=updated_units,
+                tentative_positions=tentative_positions,
+                delta_position=delta_position,
+                projection_pairs_count=projection_pairs_count,
+                boundary_band_width=boundary_band_width,
+                boundary_band_fraction=boundary_band_fraction,
+                boundary_soft_strength=boundary_soft_strength,
+                boundary_force_events_count_tick=boundary_force_events_count_tick,
+                min_unit_spacing=min_unit_spacing,
+                r_sep=r_sep,
+                r_sep_sq=r_sep_sq,
+                attack_range_sq=attack_range_sq,
+                snapshot_positions=snapshot_positions,
+                post_move_positions=post_move_positions,
+                post_fsr_positions=post_fsr_positions,
+                final_positions=final_positions,
+                diag4_legacy_enabled=diag4_legacy_enabled,
+                diag4_rpg_enabled=diag4_rpg_enabled,
+            )
         else:
             self._debug_diag_pending = None
 
