@@ -501,23 +501,53 @@ def run_single_case(base_settings: dict, seed_profile: dict, fr: int, mb: int, p
         arena_size=arena_size,
     )
 
-    (
-        final_state,
-        trajectory,
-        alive_trajectory,
-        fleet_size_trajectory,
-        observer_telemetry,
-        combat_telemetry,
-        bridge_telemetry,
-        _collapse_shadow_telemetry,
-        _position_frames,
-    ) = test_run.run_simulation(
-        initial_state=state,
+    execution_cfg = test_run.SimulationExecutionConfig(
         steps=-1,
         capture_positions=False,
-        observer_enabled=True,
-        runtime_decision_source=cohesion_source_effective,
+        frame_stride=1,
+        include_target_lines=False,
+        print_tick_summary=False,
+        plot_diagnostics_enabled=False,
+    )
+    runtime_cfg = test_run.SimulationRuntimeConfig(
+        decision_source=cohesion_source_effective,
         movement_model=movement_model_effective,
+        movement=test_run.SimulationMovementConfig(
+            v3a_experiment=movement_v3a_experiment,
+            centroid_probe_scale=centroid_probe_scale,
+            continuous_fr_shaping_enabled=continuous_fr_shaping_enabled,
+            continuous_fr_shaping_mode=continuous_fr_shaping_mode,
+            continuous_fr_shaping_a=continuous_fr_shaping_a,
+            continuous_fr_shaping_sigma=continuous_fr_shaping_sigma,
+            continuous_fr_shaping_p=continuous_fr_shaping_p,
+            continuous_fr_shaping_q=continuous_fr_shaping_q,
+            continuous_fr_shaping_beta=continuous_fr_shaping_beta,
+            continuous_fr_shaping_gamma=continuous_fr_shaping_gamma,
+            odw_posture_bias_enabled=odw_enabled,
+            odw_posture_bias_k=odw_k,
+            odw_posture_bias_clip_delta=odw_clip_delta,
+            v3_connect_radius_multiplier=v3_connect_radius_multiplier,
+            v3_r_ref_radius_multiplier=v3_r_ref_radius_multiplier,
+        ),
+        contact=test_run.SimulationContactConfig(
+            attack_range=attack_range,
+            damage_per_tick=damage_per_tick,
+            separation_radius=unit_spacing,
+            fire_quality_alpha=fire_quality_alpha,
+            contact_hysteresis_h=contact_hysteresis_h,
+            ch_enabled=(contact_hysteresis_h > 0.0),
+            fsr_enabled=(fsr_strength > 0.0),
+            fsr_strength=fsr_strength,
+            alpha_sep=alpha_sep,
+        ),
+        boundary=test_run.SimulationBoundaryConfig(
+            enabled=boundary_enabled,
+            hard_enabled=boundary_hard_enabled,
+            soft_strength=boundary_soft_strength,
+        ),
+    )
+    observer_cfg = test_run.SimulationObserverConfig(
+        enabled=True,
         bridge_theta_split=float(
             test_run.get_event_bridge_setting(settings, "theta_split", test_run.BRIDGE_THETA_SPLIT_DEFAULT)
         ),
@@ -562,38 +592,23 @@ def run_single_case(base_settings: dict, seed_profile: dict, fr: int, mb: int, p
                 settings, "min_conditions", test_run.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT
             )
         ),
-        frame_stride=1,
-        attack_range=attack_range,
-        damage_per_tick=damage_per_tick,
-        separation_radius=unit_spacing,
-        fire_quality_alpha=fire_quality_alpha,
-        contact_hysteresis_h=contact_hysteresis_h,
-        ch_enabled=(contact_hysteresis_h > 0.0),
-        fsr_enabled=(fsr_strength > 0.0),
-        fsr_strength=fsr_strength,
-        boundary_enabled=boundary_enabled,
-        boundary_hard_enabled=boundary_hard_enabled,
-        alpha_sep=alpha_sep,
-        boundary_soft_strength=boundary_soft_strength,
-        include_target_lines=False,
-        print_tick_summary=False,
-        plot_diagnostics_enabled=False,
-        movement_v3a_experiment=movement_v3a_experiment,
-        centroid_probe_scale=centroid_probe_scale,
-        continuous_fr_shaping_enabled=continuous_fr_shaping_enabled,
-        continuous_fr_shaping_mode=continuous_fr_shaping_mode,
-        continuous_fr_shaping_a=continuous_fr_shaping_a,
-        continuous_fr_shaping_sigma=continuous_fr_shaping_sigma,
-        continuous_fr_shaping_p=continuous_fr_shaping_p,
-        continuous_fr_shaping_q=continuous_fr_shaping_q,
-        continuous_fr_shaping_beta=continuous_fr_shaping_beta,
-        continuous_fr_shaping_gamma=continuous_fr_shaping_gamma,
-        odw_posture_bias_enabled=odw_enabled,
-        odw_posture_bias_k=odw_k,
-        odw_posture_bias_clip_delta=odw_clip_delta,
-        v3_connect_radius_multiplier=v3_connect_radius_multiplier,
-        v3_r_ref_radius_multiplier=v3_r_ref_radius_multiplier,
-        runtime_diag_enabled=False,
+    )
+    (
+        final_state,
+        trajectory,
+        alive_trajectory,
+        fleet_size_trajectory,
+        observer_telemetry,
+        combat_telemetry,
+        bridge_telemetry,
+        _collapse_shadow_telemetry,
+        _position_frames,
+    ) = test_run.run_simulation(
+        initial_state=state,
+        engine_cls=test_run.TestModeEngineTickSkeleton,
+        execution_cfg=execution_cfg,
+        runtime_cfg=runtime_cfg,
+        observer_cfg=observer_cfg,
     )
 
     alive_a_series = [int(v) for v in alive_trajectory.get("A", [])]

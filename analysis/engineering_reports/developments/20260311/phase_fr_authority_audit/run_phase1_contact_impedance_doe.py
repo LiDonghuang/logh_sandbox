@@ -16,11 +16,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from test_run.test_run_v1_0 import (  # noqa: E402
-    HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2,
-    HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2,
-    HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
-    HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1,
     PRE_TL_TARGET_SUBSTRATE_NEAREST5,
+    SimulationBoundaryConfig,
+    SimulationContactConfig,
+    SimulationExecutionConfig,
+    SimulationMovementConfig,
+    SimulationObserverConfig,
+    SimulationRuntimeConfig,
+    TestModeEngineTickSkeleton,
     build_initial_state,
     get_runtime_setting,
     load_json_file,
@@ -29,6 +32,11 @@ from test_run.test_run_v1_0 import (  # noqa: E402
     run_simulation,
     to_personality_parameters,
 )
+
+HOSTILE_CONTACT_IMPEDANCE_MODE_OFF = "off"
+HOSTILE_CONTACT_IMPEDANCE_MODE_REPULSION_V1 = "repulsion_v1"
+HOSTILE_CONTACT_IMPEDANCE_MODE_DAMPING_V2 = "damping_v2"
+HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 = "hybrid_v2"
 
 
 SETTINGS_PATH = ROOT / "test_run" / "test_run_v1_0.settings.json"
@@ -339,13 +347,52 @@ def run_one(
         fleet_a_facing_angle_deg=float(fixture["fleet_a_facing_angle_deg"]),
         fleet_b_facing_angle_deg=float(fixture["fleet_b_facing_angle_deg"]),
     )
-    final_state, _traj, _alive_trajectory, _fleet_size_trajectory, observer_telemetry, combat_telemetry, _bridge, _collapse, _frames = run_simulation(
-        initial_state=initial_state,
+    execution_cfg = SimulationExecutionConfig(
         steps=STEPS,
         capture_positions=False,
-        observer_enabled=True,
-        runtime_decision_source="v3_test",
+        frame_stride=1,
+        include_target_lines=False,
+        print_tick_summary=False,
+        plot_diagnostics_enabled=False,
+    )
+    runtime_cfg = SimulationRuntimeConfig(
+        decision_source="v3_test",
         movement_model=movement_model_effective,
+        movement=SimulationMovementConfig(
+            v3a_experiment=str(get_runtime_setting(settings, "movement_v3a_experiment", "base")),
+            centroid_probe_scale=float(get_runtime_setting(settings, "centroid_probe_scale", 1.0)),
+            pre_tl_target_substrate=PRE_TL_TARGET_SUBSTRATE_NEAREST5,
+            symmetric_movement_sync_enabled=bool(get_runtime_setting(settings, "symmetric_movement_sync_enabled", True)),
+            odw_posture_bias_enabled=bool(get_runtime_setting(settings, "odw_posture_bias_enabled", False)),
+            odw_posture_bias_k=float(get_runtime_setting(settings, "odw_posture_bias_k", 0.0)),
+            odw_posture_bias_clip_delta=float(get_runtime_setting(settings, "odw_posture_bias_clip_delta", 0.2)),
+            v2_connect_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_connect_radius_multiplier"]),
+            v3_connect_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_connect_radius_multiplier"]),
+            v3_r_ref_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_r_ref_radius_multiplier"]),
+        ),
+        contact=SimulationContactConfig(
+            attack_range=ATTACK_RANGE_FIXED,
+            damage_per_tick=float(settings["unit"]["damage_per_tick"]),
+            separation_radius=float(min_separation),
+            fire_quality_alpha=float(get_runtime_setting(settings, "fire_quality_alpha", 0.1)),
+            contact_hysteresis_h=float(get_runtime_setting(settings, "contact_hysteresis_h", 0.1)),
+            ch_enabled=float(get_runtime_setting(settings, "contact_hysteresis_h", 0.1)) > 0.0,
+            fsr_enabled=float(get_runtime_setting(settings, "fsr_strength", 0.1)) > 0.0,
+            fsr_strength=float(get_runtime_setting(settings, "fsr_strength", 0.1)),
+            alpha_sep=float(get_runtime_setting(settings, "alpha_sep", 0.6)),
+            hostile_contact_impedance_mode=str(config["mode"]),
+            hostile_contact_impedance_v2_radius_multiplier=float(config["v2_radius_multiplier"]),
+            hostile_contact_impedance_v2_repulsion_max_disp_ratio=float(config["v2_repulsion_max_disp_ratio"]),
+            hostile_contact_impedance_v2_forward_damping_strength=float(config["v2_forward_damping_strength"]),
+        ),
+        boundary=SimulationBoundaryConfig(
+            enabled=False,
+            hard_enabled=False,
+            soft_strength=float(get_runtime_setting(settings, "boundary_soft_strength", 0.0)),
+        ),
+    )
+    observer_cfg = SimulationObserverConfig(
+        enabled=True,
         bridge_theta_split=float(settings["runtime"]["observer"]["event_bridge"]["theta_split"]),
         bridge_theta_env=float(settings["runtime"]["observer"]["event_bridge"]["theta_env"]),
         bridge_sustain_ticks=int(settings["runtime"]["observer"]["event_bridge"]["sustain_ticks"]),
@@ -356,48 +403,13 @@ def run_one(
         collapse_shadow_attrition_window=int(settings["runtime"]["observer"]["collapse_shadow"]["attrition_window"]),
         collapse_shadow_sustain_ticks=int(settings["runtime"]["observer"]["collapse_shadow"]["sustain_ticks"]),
         collapse_shadow_min_conditions=int(settings["runtime"]["observer"]["collapse_shadow"]["min_conditions"]),
-        frame_stride=1,
-        attack_range=ATTACK_RANGE_FIXED,
-        damage_per_tick=float(settings["unit"]["damage_per_tick"]),
-        separation_radius=float(min_separation),
-        fire_quality_alpha=float(get_runtime_setting(settings, "fire_quality_alpha", 0.1)),
-        contact_hysteresis_h=float(get_runtime_setting(settings, "contact_hysteresis_h", 0.1)),
-        ch_enabled=float(get_runtime_setting(settings, "contact_hysteresis_h", 0.1)) > 0.0,
-        fsr_enabled=float(get_runtime_setting(settings, "fsr_strength", 0.1)) > 0.0,
-        fsr_strength=float(get_runtime_setting(settings, "fsr_strength", 0.1)),
-        boundary_enabled=False,
-        boundary_hard_enabled=False,
-        include_target_lines=False,
-        print_tick_summary=False,
-        plot_diagnostics_enabled=False,
-        boundary_soft_strength=float(get_runtime_setting(settings, "boundary_soft_strength", 0.0)),
-        alpha_sep=float(get_runtime_setting(settings, "alpha_sep", 0.6)),
-        movement_v3a_experiment=str(get_runtime_setting(settings, "movement_v3a_experiment", "base")),
-        centroid_probe_scale=float(get_runtime_setting(settings, "centroid_probe_scale", 1.0)),
-        pre_tl_target_substrate=PRE_TL_TARGET_SUBSTRATE_NEAREST5,
-        odw_posture_bias_enabled=bool(get_runtime_setting(settings, "odw_posture_bias_enabled", False)),
-        odw_posture_bias_k=float(get_runtime_setting(settings, "odw_posture_bias_k", 0.0)),
-        odw_posture_bias_clip_delta=float(get_runtime_setting(settings, "odw_posture_bias_clip_delta", 0.2)),
-        symmetric_movement_sync_enabled=bool(get_runtime_setting(settings, "symmetric_movement_sync_enabled", True)),
-        hostile_contact_impedance_mode=str(config["mode"]),
-        hostile_contact_impedance_enabled=bool(config["repulsion_v1_enabled"]),
-        hostile_contact_impedance_strength=float(config["repulsion_v1_strength"]),
-        hostile_contact_impedance_radius_multiplier=float(config["repulsion_v1_radius_multiplier"]),
-        hostile_contact_impedance_v2_radius_multiplier=float(config["v2_radius_multiplier"]),
-        hostile_contact_impedance_v2_repulsion_max_disp_ratio=float(config["v2_repulsion_max_disp_ratio"]),
-        hostile_contact_impedance_v2_forward_damping_strength=float(config["v2_forward_damping_strength"]),
-        continuous_fr_shaping_enabled=False,
-        continuous_fr_shaping_mode="off",
-        continuous_fr_shaping_a=0.0,
-        continuous_fr_shaping_sigma=0.15,
-        continuous_fr_shaping_p=1.0,
-        continuous_fr_shaping_q=1.0,
-        continuous_fr_shaping_beta=0.0,
-        continuous_fr_shaping_gamma=0.0,
-        v2_connect_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_connect_radius_multiplier"]),
-        v3_connect_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_connect_radius_multiplier"]),
-        v3_r_ref_radius_multiplier=float(settings["runtime"]["semantics"]["collapse_signal"]["v3_r_ref_radius_multiplier"]),
-        runtime_diag_enabled=False,
+    )
+    final_state, _traj, _alive_trajectory, _fleet_size_trajectory, observer_telemetry, combat_telemetry, _bridge, _collapse, _frames = run_simulation(
+        initial_state=initial_state,
+        engine_cls=TestModeEngineTickSkeleton,
+        execution_cfg=execution_cfg,
+        runtime_cfg=runtime_cfg,
+        observer_cfg=observer_cfg,
     )
 
     initial_total = float(fixture["fleet_a_size"] + fixture["fleet_b_size"])

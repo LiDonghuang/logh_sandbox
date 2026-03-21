@@ -23,7 +23,14 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(ANALYSIS_DIR) not in sys.path:
     sys.path.insert(0, str(ANALYSIS_DIR))
 
-from test_run_v1_0 import (
+from test_run.test_run_v1_0 import (
+    SimulationBoundaryConfig,
+    SimulationContactConfig,
+    SimulationExecutionConfig,
+    SimulationMovementConfig,
+    SimulationObserverConfig,
+    SimulationRuntimeConfig,
+    TestModeEngineTickSkeleton,
     build_initial_state,
     compute_formation_snapshot_metrics,
     get_battlefield_setting,
@@ -322,6 +329,43 @@ def main():
             arena_size=arena_size,
         )
 
+        execution_cfg = SimulationExecutionConfig(
+            steps=-1,
+            capture_positions=True,
+            frame_stride=10,
+            include_target_lines=False,
+            print_tick_summary=False,
+            plot_diagnostics_enabled=False,
+        )
+        runtime_cfg = SimulationRuntimeConfig(
+            decision_source=str(row.get("runtime_decision_source_effective", "v2")),
+            movement_model=str(row.get("movement_model", "v1")),
+            movement=SimulationMovementConfig(),
+            contact=SimulationContactConfig(
+                attack_range=attack_range,
+                damage_per_tick=damage_per_tick,
+                separation_radius=unit_spacing,
+                fire_quality_alpha=fire_quality_alpha,
+                contact_hysteresis_h=contact_hysteresis_h,
+                ch_enabled=ch_enabled,
+                fsr_enabled=fsr_enabled,
+                fsr_strength=fsr_strength,
+            ),
+            boundary=SimulationBoundaryConfig(enabled=boundary_enabled),
+        )
+        observer_cfg = SimulationObserverConfig(
+            enabled=True,
+            bridge_theta_split=bridge_theta_split,
+            bridge_theta_env=bridge_theta_env,
+            bridge_sustain_ticks=bridge_sustain_ticks,
+            collapse_shadow_theta_conn_default=collapse_shadow_theta_conn_default,
+            collapse_shadow_theta_coh_default=collapse_shadow_theta_coh_default,
+            collapse_shadow_theta_force_default=collapse_shadow_theta_force_default,
+            collapse_shadow_theta_attr_default=collapse_shadow_theta_attr_default,
+            collapse_shadow_attrition_window=collapse_shadow_attrition_window,
+            collapse_shadow_sustain_ticks=collapse_shadow_sustain_ticks,
+            collapse_shadow_min_conditions=collapse_shadow_min_conditions,
+        )
         (
             final_state,
             _trajectory,
@@ -334,33 +378,10 @@ def main():
             position_frames,
         ) = run_simulation(
             initial_state=state,
-            steps=-1,
-            capture_positions=True,
-            observer_enabled=True,
-            runtime_decision_source=str(row.get("runtime_decision_source_effective", "v2")),
-            movement_model=str(row.get("movement_model", "v1")),
-            bridge_theta_split=bridge_theta_split,
-            bridge_theta_env=bridge_theta_env,
-            bridge_sustain_ticks=bridge_sustain_ticks,
-            collapse_shadow_theta_conn_default=collapse_shadow_theta_conn_default,
-            collapse_shadow_theta_coh_default=collapse_shadow_theta_coh_default,
-            collapse_shadow_theta_force_default=collapse_shadow_theta_force_default,
-            collapse_shadow_theta_attr_default=collapse_shadow_theta_attr_default,
-            collapse_shadow_attrition_window=collapse_shadow_attrition_window,
-            collapse_shadow_sustain_ticks=collapse_shadow_sustain_ticks,
-            collapse_shadow_min_conditions=collapse_shadow_min_conditions,
-            frame_stride=10,
-            attack_range=attack_range,
-            damage_per_tick=damage_per_tick,
-            separation_radius=unit_spacing,
-            fire_quality_alpha=fire_quality_alpha,
-            contact_hysteresis_h=contact_hysteresis_h,
-            ch_enabled=ch_enabled,
-            fsr_enabled=fsr_enabled,
-            fsr_strength=fsr_strength,
-            boundary_enabled=boundary_enabled,
-            include_target_lines=False,
-            print_tick_summary=False,
+            engine_cls=TestModeEngineTickSkeleton,
+            execution_cfg=execution_cfg,
+            runtime_cfg=runtime_cfg,
+            observer_cfg=observer_cfg,
         )
 
         ar_a = []

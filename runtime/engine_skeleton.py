@@ -14,9 +14,11 @@ class EngineTickSkeleton:
         self.attack_range = float(attack_range)
         self.damage_per_tick = float(damage_per_tick)
         self.separation_radius = float(separation_radius)
+        self.CH_ENABLED = True
+        self.contact_hysteresis_h = 0.10
+        self.fire_quality_alpha = 0.0
         self.debug_contact_assert = False
         self.debug_contact_sample_ticks = 50
-        self.debug_last_combat_stats = {}
         self.FSR_ENABLED = False
         self.BOUNDARY_SOFT_ENABLED = True
         self.BOUNDARY_HARD_ENABLED = False
@@ -25,7 +27,6 @@ class EngineTickSkeleton:
         self.fsr_strength = 0.0
         self.fsr_lambda_delta = 0.10
         self._fsr_reference = {}
-        self.debug_last_fsr_stats = {}
         self.debug_fsr_diag_enabled = False
         self.debug_outlier_eta = 1.8
         self.debug_outlier_persistence_ticks = 20
@@ -36,37 +37,20 @@ class EngineTickSkeleton:
         self.debug_diag4_neighbor_k = 3
         self.debug_diag4_rpg_enabled = False
         self.debug_diag4_rpg_window = 20
-        self._debug_outlier_streaks = {}
         self._debug_diag_pending = None
         self.debug_diag_timeseries = []
-        self.debug_diag_last_tick = {}
-        self._debug_diag4_contact_history = {}
-        self._debug_diag4_prev_unit_state = {}
-        self._debug_diag4_prev_unit_radius = {}
-        self._debug_diag4_transition_counts = {}
-        self._debug_diag4_first_outlier_tick = {}
-        self._debug_diag4_return_attempt_count = {}
-        self._debug_diag4_outlier_return_count = {}
-        self._debug_diag4_outlier_duration = {}
-        self._debug_diag4_max_outlier_duration = {}
-        self._debug_diag4_disp_history = {}
-        self._debug_diag4_persistent_records = {}
-        self._debug_diag4_outlier_streaks = {}
-        self._debug_diag4_rpg_outlier_entry = {}
-        self._debug_diag4_rpg_return_stats = {}
-        self._debug_boundary_force_events_total = 0
+        self._debug_state = {}
         # Phase V.4-b: canonical decision source switches to cohesion_v2.
         # "v1_debug" is retained only for baseline comparison / diagnostics.
         self.COHESION_DECISION_SOURCE = "v2"
         self.debug_cohesion_v1_enabled = False
-        self.debug_last_cohesion_v1 = {}
-        self.debug_last_cohesion_v2 = {}
-        self.debug_last_cohesion_v2_components = {}
         self.debug_cohesion_v3_shadow_enabled = False
-        self.debug_last_cohesion_v3 = {}
-        self.debug_last_cohesion_v3_components = {}
-        self._debug_prev_cohesion_v1 = {}
         self.MOVEMENT_MODEL = "v3a"
+        self.MOVEMENT_V3A_EXPERIMENT = "base"
+        self.CENTROID_PROBE_SCALE = 1.0
+        self.ODW_POSTURE_BIAS_ENABLED = False
+        self.ODW_POSTURE_BIAS_K = 0.0
+        self.ODW_POSTURE_BIAS_CLIP_DELTA = 0.2
 
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
@@ -126,11 +110,32 @@ class EngineTickSkeleton:
             "max": vals[-1],
         }
 
+    @staticmethod
+    def _fleet_local_numeric_index(unit_id: str, default_rank: int) -> int:
+        numeric_index = 0
+        place = 1
+        seen_digit = False
+        for ch in reversed(unit_id):
+            digit = ord(ch) - ord("0")
+            if 0 <= digit <= 9:
+                numeric_index += digit * place
+                place *= 10
+                seen_digit = True
+            elif seen_digit:
+                break
+        if seen_digit:
+            return numeric_index
+        return default_rank
+
     def _ensure_debug_dict(self, attr_name: str) -> dict:
-        value = getattr(self, attr_name, None)
+        debug_state = getattr(self, "_debug_state", None)
+        if not isinstance(debug_state, dict):
+            debug_state = {}
+            self._debug_state = debug_state
+        value = debug_state.get(attr_name)
         if not isinstance(value, dict):
             value = {}
-            setattr(self, attr_name, value)
+            debug_state[attr_name] = value
         return value
 
     def _collect_movement_outlier_stats(
@@ -520,10 +525,10 @@ class EngineTickSkeleton:
         shadow_components = {}
         shadow_cohesion_v3 = {}
         shadow_components_v3 = {}
-        decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
-        keep_v1_debug = bool(getattr(self, "debug_cohesion_v1_enabled", False)) or (decision_source == "v1_debug")
-        keep_v3_shadow = bool(getattr(self, "debug_cohesion_v3_shadow_enabled", False))
-        prev_cohesion_v1 = getattr(self, "_debug_prev_cohesion_v1", None)
+        decision_source = str(self.COHESION_DECISION_SOURCE).lower()
+        keep_v1_debug = bool(self.debug_cohesion_v1_enabled) or (decision_source == "v1_debug")
+        keep_v3_shadow = bool(self.debug_cohesion_v3_shadow_enabled)
+        prev_cohesion_v1 = self._debug_state.get("_debug_prev_cohesion_v1")
         if not isinstance(prev_cohesion_v1, dict):
             prev_cohesion_v1 = {}
         for fleet_id, fleet in state.fleets.items():
@@ -544,14 +549,13 @@ class EngineTickSkeleton:
                 cohesion_v3, v3_components = self._compute_cohesion_v3_shadow_geometry(state, fleet_id)
                 shadow_cohesion_v3[fleet_id] = cohesion_v3
                 shadow_components_v3[fleet_id] = v3_components
-
-        self._debug_prev_cohesion_v1 = dict(updated_cohesion_v1)
+        self._debug_state["_debug_prev_cohesion_v1"] = dict(updated_cohesion_v1)
         if keep_v1_debug:
-            self.debug_last_cohesion_v1 = dict(updated_cohesion_v1)
+            self._debug_state["debug_last_cohesion_v1"] = dict(updated_cohesion_v1)
         else:
-            self.debug_last_cohesion_v1 = {}
-        self.debug_last_cohesion_v2 = shadow_cohesion
-        self.debug_last_cohesion_v2_components = shadow_components
+            self._debug_state["debug_last_cohesion_v1"] = {}
+        self._debug_state["debug_last_cohesion_v2"] = shadow_cohesion
+        self._debug_state["debug_last_cohesion_v2_components"] = shadow_components
         if keep_v3_shadow:
             self.debug_last_cohesion_v3 = dict(shadow_cohesion_v3)
             self.debug_last_cohesion_v3_components = dict(shadow_components_v3)
@@ -624,7 +628,7 @@ class EngineTickSkeleton:
         diag4_legacy_enabled: bool,
         diag4_rpg_enabled: bool,
     ) -> dict:
-        top_k_raw = int(getattr(self, "debug_diag4_topk", 10))
+        top_k_raw = int(self.debug_diag4_topk)
         if diag4_legacy_enabled:
             if top_k_raw < 1:
                 top_k = 1
@@ -635,7 +639,7 @@ class EngineTickSkeleton:
         else:
             top_k = 0
 
-        sector_deg_raw = float(getattr(self, "debug_diag4_return_sector_deg", 30.0))
+        sector_deg_raw = float(self.debug_diag4_return_sector_deg)
         if diag4_legacy_enabled:
             if sector_deg_raw < 5.0:
                 sector_deg = 5.0
@@ -647,7 +651,7 @@ class EngineTickSkeleton:
             sector_deg = 30.0
         sector_cos = math.cos(math.radians(sector_deg))
 
-        neighbor_k_raw = int(getattr(self, "debug_diag4_neighbor_k", 3))
+        neighbor_k_raw = int(self.debug_diag4_neighbor_k)
         if diag4_legacy_enabled:
             if neighbor_k_raw < 1:
                 neighbor_k = 1
@@ -658,7 +662,7 @@ class EngineTickSkeleton:
         else:
             neighbor_k = 3
 
-        rpg_window_raw = int(getattr(self, "debug_diag4_rpg_window", 20))
+        rpg_window_raw = int(self.debug_diag4_rpg_window)
         if rpg_window_raw < 5:
             rpg_window = 5
         elif rpg_window_raw > 200:
@@ -1420,7 +1424,7 @@ class EngineTickSkeleton:
         else:
             projection_displacement_mean = 0.0
 
-        eta_raw = float(getattr(self, "debug_outlier_eta", 1.8))
+        eta_raw = float(self.debug_outlier_eta)
         if eta_raw < 1.5:
             outlier_eta = 1.5
         elif eta_raw > 2.2:
@@ -1428,7 +1432,7 @@ class EngineTickSkeleton:
         else:
             outlier_eta = eta_raw
 
-        persistence_ticks_raw = int(getattr(self, "debug_outlier_persistence_ticks", 20))
+        persistence_ticks_raw = int(self.debug_outlier_persistence_ticks)
         if persistence_ticks_raw < 1:
             persistence_ticks = 1
         else:
@@ -1459,9 +1463,9 @@ class EngineTickSkeleton:
             "max_outlier_persistence": max_outlier_persistence,
             "persistent_outlier_unit_ids": sorted(set(persistent_outlier_units)),
         }
-        boundary_force_total = getattr(self, "_debug_boundary_force_events_total", 0)
+        boundary_force_total = int(self._debug_state.get("_debug_boundary_force_events_total", 0))
         boundary_force_total += boundary_force_events_count_tick
-        self._debug_boundary_force_events_total = boundary_force_total
+        self._debug_state["_debug_boundary_force_events_total"] = boundary_force_total
         pending["boundary_soft"]["boundary_force_events_count_total"] = boundary_force_total
 
         if diag4_legacy_enabled or diag4_rpg_enabled:
@@ -1488,15 +1492,15 @@ class EngineTickSkeleton:
         r_sep_sq = r_sep * r_sep
         sep_branch_eps = 1e-14
         sep_threshold_sq = r_sep_sq - sep_branch_eps
-        alpha_sep = float(getattr(self, "alpha_sep", 0.6))
+        alpha_sep = float(self.alpha_sep)
         if alpha_sep < 0.0:
             alpha_sep = 0.0
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
-        diag_enabled = bool(getattr(self, "debug_fsr_diag_enabled", False))
-        diag4_enabled = diag_enabled and bool(getattr(self, "debug_diag4_enabled", False))
-        diag4_rpg_enabled = diag_enabled and bool(getattr(self, "debug_diag4_rpg_enabled", False))
+        diag_enabled = bool(self.debug_fsr_diag_enabled)
+        diag4_enabled = diag_enabled and bool(self.debug_diag4_enabled)
+        diag4_rpg_enabled = diag_enabled and bool(self.debug_diag4_rpg_enabled)
         diag4_legacy_enabled = diag4_enabled and not diag4_rpg_enabled
         arena_linear_size = float(state.arena_size)
         if arena_linear_size < 0.0:
@@ -1509,10 +1513,10 @@ class EngineTickSkeleton:
             boundary_band_width = 0.0
         boundary_band_fraction = (boundary_band_width / arena_linear_size) if arena_linear_size > 0.0 else 0.0
         boundary_force_events_count_tick = 0
-        boundary_soft_strength = float(getattr(self, "boundary_soft_strength", 1.0))
+        boundary_soft_enabled = bool(self.BOUNDARY_SOFT_ENABLED)
+        boundary_soft_strength = float(self.boundary_soft_strength)
         if boundary_soft_strength < 0.0:
             boundary_soft_strength = 0.0
-
 
         snapshot_positions = {
             unit_id: (unit.position.x, unit.position.y)
@@ -1520,34 +1524,29 @@ class EngineTickSkeleton:
             if unit.hit_points > 0.0
         }
 
-        movement_model = str(getattr(self, "MOVEMENT_MODEL", "v3a")).strip().lower()
+        movement_model = str(self.MOVEMENT_MODEL).strip().lower()
         if movement_model not in {"v1", "v3a"}:
             movement_model = "v3a"
-        movement_v3a_experiment = str(getattr(self, "MOVEMENT_V3A_EXPERIMENT", "base")).strip().lower()
-        # One-cycle compatibility: legacy A-line name maps to canonical probe name.
-        if movement_v3a_experiment == "exp_a_reduced_centroid":
-            movement_v3a_experiment = "exp_precontact_centroid_probe"
+        movement_v3a_experiment = str(self.MOVEMENT_V3A_EXPERIMENT).strip().lower()
         allowed_v3a_experiments = {"base", "exp_precontact_centroid_probe"}
         if movement_v3a_experiment not in allowed_v3a_experiments:
             movement_v3a_experiment = "base"
-        # Canonical probe knob (neutral naming): CENTROID_PROBE_SCALE.
-        # One-cycle compatibility: fallback to legacy PRECONTACT_CENTROID_PROBE_SCALE.
-        centroid_probe_scale = float(
-            getattr(
-                self,
-                "CENTROID_PROBE_SCALE",
-                getattr(self, "PRECONTACT_CENTROID_PROBE_SCALE", 1.0),
-            )
-        )
+        centroid_probe_scale = float(self.CENTROID_PROBE_SCALE)
         if centroid_probe_scale < 0.0:
             centroid_probe_scale = 0.0
         elif centroid_probe_scale > 1.0:
             centroid_probe_scale = 1.0
+        cohesion_decision_source = str(self.COHESION_DECISION_SOURCE).lower()
+        debug_cohesion_v1 = self._debug_state.get("debug_last_cohesion_v1", {})
+        if not isinstance(debug_cohesion_v1, dict):
+            debug_cohesion_v1 = {}
+        odw_posture_bias_fleet_enabled = bool(self.ODW_POSTURE_BIAS_ENABLED)
+        odw_posture_bias_k_fleet = max(0.0, float(self.ODW_POSTURE_BIAS_K))
+        odw_posture_bias_clip_delta_fleet = max(0.0, float(self.ODW_POSTURE_BIAS_CLIP_DELTA))
 
         updated_units = dict(state.units)
         for fleet_id, fleet in state.fleets.items():
             target_direction = state.last_target_direction.get(fleet_id, (0.0, 0.0))
-            _intensity = state.last_engagement_intensity.get(fleet_id, 0.0)
 
             alive_units = [
                 updated_units[unit_id]
@@ -1719,10 +1718,6 @@ class EngineTickSkeleton:
             # EnemyCollapseSignal = 1 - EnemyCohesion
             # PursuitConfirmThreshold = 1 - PD_norm
             enemy_cohesion_values = []
-            cohesion_decision_source = str(getattr(self, "COHESION_DECISION_SOURCE", "v2")).lower()
-            debug_cohesion_v1 = getattr(self, "debug_last_cohesion_v1", {})
-            if not isinstance(debug_cohesion_v1, dict):
-                debug_cohesion_v1 = {}
             for other_fleet_id, other_fleet in state.fleets.items():
                 if other_fleet_id == fleet_id:
                     continue
@@ -1761,9 +1756,6 @@ class EngineTickSkeleton:
             cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
             extension_gain = 1.0 + (0.25 * pursuit_intensity)
             mb_is_zero = abs(mb) <= 1e-12
-            odw_posture_bias_fleet_enabled = bool(getattr(self, "ODW_POSTURE_BIAS_ENABLED", False))
-            odw_posture_bias_k_fleet = max(0.0, float(getattr(self, "ODW_POSTURE_BIAS_K", 0.0)))
-            odw_posture_bias_clip_delta_fleet = max(0.0, float(getattr(self, "ODW_POSTURE_BIAS_CLIP_DELTA", 0.2)))
             odw_posture_bias_active = odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
             tx = target_direction[0]
             ty = target_direction[1]
@@ -1806,7 +1798,7 @@ class EngineTickSkeleton:
                 boundary_x = 0.0
                 boundary_y = 0.0
                 if (
-                    bool(getattr(self, "BOUNDARY_SOFT_ENABLED", True))
+                    boundary_soft_enabled
                     and boundary_band_width > 0.0
                     and boundary_soft_strength > 0.0
                 ):
@@ -2003,8 +1995,8 @@ class EngineTickSkeleton:
         else:
             post_move_positions = {}
 
-        fsr_enabled = bool(getattr(self, "FSR_ENABLED", False))
-        fsr_strength_raw = float(getattr(self, "fsr_strength", 0.0))
+        fsr_enabled = bool(self.FSR_ENABLED)
+        fsr_strength_raw = float(self.fsr_strength)
         if fsr_strength_raw < 0.0:
             fsr_strength = 0.0
         elif fsr_strength_raw > 0.3:
@@ -2014,7 +2006,7 @@ class EngineTickSkeleton:
 
         # FSR block: one centroid + one lambda + one isotropic scale per fleet per tick.
         if fsr_enabled and fsr_strength > 0.0:
-            delta_raw = float(getattr(self, "fsr_lambda_delta", 0.10))
+            delta_raw = float(self.fsr_lambda_delta)
             if delta_raw < 0.0:
                 delta_lambda = 0.0
             elif delta_raw > 0.5:
@@ -2023,8 +2015,8 @@ class EngineTickSkeleton:
                 delta_lambda = delta_raw
             fsr_eps = 1e-12
 
-            fsr_reference = getattr(self, "_fsr_reference", None)
-            if fsr_reference is None:
+            fsr_reference = self._fsr_reference
+            if not isinstance(fsr_reference, dict):
                 fsr_reference = {}
                 self._fsr_reference = fsr_reference
 
@@ -2104,7 +2096,7 @@ class EngineTickSkeleton:
                     "lambda_raw": lambda_raw,
                     "lambda_f": lambda_f,
                 }
-            self.debug_last_fsr_stats = fsr_tick_stats
+            self._debug_state["debug_last_fsr_stats"] = fsr_tick_stats
 
         if diag4_enabled or diag4_rpg_enabled:
             post_fsr_positions = {
@@ -2133,19 +2125,7 @@ class EngineTickSkeleton:
             ]
             fleet_local_sorted = []
             for fleet_order, unit_id in enumerate(alive_ids):
-                numeric_index = 0
-                place = 1
-                seen_digit = False
-                for ch in reversed(unit_id):
-                    digit = ord(ch) - ord("0")
-                    if 0 <= digit <= 9:
-                        numeric_index += digit * place
-                        place *= 10
-                        seen_digit = True
-                    elif seen_digit:
-                        break
-                if not seen_digit:
-                    numeric_index = fleet_order + 1
+                numeric_index = self._fleet_local_numeric_index(unit_id, fleet_order + 1)
                 fleet_local_sorted.append((numeric_index, fleet_order, unit_id))
             fleet_local_sorted.sort(key=lambda x: (x[0], x[1]))
             for rank, (_, _, unit_id) in enumerate(fleet_local_sorted, start=1):
@@ -2199,7 +2179,7 @@ class EngineTickSkeleton:
                 updated_units[unit_id] = replace(unit, position=Vec2(x=base_x + dx_proj, y=base_y + dy_proj))
 
         # Optional hard boundary: clamp units into map domain [0, arena_size].
-        if bool(getattr(self, "BOUNDARY_HARD_ENABLED", False)):
+        if bool(self.BOUNDARY_HARD_ENABLED):
             arena_min = 0.0
             arena_max = float(state.arena_size)
             if arena_max < arena_min:
@@ -2260,8 +2240,8 @@ class EngineTickSkeleton:
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
         geom_gamma = 0.3
-        CH_ENABLED = bool(getattr(self, "CH_ENABLED", True))
-        h_raw = float(getattr(self, "contact_hysteresis_h", 0.10))
+        CH_ENABLED = bool(self.CH_ENABLED)
+        h_raw = float(self.contact_hysteresis_h)
         if h_raw < 0.0:
             h = 0.0
         elif h_raw > 0.2:
@@ -2272,31 +2252,15 @@ class EngineTickSkeleton:
         r_enter = self.attack_range * (1.0 - h)
         r_exit_sq = r_exit * r_exit
         r_enter_sq = r_enter * r_enter
-        alpha_raw = float(getattr(self, "fire_quality_alpha", 0.0))
+        alpha_raw = float(self.fire_quality_alpha)
         if alpha_raw < 0.0:
             fire_quality_alpha = 0.0
         elif alpha_raw > 0.2:
             fire_quality_alpha = 0.2
         else:
             fire_quality_alpha = alpha_raw
-        diag_enabled = bool(getattr(self, "debug_fsr_diag_enabled", False))
-        diag4_enabled = diag_enabled and bool(getattr(self, "debug_diag4_enabled", False))
-
-        def fleet_local_numeric_index(unit_id: str, default_rank: int) -> int:
-            numeric_index = 0
-            place = 1
-            seen_digit = False
-            for ch in reversed(unit_id):
-                digit = ord(ch) - ord("0")
-                if 0 <= digit <= 9:
-                    numeric_index += digit * place
-                    place *= 10
-                    seen_digit = True
-                elif seen_digit:
-                    break
-            if seen_digit:
-                return numeric_index
-            return default_rank
+        diag_enabled = bool(self.debug_fsr_diag_enabled)
+        diag4_enabled = diag_enabled and bool(self.debug_diag4_enabled)
 
         snapshot_positions = {unit_id: (unit.position.x, unit.position.y) for unit_id, unit in state.units.items()}
         snapshot_hp = {unit_id: unit.hit_points for unit_id, unit in state.units.items()}
@@ -2309,7 +2273,7 @@ class EngineTickSkeleton:
         target_local_rank = {}
         for fleet in state.fleets.values():
             for rank, unit_id in enumerate(fleet.unit_ids, start=1):
-                target_local_rank[unit_id] = fleet_local_numeric_index(unit_id, rank)
+                target_local_rank[unit_id] = self._fleet_local_numeric_index(unit_id, rank)
 
         alive_units = {unit_id: unit for unit_id, unit in state.units.items() if snapshot_alive[unit_id]}
         incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
@@ -2468,8 +2432,6 @@ class EngineTickSkeleton:
                         o_norm = math.sqrt(o_norm_sq)
                         nox = ox / o_norm
                         noy = oy / o_norm
-                        phi_i = math.atan2(noy, nox)
-                        _ = phi_i
                         cos_theta = (nox * ux) + (noy * uy)
                         if cos_theta > 1.0:
                             cos_theta = 1.0
@@ -2616,23 +2578,20 @@ class EngineTickSkeleton:
                 }
 
             combined_width, combined_width_std = _span_std(combined_offsets)
-            pending_diag = getattr(self, "_debug_diag_pending", None)
+            pending_diag = self._debug_diag_pending
             if pending_diag is not None and pending_diag.get("tick") == state.tick:
                 tick_diag = pending_diag
             else:
                 tick_diag = {"tick": state.tick}
             if diag4_enabled:
-                contact_window_raw = int(getattr(self, "debug_diag4_contact_window", 20))
+                contact_window_raw = int(self.debug_diag4_contact_window)
                 if contact_window_raw < 20:
                     contact_window = 20
                 elif contact_window_raw > 200:
                     contact_window = 200
                 else:
                     contact_window = contact_window_raw
-                contact_history = getattr(self, "_debug_diag4_contact_history", None)
-                if contact_history is None:
-                    contact_history = {}
-                    self._debug_diag4_contact_history = contact_history
+                contact_history = self._ensure_debug_dict("_debug_diag4_contact_history")
 
                 in_contact_units = set()
                 for contact_ids in in_contact_units_by_fleet.values():

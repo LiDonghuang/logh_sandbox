@@ -13,7 +13,14 @@ if str(PROJECT_ROOT) not in sys.path:
 if str(ANALYSIS_DIR) not in sys.path:
     sys.path.insert(0, str(ANALYSIS_DIR))
 
-from test_run_v1_0 import (  # noqa: E402
+from test_run.test_run_v1_0 import (  # noqa: E402
+    SimulationBoundaryConfig,
+    SimulationContactConfig,
+    SimulationExecutionConfig,
+    SimulationMovementConfig,
+    SimulationObserverConfig,
+    SimulationRuntimeConfig,
+    TestModeEngineTickSkeleton,
     build_initial_state,
     compute_bridge_event_ticks,
     get_battlefield_setting,
@@ -266,6 +273,50 @@ def run_single_case(
         arena_size=arena_size,
     )
 
+    execution_cfg = SimulationExecutionConfig(
+        steps=-1,
+        capture_positions=False,
+        frame_stride=1,
+        include_target_lines=False,
+        print_tick_summary=False,
+        plot_diagnostics_enabled=False,
+    )
+    runtime_cfg = SimulationRuntimeConfig(
+        decision_source=RUNTIME_DECISION_SOURCE,
+        movement_model=MOVEMENT_MODEL,
+        movement=SimulationMovementConfig(
+            v3a_experiment=experiment,
+            centroid_probe_scale=probe_scale,
+        ),
+        contact=SimulationContactConfig(
+            attack_range=attack_range,
+            damage_per_tick=damage_per_tick,
+            separation_radius=unit_spacing,
+            fire_quality_alpha=fire_quality_alpha,
+            contact_hysteresis_h=contact_hysteresis_h,
+            ch_enabled=ch_enabled,
+            fsr_enabled=fsr_enabled,
+            fsr_strength=fsr_strength,
+        ),
+        boundary=SimulationBoundaryConfig(
+            enabled=boundary_enabled,
+            hard_enabled=boundary_hard_enabled,
+        ),
+    )
+    observer_cfg = SimulationObserverConfig(
+        enabled=True,
+        bridge_theta_split=bridge_theta_split,
+        bridge_theta_env=bridge_theta_env,
+        bridge_sustain_ticks=bridge_sustain_ticks,
+        collapse_shadow_theta_conn_default=collapse_shadow_theta_conn_default,
+        collapse_shadow_theta_coh_default=collapse_shadow_theta_coh_default,
+        collapse_shadow_theta_force_default=collapse_shadow_theta_force_default,
+        collapse_shadow_theta_attr_default=collapse_shadow_theta_attr_default,
+        collapse_shadow_attrition_window=collapse_shadow_attrition_window,
+        collapse_shadow_sustain_ticks=collapse_shadow_sustain_ticks,
+        collapse_shadow_min_conditions=collapse_shadow_min_conditions,
+        runtime_diag_enabled=True,
+    )
     (
         final_state,
         _trajectory,
@@ -278,37 +329,10 @@ def run_single_case(
         _position_frames,
     ) = run_simulation(
         initial_state=state,
-        steps=-1,
-        capture_positions=False,
-        observer_enabled=True,
-        runtime_decision_source=RUNTIME_DECISION_SOURCE,
-        movement_model=MOVEMENT_MODEL,
-        bridge_theta_split=bridge_theta_split,
-        bridge_theta_env=bridge_theta_env,
-        bridge_sustain_ticks=bridge_sustain_ticks,
-        collapse_shadow_theta_conn_default=collapse_shadow_theta_conn_default,
-        collapse_shadow_theta_coh_default=collapse_shadow_theta_coh_default,
-        collapse_shadow_theta_force_default=collapse_shadow_theta_force_default,
-        collapse_shadow_theta_attr_default=collapse_shadow_theta_attr_default,
-        collapse_shadow_attrition_window=collapse_shadow_attrition_window,
-        collapse_shadow_sustain_ticks=collapse_shadow_sustain_ticks,
-        collapse_shadow_min_conditions=collapse_shadow_min_conditions,
-        frame_stride=1,
-        attack_range=attack_range,
-        damage_per_tick=damage_per_tick,
-        separation_radius=unit_spacing,
-        fire_quality_alpha=fire_quality_alpha,
-        contact_hysteresis_h=contact_hysteresis_h,
-        ch_enabled=ch_enabled,
-        fsr_enabled=fsr_enabled,
-        fsr_strength=fsr_strength,
-        boundary_enabled=boundary_enabled,
-        boundary_hard_enabled=boundary_hard_enabled,
-        include_target_lines=False,
-        print_tick_summary=False,
-        movement_v3a_experiment=experiment,
-        centroid_probe_scale=probe_scale,
-        runtime_diag_enabled=True,
+        engine_cls=TestModeEngineTickSkeleton,
+        execution_cfg=execution_cfg,
+        runtime_cfg=runtime_cfg,
+        observer_cfg=observer_cfg,
     )
 
     first_contact_tick = first_positive_tick(combat_telemetry.get("in_contact_count", []))
