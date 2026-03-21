@@ -81,9 +81,6 @@ def compute_hostile_intermix_metrics(
 def extract_runtime_debug_payload(diag_tick: dict) -> dict:
     if not isinstance(diag_tick, dict):
         return {}
-    outliers = diag_tick.get("outliers", {})
-    if not isinstance(outliers, dict):
-        outliers = {}
     projection = diag_tick.get("projection", {})
     if not isinstance(projection, dict):
         projection = {}
@@ -93,36 +90,16 @@ def extract_runtime_debug_payload(diag_tick: dict) -> dict:
     boundary_soft = diag_tick.get("boundary_soft", {})
     if not isinstance(boundary_soft, dict):
         boundary_soft = {}
-    persistent_ids = diag_tick.get("persistent_outlier_unit_ids", [])
-    if not isinstance(persistent_ids, list):
-        persistent_ids = []
 
     payload = {
         "tick": int(diag_tick.get("tick", 0)),
-        "outlier_total": 0,
-        "persistent_outlier_total": int(len(persistent_ids)),
-        "max_outlier_persistence": int(diag_tick.get("max_outlier_persistence", 0)),
         "projection_max_displacement": float(projection.get("max_projection_displacement", 0.0)),
         "projection_mean_displacement": float(projection.get("mean_projection_displacement", 0.0)),
         "projection_pairs_count": int(projection.get("projection_pairs_count", 0)),
         "in_contact_count": int(combat.get("in_contact_count", 0)),
         "damage_events_count": int(combat.get("damage_events_count", 0)),
         "boundary_force_events_tick": int(boundary_soft.get("boundary_force_events_count_tick", 0)),
-        "fleets": {},
     }
-
-    for fleet_id in ("A", "B"):
-        fleet_payload = outliers.get(fleet_id, {})
-        if not isinstance(fleet_payload, dict):
-            fleet_payload = {}
-        outlier_count = int(fleet_payload.get("outlier_count", 0))
-        payload["outlier_total"] += outlier_count
-        payload["fleets"][fleet_id] = {
-            "outlier_count": outlier_count,
-            "max_outlier_persistence": int(fleet_payload.get("max_outlier_persistence", 0)),
-            "r_rms": float(fleet_payload.get("r_rms", 0.0)),
-            "outlier_threshold": float(fleet_payload.get("outlier_threshold", 0.0)),
-        }
     return payload
 
 

@@ -15,6 +15,7 @@ Authority: Reference only, not canonical semantics authority
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset in progress
+- APP-side governance mirror intentionally reduced to an 11-file active working set
 
 Current emphasis is not personality expansion.
 
@@ -27,6 +28,10 @@ Current emphasis is not personality expansion.
 
 ## Key Governance / Architecture Documents
 
+- `docs/README.md`
+  - repo-side documentation layer entry: canonical / context / reference / archive separation
+- `docs/APP_Files_Prefix_Mapping_v1.0.md`
+  - APP mirror scope and active flat-file set policy
 - `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
   - governs experiment vs baseline-replacement boundary and replacement recording discipline
 - `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md`
@@ -43,7 +48,7 @@ Current emphasis is not personality expansion.
 - `runtime/runtime_v0_1.py`
   - runtime schema and immutable state types
 - `runtime/engine_skeleton.py`
-  - tick pipeline and core runtime behavior
+  - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
 
 ## Test Harness Paths
 
@@ -100,6 +105,8 @@ Current emphasis is not personality expansion.
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_v1_0_exit_report_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/test_run_split_validation_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/runtime_engine_skeleton_burden_inventory_20260320.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/documentation_hygiene_update_20260321.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/engine_skeleton_cohesion_selection_and_outlier_retirement_20260321.md`
 
 ## Reading Order
 

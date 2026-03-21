@@ -1021,166 +1021,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             "connect_radius_multiplier": v2_connect_multiplier,
         }
 
-    def _compute_cohesion_v3_shadow_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
-        eps = 1e-12
-        rho_low = 0.35
-        rho_high = 1.15
-        penalty_k = 6.0
-
-        fleet = state.fleets.get(fleet_id)
-        if fleet is None:
-            return 1.0, {
-                "n_alive": 0,
-                "lcc": 0,
-                "c_conn": 1.0,
-                "centroid_x": 0.0,
-                "centroid_y": 0.0,
-                "r": 0.0,
-                "r_ref": 0.0,
-                "rho": 0.0,
-                "c_scale": 1.0,
-                "c_v3": 1.0,
-                "rho_low": rho_low,
-                "rho_high": rho_high,
-                "k": penalty_k,
-                "connect_radius_effective": 0.0,
-                "connect_radius_multiplier": 1.0,
-                "r_ref_multiplier": 1.0,
-            }
-
-        alive_positions = []
-        for unit_id in fleet.unit_ids:
-            unit = state.units.get(unit_id)
-            if unit is None or unit.hit_points <= 0.0:
-                continue
-            alive_positions.append((unit.position.x, unit.position.y))
-        n_alive = len(alive_positions)
-
-        v3_connect_multiplier = float(getattr(self, "V3_CONNECT_RADIUS_MULTIPLIER", 1.0))
-        if v3_connect_multiplier <= 0.0:
-            v3_connect_multiplier = 1.0
-        v3_r_ref_multiplier = float(getattr(self, "V3_R_REF_RADIUS_MULTIPLIER", 1.0))
-        if v3_r_ref_multiplier <= 0.0:
-            v3_r_ref_multiplier = 1.0
-
-        if n_alive == 0:
-            return 0.0, {
-                "n_alive": 0,
-                "lcc": 0,
-                "c_conn": 0.0,
-                "centroid_x": 0.0,
-                "centroid_y": 0.0,
-                "r": 0.0,
-                "r_ref": 0.0,
-                "rho": 0.0,
-                "c_scale": 1.0,
-                "c_v3": 0.0,
-                "rho_low": rho_low,
-                "rho_high": rho_high,
-                "k": penalty_k,
-                "connect_radius_effective": float(self.separation_radius) * v3_connect_multiplier,
-                "connect_radius_multiplier": v3_connect_multiplier,
-                "r_ref_multiplier": v3_r_ref_multiplier,
-            }
-
-        sum_x = 0.0
-        sum_y = 0.0
-        for x, y in alive_positions:
-            sum_x += x
-            sum_y += y
-        centroid_x = sum_x / n_alive
-        centroid_y = sum_y / n_alive
-
-        radius_sq_sum = 0.0
-        for x, y in alive_positions:
-            dx = x - centroid_x
-            dy = y - centroid_y
-            radius_sq_sum += (dx * dx) + (dy * dy)
-        r = math.sqrt(radius_sq_sum / n_alive)
-        r_ref = float(self.separation_radius) * v3_r_ref_multiplier * math.sqrt(float(n_alive))
-        if r_ref <= eps:
-            rho = 0.0
-        else:
-            rho = r / r_ref
-
-        if rho < rho_low:
-            c_scale = math.exp(-penalty_k * ((rho_low - rho) ** 2))
-        elif rho <= rho_high:
-            c_scale = 1.0
-        else:
-            c_scale = math.exp(-penalty_k * ((rho - rho_high) ** 2))
-
-        if n_alive == 1:
-            lcc = 1
-            c_conn = 1.0
-            connect_radius_effective = float(self.separation_radius) * v3_connect_multiplier
-        else:
-            connect_radius = float(self.separation_radius) * v3_connect_multiplier
-            if connect_radius < eps:
-                connect_radius = eps
-            connect_radius_effective = connect_radius
-            connect_radius_sq = connect_radius * connect_radius
-            visited = [False] * n_alive
-            largest_component_size = 0
-            for i in range(n_alive):
-                if visited[i]:
-                    continue
-                visited[i] = True
-                stack = [i]
-                component_size = 0
-                while stack:
-                    node = stack.pop()
-                    component_size += 1
-                    nx, ny = alive_positions[node]
-                    for j in range(n_alive):
-                        if visited[j] or j == node:
-                            continue
-                        px, py = alive_positions[j]
-                        ddx = nx - px
-                        ddy = ny - py
-                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
-                            visited[j] = True
-                            stack.append(j)
-                if component_size > largest_component_size:
-                    largest_component_size = component_size
-            lcc = largest_component_size
-            c_conn = largest_component_size / n_alive
-
-        c_v3 = self._clamp01(c_conn * c_scale)
-        return c_v3, {
-            "n_alive": n_alive,
-            "lcc": lcc,
-            "c_conn": c_conn,
-            "centroid_x": centroid_x,
-            "centroid_y": centroid_y,
-            "r": r,
-            "r_ref": r_ref,
-            "rho": rho,
-            "c_scale": c_scale,
-            "c_v3": c_v3,
-            "rho_low": rho_low,
-            "rho_high": rho_high,
-            "k": penalty_k,
-            "connect_radius_effective": connect_radius_effective,
-            "connect_radius_multiplier": v3_connect_multiplier,
-            "r_ref_multiplier": v3_r_ref_multiplier,
-        }
-
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
-        next_state = super().evaluate_cohesion(state)
-        decision_source = str(getattr(self, "runtime_cohesion_decision_source", "v2")).lower()
-        if decision_source != "v3_test":
-            return next_state
-        shadow_v3 = getattr(self, "debug_last_cohesion_v3", {})
-        if not isinstance(shadow_v3, dict) or not shadow_v3:
-            return next_state
-        # Isolation guarantee: only substitute runtime cohesion signal.
-        runtime_cohesion = {}
-        for fleet_id in next_state.fleets:
-            runtime_cohesion[fleet_id] = float(
-                shadow_v3.get(fleet_id, next_state.last_fleet_cohesion.get(fleet_id, 1.0))
-            )
-        return replace(next_state, last_fleet_cohesion=runtime_cohesion)
+        return super().evaluate_cohesion(state)
 
 def run_simulation(
     initial_state: BattleState,
@@ -1328,7 +1170,6 @@ def run_simulation(
         raise TypeError("EngineTickSkeleton._diag_surface missing or invalid")
     diag_surface["fsr_diag_enabled"] = observer_active
     diag_surface["diag4_enabled"] = observer_active
-    diag_surface["cohesion_v3_shadow_enabled"] = bool(diagnostics_enabled)
 
     state = replace(
         initial_state,
@@ -1377,9 +1218,6 @@ def run_simulation(
     combat_telemetry = {
         "in_contact_count": [],
         "damage_events_count": [],
-        "outlier_total": [],
-        "persistent_outlier_total": [],
-        "max_outlier_persistence": [],
     }
     bridge_telemetry = {
         "theta_split": float(bridge_cfg["theta_split"]),
@@ -1437,9 +1275,6 @@ def run_simulation(
         runtime_debug_payload = extract_runtime_debug_payload(
             getattr(engine, "debug_diag_last_tick", {}) if diagnostics_enabled else {}
         )
-        combat_telemetry["outlier_total"].append(int(runtime_debug_payload.get("outlier_total", 0)))
-        combat_telemetry["persistent_outlier_total"].append(int(runtime_debug_payload.get("persistent_outlier_total", 0)))
-        combat_telemetry["max_outlier_persistence"].append(int(runtime_debug_payload.get("max_outlier_persistence", 0)))
         contact_active_tick = int(combat_stats.get("in_contact_count", 0)) > 0
 
         if print_tick_summary:
@@ -1642,16 +1477,16 @@ def run_simulation(
             posture_persistence_state[fleet_id]["length"] = next_length
             observer_telemetry["posture_persistence_time"][fleet_id].append(float(posture_sign * next_length))
 
-        shadow_v3 = getattr(engine, "debug_last_cohesion_v3", {})
-        if not isinstance(shadow_v3, dict):
-            shadow_v3 = {}
-        shadow_v3_components = getattr(engine, "debug_last_cohesion_v3_components", {})
-        if not isinstance(shadow_v3_components, dict):
-            shadow_v3_components = {}
+        runtime_v3 = getattr(engine, "debug_last_cohesion_v3", {})
+        if not isinstance(runtime_v3, dict):
+            runtime_v3 = {}
+        runtime_v3_components = getattr(engine, "debug_last_cohesion_v3_components", {})
+        if not isinstance(runtime_v3_components, dict):
+            runtime_v3_components = {}
         for fleet_id in state.fleets:
             fallback_v2 = float(state.last_fleet_cohesion.get(fleet_id, 1.0))
-            cohesion_v3 = float(shadow_v3.get(fleet_id, fallback_v2)) if diagnostics_enabled else float("nan")
-            comp = shadow_v3_components.get(fleet_id, {})
+            cohesion_v3 = float(runtime_v3.get(fleet_id, fallback_v2)) if diagnostics_enabled else float("nan")
+            comp = runtime_v3_components.get(fleet_id, {})
             if not isinstance(comp, dict):
                 comp = {}
             observer_telemetry["cohesion_v3"][fleet_id].append(cohesion_v3)

@@ -225,9 +225,13 @@ def render_test_run(
                 return True
         return False
 
-    shadow_cohesion_a = extract_observer_series("cohesion_v3", "A", len(ticks))
-    shadow_cohesion_b = extract_observer_series("cohesion_v3", "B", len(ticks))
-    observer_shadow_ready = bool(plot_panel_enabled) and has_finite_value(shadow_cohesion_a) and has_finite_value(shadow_cohesion_b)
+    runtime_cohesion_a = extract_observer_series("cohesion_v3", "A", len(ticks))
+    runtime_cohesion_b = extract_observer_series("cohesion_v3", "B", len(ticks))
+    observer_runtime_cohesion_ready = (
+        bool(plot_panel_enabled)
+        and has_finite_value(runtime_cohesion_a)
+        and has_finite_value(runtime_cohesion_b)
+    )
     # Color consistency rule:
     # whenever a subplot encodes side A/B, it must reuse battlefield fleet colors.
     fig = plt.figure(figsize=(float(fig_size[0]), float(fig_size[1])))
@@ -1719,9 +1723,9 @@ def render_test_run(
 
     canonical_cohesion_series_a = [float(v) for v in trajectory.get("A", [])]
     canonical_cohesion_series_b = [float(v) for v in trajectory.get("B", [])]
-    if extended_plot_mode and observer_shadow_ready:
-        cohesion_series_a = shadow_cohesion_a
-        cohesion_series_b = shadow_cohesion_b
+    if extended_plot_mode and observer_runtime_cohesion_ready:
+        cohesion_series_a = runtime_cohesion_a
+        cohesion_series_b = runtime_cohesion_b
     else:
         cohesion_series_a = canonical_cohesion_series_a
         cohesion_series_b = canonical_cohesion_series_b
@@ -1928,7 +1932,7 @@ def render_test_run(
         "center_wing_parallel_share_b": center_wing_parallel_share_plot_b,
     }
 
-    if extended_plot_mode and observer_shadow_ready:
+    if extended_plot_mode and observer_runtime_cohesion_ready:
         cohesion_axis_ylabel = "Coh_v3"
     else:
         cohesion_axis_ylabel = "Coh_v2"

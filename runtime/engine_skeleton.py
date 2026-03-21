@@ -47,14 +47,11 @@ class EngineTickSkeleton:
         # Active debug/reference knobs still used by maintained diagnostics.
         self._diag_surface = {
             "fsr_diag_enabled": False,
-            "outlier_eta": 1.8,
-            "outlier_persistence_ticks": 20,
             "diag4_enabled": False,
             "diag4_topk": 10,
             "diag4_contact_window": 20,
             "diag4_return_sector_deg": 30.0,
             "diag4_neighbor_k": 3,
-            "cohesion_v3_shadow_enabled": False,
         }
 
         # Internal-only state is kept behind a single host instead of top-level sprawl.
@@ -146,91 +143,72 @@ class EngineTickSkeleton:
             debug_state[attr_name] = value
         return value
 
-    def _collect_movement_outlier_stats(
-        self,
-        *,
+    @staticmethod
+    def _collect_alive_fleet_positions(
         state: BattleState,
-        updated_units: dict,
-        outlier_eta: float,
-        persistence_ticks: int,
-    ) -> tuple[dict, list[str], int]:
-        outlier_streaks = self._ensure_debug_dict("_debug_outlier_streaks")
-        outlier_stats = {}
-        persistent_outlier_units = []
-        max_outlier_persistence = 0
-        for fleet_id, fleet in state.fleets.items():
-            alive_unit_ids = [
-                unit_id
-                for unit_id in fleet.unit_ids
-                if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
-            ]
-            if not alive_unit_ids:
-                outlier_streaks[fleet_id] = {}
-                outlier_stats[fleet_id] = {
-                    "outlier_count": 0,
-                    "max_outlier_persistence": 0,
-                    "persistent_outlier_unit_ids": [],
-                    "centroid_x": 0.0,
-                    "centroid_y": 0.0,
-                    "r_rms": 0.0,
-                    "outlier_threshold": 0.0,
-                }
+        fleet_id: str,
+    ) -> tuple[list[tuple[float, float]] | None, float, float]:
+        fleet = state.fleets.get(fleet_id)
+        if fleet is None:
+            return None, 0.0, 0.0
+
+        alive_positions = []
+        sum_x = 0.0
+        sum_y = 0.0
+        for unit_id in fleet.unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or unit.hit_points <= 0.0:
                 continue
+            pos_x = unit.position.x
+            pos_y = unit.position.y
+            alive_positions.append((pos_x, pos_y))
+            sum_x += pos_x
+            sum_y += pos_y
 
-            centroid_x = sum(updated_units[unit_id].position.x for unit_id in alive_unit_ids) / len(alive_unit_ids)
-            centroid_y = sum(updated_units[unit_id].position.y for unit_id in alive_unit_ids) / len(alive_unit_ids)
-            radius_sq_sum = 0.0
-            for unit_id in alive_unit_ids:
-                unit = updated_units[unit_id]
-                dx = unit.position.x - centroid_x
-                dy = unit.position.y - centroid_y
-                radius_sq_sum += (dx * dx) + (dy * dy)
-            r_rms = math.sqrt(radius_sq_sum / len(alive_unit_ids))
-            outlier_threshold = outlier_eta * r_rms
+        if not alive_positions:
+            return [], 0.0, 0.0
 
-            current_outliers = []
-            for unit_id in alive_unit_ids:
-                unit = updated_units[unit_id]
-                dx = unit.position.x - centroid_x
-                dy = unit.position.y - centroid_y
-                if math.sqrt((dx * dx) + (dy * dy)) > outlier_threshold:
-                    current_outliers.append(unit_id)
+        n_alive = len(alive_positions)
+        return alive_positions, (sum_x / n_alive), (sum_y / n_alive)
 
-            prev_streaks = outlier_streaks.get(fleet_id, {})
-            next_streaks = {}
-            for unit_id in current_outliers:
-                next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
-            outlier_streaks[fleet_id] = next_streaks
+    @staticmethod
+    def _largest_connected_component_size(
+        alive_positions: list[tuple[float, float]],
+        connect_radius_sq: float,
+    ) -> int:
+        n_alive = len(alive_positions)
+        if n_alive <= 1:
+            return n_alive
 
-            fleet_max_persistence = 0
-            for value in next_streaks.values():
-                if value > fleet_max_persistence:
-                    fleet_max_persistence = value
-            if fleet_max_persistence > max_outlier_persistence:
-                max_outlier_persistence = fleet_max_persistence
-
-            persistent_ids = sorted(
-                unit_id
-                for unit_id, streak in next_streaks.items()
-                if streak >= persistence_ticks
-            )
-            persistent_outlier_units.extend(persistent_ids)
-
-            outlier_stats[fleet_id] = {
-                "outlier_count": len(current_outliers),
-                "max_outlier_persistence": fleet_max_persistence,
-                "persistent_outlier_unit_ids": persistent_ids,
-                "centroid_x": centroid_x,
-                "centroid_y": centroid_y,
-                "r_rms": r_rms,
-                "outlier_threshold": outlier_threshold,
-            }
-        return outlier_stats, persistent_outlier_units, max_outlier_persistence
+        visited = [False] * n_alive
+        largest_component_size = 0
+        for i in range(n_alive):
+            if visited[i]:
+                continue
+            visited[i] = True
+            stack = [i]
+            component_size = 0
+            while stack:
+                node = stack.pop()
+                component_size += 1
+                nx, ny = alive_positions[node]
+                for j in range(n_alive):
+                    if visited[j] or j == node:
+                        continue
+                    px, py = alive_positions[j]
+                    ddx = nx - px
+                    ddy = ny - py
+                    if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
+                        visited[j] = True
+                        stack.append(j)
+            if component_size > largest_component_size:
+                largest_component_size = component_size
+        return largest_component_size
 
     def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
         eps = 1e-12
-        fleet = state.fleets.get(fleet_id)
-        if fleet is None:
+        alive_positions, centroid_x, centroid_y = self._collect_alive_fleet_positions(state, fleet_id)
+        if alive_positions is None:
             return 1.0, {
                 "n_alive": 0,
                 "centroid_x": 0.0,
@@ -248,16 +226,7 @@ class EngineTickSkeleton:
                 "q50_radius": 0.0,
                 "q90_radius": 0.0,
             }
-
-        alive_positions = []
-        for unit_id in fleet.unit_ids:
-            unit = state.units.get(unit_id)
-            if unit is None or unit.hit_points <= 0.0:
-                continue
-            alive_positions.append((unit.position.x, unit.position.y))
-        n_alive = len(alive_positions)
-
-        if n_alive == 0:
+        if not alive_positions:
             return 0.0, {
                 "n_alive": 0,
                 "centroid_x": 0.0,
@@ -275,14 +244,7 @@ class EngineTickSkeleton:
                 "q50_radius": 0.0,
                 "q90_radius": 0.0,
             }
-
-        sum_x = 0.0
-        sum_y = 0.0
-        for x, y in alive_positions:
-            sum_x += x
-            sum_y += y
-        centroid_x = sum_x / n_alive
-        centroid_y = sum_y / n_alive
+        n_alive = len(alive_positions)
 
         radii = []
         cov_xx = 0.0
@@ -343,29 +305,7 @@ class EngineTickSkeleton:
             if connect_radius < eps:
                 connect_radius = eps
             connect_radius_sq = connect_radius * connect_radius
-            visited = [False] * n_alive
-            largest_component_size = 0
-            for i in range(n_alive):
-                if visited[i]:
-                    continue
-                visited[i] = True
-                stack = [i]
-                component_size = 0
-                while stack:
-                    node = stack.pop()
-                    component_size += 1
-                    nx, ny = alive_positions[node]
-                    for j in range(n_alive):
-                        if visited[j] or j == node:
-                            continue
-                        px, py = alive_positions[j]
-                        ddx = nx - px
-                        ddy = ny - py
-                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
-                            visited[j] = True
-                            stack.append(j)
-                if component_size > largest_component_size:
-                    largest_component_size = component_size
+            largest_component_size = self._largest_connected_component_size(alive_positions, connect_radius_sq)
             lcc_ratio = largest_component_size / n_alive
         f_frag = self._clamp01(1.0 - lcc_ratio)
 
@@ -395,14 +335,16 @@ class EngineTickSkeleton:
             "q90_radius": q90,
         }
 
-    def _compute_cohesion_v3_shadow_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+    def _compute_cohesion_v3_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
         eps = 1e-12
         rho_low = 0.35
         rho_high = 1.15
         penalty_k = 6.0
+        v3_connect_multiplier = max(1e-12, float(getattr(self, "V3_CONNECT_RADIUS_MULTIPLIER", 1.0)))
+        v3_r_ref_multiplier = max(1e-12, float(getattr(self, "V3_R_REF_RADIUS_MULTIPLIER", 1.0)))
 
-        fleet = state.fleets.get(fleet_id)
-        if fleet is None:
+        alive_positions, centroid_x, centroid_y = self._collect_alive_fleet_positions(state, fleet_id)
+        if alive_positions is None:
             return 1.0, {
                 "n_alive": 0,
                 "lcc": 0,
@@ -417,17 +359,11 @@ class EngineTickSkeleton:
                 "rho_low": rho_low,
                 "rho_high": rho_high,
                 "k": penalty_k,
+                "connect_radius_effective": 0.0,
+                "connect_radius_multiplier": v3_connect_multiplier,
+                "r_ref_multiplier": v3_r_ref_multiplier,
             }
-
-        alive_positions = []
-        for unit_id in fleet.unit_ids:
-            unit = state.units.get(unit_id)
-            if unit is None or unit.hit_points <= 0.0:
-                continue
-            alive_positions.append((unit.position.x, unit.position.y))
-        n_alive = len(alive_positions)
-
-        if n_alive == 0:
+        if not alive_positions:
             return 0.0, {
                 "n_alive": 0,
                 "lcc": 0,
@@ -442,15 +378,11 @@ class EngineTickSkeleton:
                 "rho_low": rho_low,
                 "rho_high": rho_high,
                 "k": penalty_k,
+                "connect_radius_effective": float(self.separation_radius) * v3_connect_multiplier,
+                "connect_radius_multiplier": v3_connect_multiplier,
+                "r_ref_multiplier": v3_r_ref_multiplier,
             }
-
-        sum_x = 0.0
-        sum_y = 0.0
-        for x, y in alive_positions:
-            sum_x += x
-            sum_y += y
-        centroid_x = sum_x / n_alive
-        centroid_y = sum_y / n_alive
+        n_alive = len(alive_positions)
 
         radius_sq_sum = 0.0
         for x, y in alive_positions:
@@ -458,7 +390,7 @@ class EngineTickSkeleton:
             dy = y - centroid_y
             radius_sq_sum += (dx * dx) + (dy * dy)
         r = math.sqrt(radius_sq_sum / n_alive)
-        r_ref = float(self.separation_radius) * math.sqrt(float(n_alive))
+        r_ref = float(self.separation_radius) * v3_r_ref_multiplier * math.sqrt(float(n_alive))
         if r_ref <= eps:
             rho = 0.0
         else:
@@ -474,34 +406,14 @@ class EngineTickSkeleton:
         if n_alive == 1:
             lcc = 1
             c_conn = 1.0
+            connect_radius_effective = float(self.separation_radius) * v3_connect_multiplier
         else:
-            connect_radius = float(self.separation_radius)
+            connect_radius = float(self.separation_radius) * v3_connect_multiplier
             if connect_radius < eps:
                 connect_radius = eps
+            connect_radius_effective = connect_radius
             connect_radius_sq = connect_radius * connect_radius
-            visited = [False] * n_alive
-            largest_component_size = 0
-            for i in range(n_alive):
-                if visited[i]:
-                    continue
-                visited[i] = True
-                stack = [i]
-                component_size = 0
-                while stack:
-                    node = stack.pop()
-                    component_size += 1
-                    nx, ny = alive_positions[node]
-                    for j in range(n_alive):
-                        if visited[j] or j == node:
-                            continue
-                        px, py = alive_positions[j]
-                        ddx = nx - px
-                        ddy = ny - py
-                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
-                            visited[j] = True
-                            stack.append(j)
-                if component_size > largest_component_size:
-                    largest_component_size = component_size
+            largest_component_size = self._largest_connected_component_size(alive_positions, connect_radius_sq)
             lcc = largest_component_size
             c_conn = largest_component_size / n_alive
 
@@ -520,35 +432,36 @@ class EngineTickSkeleton:
             "rho_low": rho_low,
             "rho_high": rho_high,
             "k": penalty_k,
+            "connect_radius_effective": connect_radius_effective,
+            "connect_radius_multiplier": v3_connect_multiplier,
+            "r_ref_multiplier": v3_r_ref_multiplier,
         }
 
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
-        updated_cohesion_v2 = {}
-        shadow_cohesion = {}
-        shadow_components = {}
-        shadow_cohesion_v3 = {}
-        shadow_components_v3 = {}
-        keep_v3_shadow = bool(self._diag_surface["cohesion_v3_shadow_enabled"])
+        decision_source = str(getattr(self, "runtime_cohesion_decision_source", "v2")).strip().lower() or "v2"
+        if decision_source not in {"v2", "v3_test"}:
+            raise ValueError(f"Unsupported runtime_cohesion_decision_source={decision_source!r}")
+
+        runtime_cohesion = {}
+        runtime_components = {}
         for fleet_id, fleet in state.fleets.items():
-            cohesion_v2, v2_components = self._compute_cohesion_v2_geometry(state, fleet_id)
-            updated_cohesion_v2[fleet_id] = cohesion_v2
-            shadow_cohesion[fleet_id] = cohesion_v2
-            shadow_components[fleet_id] = v2_components
-            if keep_v3_shadow:
-                cohesion_v3, v3_components = self._compute_cohesion_v3_shadow_geometry(state, fleet_id)
-                shadow_cohesion_v3[fleet_id] = cohesion_v3
-                shadow_components_v3[fleet_id] = v3_components
-        self._debug_state["debug_last_cohesion_v2"] = shadow_cohesion
-        self._debug_state["debug_last_cohesion_v2_components"] = shadow_components
-        if keep_v3_shadow:
-            self.debug_last_cohesion_v3 = dict(shadow_cohesion_v3)
-            self.debug_last_cohesion_v3_components = dict(shadow_components_v3)
+            if decision_source == "v3_test":
+                cohesion_v3, v3_components = self._compute_cohesion_v3_geometry(state, fleet_id)
+                runtime_cohesion[fleet_id] = cohesion_v3
+                runtime_components[fleet_id] = v3_components
+            else:
+                cohesion_v2, v2_components = self._compute_cohesion_v2_geometry(state, fleet_id)
+                runtime_cohesion[fleet_id] = cohesion_v2
+                runtime_components[fleet_id] = v2_components
+
+        if decision_source == "v3_test":
+            self.debug_last_cohesion_v3 = dict(runtime_cohesion)
+            self.debug_last_cohesion_v3_components = dict(runtime_components)
         else:
             self.debug_last_cohesion_v3 = {}
             self.debug_last_cohesion_v3_components = {}
 
-        # Canonical active cohesion is v2; v3_test remains a maintained shadow path.
-        return replace(state, last_fleet_cohesion=updated_cohesion_v2)
+        return replace(state, last_fleet_cohesion=runtime_cohesion)
 
     def evaluate_target(self, state: BattleState) -> BattleState:
         last_target_direction = {}
@@ -607,9 +520,9 @@ class EngineTickSkeleton:
         r_sep_sq: float,
         attack_range_sq: float,
         min_unit_spacing: float,
-        outlier_eta: float,
-        persistence_ticks: int,
     ) -> dict:
+        outlier_eta = 1.8
+        persistence_ticks = 20
         diag_surface = self._diag_surface
         top_k_raw = int(diag_surface["diag4_topk"])
         if top_k_raw < 1:
@@ -1024,28 +937,6 @@ class EngineTickSkeleton:
         else:
             projection_displacement_mean = 0.0
 
-        diag_surface = self._diag_surface
-        eta_raw = float(diag_surface["outlier_eta"])
-        if eta_raw < 1.5:
-            outlier_eta = 1.5
-        elif eta_raw > 2.2:
-            outlier_eta = 2.2
-        else:
-            outlier_eta = eta_raw
-
-        persistence_ticks_raw = int(diag_surface["outlier_persistence_ticks"])
-        if persistence_ticks_raw < 1:
-            persistence_ticks = 1
-        else:
-            persistence_ticks = persistence_ticks_raw
-
-        outlier_stats, persistent_outlier_units, max_outlier_persistence = self._collect_movement_outlier_stats(
-            state=state,
-            updated_units=updated_units,
-            outlier_eta=outlier_eta,
-            persistence_ticks=persistence_ticks,
-        )
-
         pending = {
             "tick": state.tick,
             "projection": {
@@ -1060,9 +951,6 @@ class EngineTickSkeleton:
                 "boundary_soft_strength": boundary_soft_strength,
                 "boundary_force_events_count_tick": boundary_force_events_count_tick,
             },
-            "outliers": outlier_stats,
-            "max_outlier_persistence": max_outlier_persistence,
-            "persistent_outlier_unit_ids": sorted(set(persistent_outlier_units)),
         }
         boundary_force_total = int(self._debug_state.get("_debug_boundary_force_events_total", 0))
         boundary_force_total += boundary_force_events_count_tick
@@ -1081,8 +969,6 @@ class EngineTickSkeleton:
                 r_sep_sq=r_sep_sq,
                 attack_range_sq=attack_range_sq,
                 min_unit_spacing=min_unit_spacing,
-                outlier_eta=outlier_eta,
-                persistence_ticks=persistence_ticks,
             )
         return pending
 
@@ -1728,31 +1614,40 @@ class EngineTickSkeleton:
         diag_enabled = bool(diag_surface["fsr_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
 
-        snapshot_positions = {unit_id: (unit.position.x, unit.position.y) for unit_id, unit in state.units.items()}
-        snapshot_hp = {unit_id: unit.hit_points for unit_id, unit in state.units.items()}
-        snapshot_max_hp = {unit_id: unit.max_hit_points for unit_id, unit in state.units.items()}
-        snapshot_alive = {unit_id: (unit.hit_points > 0.0) for unit_id, unit in state.units.items()}
-        snapshot_engaged = {
-            unit_id: (unit.engaged, unit.engaged_target_id)
-            for unit_id, unit in state.units.items()
-        }
+        snapshot_positions = {}
+        alive_units = {}
+        alive_by_fleet = {}
+        alive_ids_by_fleet = {}
+        for unit_id, unit in state.units.items():
+            if unit.hit_points <= 0.0:
+                continue
+            alive_units[unit_id] = unit
+            snapshot_positions[unit_id] = (unit.position.x, unit.position.y)
+            fleet_id = unit.fleet_id
+            alive_by_fleet[fleet_id] = alive_by_fleet.get(fleet_id, 0) + 1
+            fleet_alive_ids = alive_ids_by_fleet.get(fleet_id)
+            if fleet_alive_ids is None:
+                fleet_alive_ids = []
+                alive_ids_by_fleet[fleet_id] = fleet_alive_ids
+            fleet_alive_ids.append(unit_id)
 
         target_local_rank = {}
         for fleet in state.fleets.values():
             for rank, unit_id in enumerate(fleet.unit_ids, start=1):
-                target_local_rank[unit_id] = self._fleet_local_numeric_index(unit_id, rank)
+                if unit_id in alive_units:
+                    target_local_rank[unit_id] = self._fleet_local_numeric_index(unit_id, rank)
 
-        alive_units = {unit_id: unit for unit_id, unit in state.units.items() if snapshot_alive[unit_id]}
-        alive_by_fleet = {}
-        for unit in alive_units.values():
-            alive_by_fleet[unit.fleet_id] = alive_by_fleet.get(unit.fleet_id, 0) + 1
         all_alive_unit_ids = tuple(alive_units.keys())
+        alive_id_sets_by_fleet = {
+            fleet_id: set(unit_ids)
+            for fleet_id, unit_ids in alive_ids_by_fleet.items()
+        }
         enemy_alive_ids_by_fleet = {
-            fleet_id: tuple(unit_id for unit_id in all_alive_unit_ids if alive_units[unit_id].fleet_id != fleet_id)
+            fleet_id: tuple(unit_id for unit_id in all_alive_unit_ids if unit_id not in alive_id_sets_by_fleet.get(fleet_id, set()))
             for fleet_id in alive_by_fleet
         }
         incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
-        total_hp_before = sum(snapshot_hp[uid] for uid in alive_units)
+        total_hp_before = sum(unit.hit_points for unit in alive_units.values())
         in_contact_count = 0
         damage_events_count = 0
         sample_contact_debug = None
@@ -1782,9 +1677,10 @@ class EngineTickSkeleton:
                 distance_sq = (dx * dx) + (dy * dy)
                 if distance_sq > (attack_range_sq - combat_cmp_eps):
                     continue
-                enemy_max_hp = snapshot_max_hp[enemy_id]
+                enemy_unit = alive_units[enemy_id]
+                enemy_max_hp = enemy_unit.max_hit_points
                 if enemy_max_hp > 0.0:
-                    normalized_hp = snapshot_hp[enemy_id] / enemy_max_hp
+                    normalized_hp = enemy_unit.hit_points / enemy_max_hp
                 else:
                     normalized_hp = 0.0
                 normalized_distance = distance_sq / attack_range_sq if attack_range_sq > 0.0 else 0.0
@@ -1841,7 +1737,8 @@ class EngineTickSkeleton:
             dx_contact = target_pos[0] - attacker_pos[0]
             dy_contact = target_pos[1] - attacker_pos[1]
             d_sq = (dx_contact * dx_contact) + (dy_contact * dy_contact)
-            prev_engaged, prev_target_id = snapshot_engaged.get(attacker_id, (False, None))
+            prev_engaged = attacker.engaged
+            prev_target_id = attacker.engaged_target_id
 
             if CH_ENABLED:
                 if prev_engaged and prev_target_id == target_id:
@@ -1912,7 +1809,7 @@ class EngineTickSkeleton:
         for unit_id, unit in alive_units.items():
             new_hp = unit.hit_points - incoming_damage.get(unit_id, 0.0)
             if new_hp > 0.0:
-                engaged_state = engaged_updates.get(unit_id, snapshot_engaged.get(unit_id, (False, None)))
+                engaged_state = engaged_updates.get(unit_id, (unit.engaged, unit.engaged_target_id))
                 if unit_id in orientation_override:
                     updated_units[unit_id] = replace(
                         unit,
@@ -1938,73 +1835,6 @@ class EngineTickSkeleton:
             "tick": state.tick,
         }
         if diag_enabled:
-            fleet_centroids = {}
-            for fleet_id, fleet in state.fleets.items():
-                alive_ids = [
-                    unit_id
-                    for unit_id in fleet.unit_ids
-                    if unit_id in snapshot_positions and snapshot_alive.get(unit_id, False)
-                ]
-                if not alive_ids:
-                    continue
-                centroid_x = sum(snapshot_positions[unit_id][0] for unit_id in alive_ids) / len(alive_ids)
-                centroid_y = sum(snapshot_positions[unit_id][1] for unit_id in alive_ids) / len(alive_ids)
-                fleet_centroids[fleet_id] = (centroid_x, centroid_y)
-
-            sorted_fleet_ids = sorted(fleet_centroids.keys())
-            if len(sorted_fleet_ids) >= 2:
-                cax, cay = fleet_centroids[sorted_fleet_ids[0]]
-                cbx, cby = fleet_centroids[sorted_fleet_ids[1]]
-                axis_x = cbx - cax
-                axis_y = cby - cay
-                axis_norm = math.sqrt((axis_x * axis_x) + (axis_y * axis_y))
-                if axis_norm > 0.0:
-                    axis_x /= axis_norm
-                    axis_y /= axis_norm
-                else:
-                    axis_x = 1.0
-                    axis_y = 0.0
-                mid_x = 0.5 * (cax + cbx)
-                mid_y = 0.5 * (cay + cby)
-            else:
-                axis_x = 1.0
-                axis_y = 0.0
-                mid_x = 0.0
-                mid_y = 0.0
-            ortho_x = -axis_y
-            ortho_y = axis_x
-
-            def _span_std(values: list[float]) -> tuple[float, float]:
-                if not values:
-                    return 0.0, 0.0
-                if len(values) == 1:
-                    return 0.0, 0.0
-                vmin = min(values)
-                vmax = max(values)
-                mean_v = sum(values) / len(values)
-                var_v = sum((v - mean_v) * (v - mean_v) for v in values) / len(values)
-                var_v = max(0.0, var_v)
-                return vmax - vmin, math.sqrt(var_v)
-
-            frontline_per_fleet = {}
-            combined_offsets = []
-            for fleet_id, contact_ids in in_contact_units_by_fleet.items():
-                cx, cy = fleet_centroids.get(fleet_id, (0.0, 0.0))
-                fleet_offsets = []
-                for unit_id in contact_ids:
-                    if unit_id not in snapshot_positions:
-                        continue
-                    ux, uy = snapshot_positions[unit_id]
-                    fleet_offsets.append(((ux - cx) * ortho_x) + ((uy - cy) * ortho_y))
-                    combined_offsets.append(((ux - mid_x) * ortho_x) + ((uy - mid_y) * ortho_y))
-                width, width_std = _span_std(fleet_offsets)
-                frontline_per_fleet[fleet_id] = {
-                    "in_contact_unit_count": len(fleet_offsets),
-                    "frontline_width": width,
-                    "frontline_width_std": width_std,
-                }
-
-            combined_width, combined_width_std = _span_std(combined_offsets)
             pending_diag = self._debug_state.get("diag_pending")
             if pending_diag is not None and pending_diag.get("tick") == state.tick:
                 tick_diag = pending_diag
@@ -2018,11 +1848,7 @@ class EngineTickSkeleton:
                 in_contact_units = set()
                 for contact_ids in in_contact_units_by_fleet.values():
                     in_contact_units.update(contact_ids)
-                alive_diag_units = {
-                    unit_id
-                    for unit_id, is_alive in snapshot_alive.items()
-                    if is_alive
-                }
+                alive_diag_units = set(alive_units.keys())
                 for unit_id in alive_diag_units:
                     history = contact_history.get(unit_id, [])
                     if unit_id in in_contact_units:
@@ -2083,12 +1909,6 @@ class EngineTickSkeleton:
             tick_diag["combat"] = {
                 "in_contact_count": in_contact_count,
                 "damage_events_count": damage_events_count,
-            }
-            tick_diag["frontline"] = {
-                "in_contact_unit_count_total": len(combined_offsets),
-                "frontline_width": combined_width,
-                "frontline_width_std": combined_width_std,
-                "per_fleet": frontline_per_fleet,
             }
             self.debug_diag_last_tick = tick_diag
             diag_timeseries = self._debug_state.get("diag_timeseries")

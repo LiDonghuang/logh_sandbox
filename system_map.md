@@ -25,6 +25,7 @@ Authority: Reference only, not canonical semantics authority
   - `evaluate_utility`
   - `integrate_movement`
   - `resolve_combat`
+- Current maintained cohesion evaluation is selected inside runtime; the maintained harness no longer owns a duplicate v3 geometry host
 
 ### 3. Maintained Harness Spine
 
@@ -64,6 +65,13 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.viz.settings.json`
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
+
+### 7. Documentation Layer
+
+- `docs/README.md`
+  - repo-side documentation entry with canonical / context / reference / archive separation
+- `docs/APP_Files_Prefix_Mapping_v1.0.md`
+  - APP-side flat mirror policy and active 11-file governance working set
 
 ## Current Structural Tension
 
