@@ -50,8 +50,6 @@ class EngineTickSkeleton:
             "diag4_enabled": False,
             "diag4_topk": 10,
             "diag4_contact_window": 20,
-            "diag4_return_sector_deg": 30.0,
-            "diag4_neighbor_k": 3,
         }
 
         # Internal-only state is kept behind a single host instead of top-level sprawl.
@@ -114,6 +112,43 @@ class EngineTickSkeleton:
             "p90": EngineTickSkeleton._quantile_sorted(vals, 0.90),
             "max": vals[-1],
         }
+
+    # Keep the indexing helper narrowly localized to the current 2D runtime so a
+    # later 3D migration only has one obvious place to swap the bucket logic.
+    @staticmethod
+    def _build_spatial_hash(rows: list[tuple], cell_size: float) -> dict[tuple[int, int], list[tuple]]:
+        buckets = {}
+        if cell_size <= 0.0:
+            buckets[(0, 0)] = list(rows)
+            return buckets
+        inv_cell_size = 1.0 / cell_size
+        for row in rows:
+            cell_x = math.floor(row[0] * inv_cell_size)
+            cell_y = math.floor(row[1] * inv_cell_size)
+            cell = (cell_x, cell_y)
+            bucket = buckets.get(cell)
+            if bucket is None:
+                bucket = []
+                buckets[cell] = bucket
+            bucket.append(row)
+        return buckets
+
+    @staticmethod
+    def _iter_spatial_hash_neighbors(
+        spatial_hash: dict[tuple[int, int], list[tuple]],
+        x: float,
+        y: float,
+        cell_size: float,
+    ):
+        if cell_size <= 0.0:
+            yield from spatial_hash.get((0, 0), ())
+            return
+        inv_cell_size = 1.0 / cell_size
+        cell_x = math.floor(x * inv_cell_size)
+        cell_y = math.floor(y * inv_cell_size)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                yield from spatial_hash.get((cell_x + dx, cell_y + dy), ())
 
     @staticmethod
     def _fleet_local_numeric_index(unit_id: str, default_rank: int) -> int:
@@ -179,6 +214,15 @@ class EngineTickSkeleton:
         n_alive = len(alive_positions)
         if n_alive <= 1:
             return n_alive
+        if connect_radius_sq <= 0.0:
+            return 1
+
+        connect_radius = math.sqrt(connect_radius_sq)
+        position_rows = [
+            (pos_x, pos_y, idx)
+            for idx, (pos_x, pos_y) in enumerate(alive_positions)
+        ]
+        position_hash = EngineTickSkeleton._build_spatial_hash(position_rows, connect_radius)
 
         visited = [False] * n_alive
         largest_component_size = 0
@@ -192,10 +236,14 @@ class EngineTickSkeleton:
                 node = stack.pop()
                 component_size += 1
                 nx, ny = alive_positions[node]
-                for j in range(n_alive):
+                for px, py, j in EngineTickSkeleton._iter_spatial_hash_neighbors(
+                    position_hash,
+                    nx,
+                    ny,
+                    connect_radius,
+                ):
                     if visited[j] or j == node:
                         continue
-                    px, py = alive_positions[j]
                     ddx = nx - px
                     ddy = ny - py
                     if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
@@ -512,17 +560,11 @@ class EngineTickSkeleton:
         *,
         state: BattleState,
         updated_units: dict,
-        snapshot_positions: dict,
-        post_move_positions: dict,
-        post_fsr_positions: dict,
         final_positions: dict,
         r_sep: float,
         r_sep_sq: float,
         attack_range_sq: float,
-        min_unit_spacing: float,
     ) -> dict:
-        outlier_eta = 1.8
-        persistence_ticks = 20
         diag_surface = self._diag_surface
         top_k_raw = int(diag_surface["diag4_topk"])
         if top_k_raw < 1:
@@ -532,71 +574,7 @@ class EngineTickSkeleton:
         else:
             top_k = top_k_raw
 
-        sector_deg_raw = float(diag_surface["diag4_return_sector_deg"])
-        if sector_deg_raw < 5.0:
-            sector_deg = 5.0
-        elif sector_deg_raw > 85.0:
-            sector_deg = 85.0
-        else:
-            sector_deg = sector_deg_raw
-        sector_cos = math.cos(math.radians(sector_deg))
-
-        neighbor_k_raw = int(diag_surface["diag4_neighbor_k"])
-        if neighbor_k_raw < 1:
-            neighbor_k = 1
-        elif neighbor_k_raw > 10:
-            neighbor_k = 10
-        else:
-            neighbor_k = neighbor_k_raw
-
-        prev_unit_state = self._ensure_debug_dict("_debug_diag4_prev_unit_state")
-        prev_unit_radius = self._ensure_debug_dict("_debug_diag4_prev_unit_radius")
-        transition_counts = self._ensure_debug_dict("_debug_diag4_transition_counts")
-        first_outlier_tick = self._ensure_debug_dict("_debug_diag4_first_outlier_tick")
-        return_attempt_count = self._ensure_debug_dict("_debug_diag4_return_attempt_count")
-        outlier_return_count = self._ensure_debug_dict("_debug_diag4_outlier_return_count")
-        outlier_duration = self._ensure_debug_dict("_debug_diag4_outlier_duration")
-        max_outlier_duration = self._ensure_debug_dict("_debug_diag4_max_outlier_duration")
-        disp_history = self._ensure_debug_dict("_debug_diag4_disp_history")
-        persistent_records = self._ensure_debug_dict("_debug_diag4_persistent_records")
-        diag4_outlier_streaks = self._ensure_debug_dict("_debug_diag4_outlier_streaks")
-
-        for unit_id, (final_x, final_y) in final_positions.items():
-            start_x, start_y = snapshot_positions.get(unit_id, (final_x, final_y))
-            move_x, move_y = post_move_positions.get(unit_id, (start_x, start_y))
-            fsr_x, fsr_y = post_fsr_positions.get(unit_id, (move_x, move_y))
-            proj_x = final_x
-            proj_y = final_y
-
-            dx_move = move_x - start_x
-            dy_move = move_y - start_y
-            dx_fsr = fsr_x - move_x
-            dy_fsr = fsr_y - move_y
-            dx_proj = proj_x - fsr_x
-            dy_proj = proj_y - fsr_y
-            dx_total = proj_x - start_x
-            dy_total = proj_y - start_y
-
-            history = disp_history.get(unit_id, [])
-            history.append(
-                (
-                    state.tick,
-                    math.sqrt((dx_move * dx_move) + (dy_move * dy_move)),
-                    math.sqrt((dx_fsr * dx_fsr) + (dy_fsr * dy_fsr)),
-                    math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj)),
-                    math.sqrt((dx_total * dx_total) + (dy_total * dy_total)),
-                )
-            )
-            if len(history) > 96:
-                history = history[-96:]
-            disp_history[unit_id] = history
-
         module_a_topk = {}
-        module_b_fleet = {}
-        module_d_persistent = []
-        persistent_diag4_units = []
-
-        # Continued below: per-fleet classification / legacy diag4 payload assembly.
         for fleet_id, fleet in state.fleets.items():
             alive_unit_ids = [
                 unit_id
@@ -604,102 +582,18 @@ class EngineTickSkeleton:
                 if unit_id in final_positions
             ]
             if not alive_unit_ids:
-                diag4_outlier_streaks[fleet_id] = {}
                 module_a_topk[fleet_id] = []
-                module_b_fleet[fleet_id] = {
-                    "core_count": 0,
-                    "shell_count": 0,
-                    "outlier_count": 0,
-                    "r_rms": 0.0,
-                    "r_p50": 0.0,
-                    "r_p90": 0.0,
-                    "outlier_threshold": 0.0,
-                    "margin": min_unit_spacing,
-                }
                 continue
 
             cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
             cy = sum(final_positions[unit_id][1] for unit_id in alive_unit_ids) / len(alive_unit_ids)
 
             radius_by_unit = {}
-            radii = []
             for unit_id in alive_unit_ids:
                 ux, uy = final_positions[unit_id]
                 dx = ux - cx
                 dy = uy - cy
-                radius = math.sqrt((dx * dx) + (dy * dy))
-                radius_by_unit[unit_id] = radius
-                radii.append(radius)
-
-            radii_sorted = sorted(radii)
-            r_p50 = self._quantile_sorted(radii_sorted, 0.50)
-            r_p90 = self._quantile_sorted(radii_sorted, 0.90)
-            r_rms = math.sqrt(sum(r * r for r in radii) / len(radii))
-            outlier_threshold_diag4 = max(r_p90 + min_unit_spacing, outlier_eta * r_rms)
-
-            current_states = {}
-            current_outliers = []
-            core_count = 0
-            shell_count = 0
-            outlier_count = 0
-            transitions = transition_counts.get(fleet_id, {})
-            if not isinstance(transitions, dict):
-                transitions = {}
-            for unit_id in alive_unit_ids:
-                radius = radius_by_unit[unit_id]
-                if radius <= r_p50:
-                    state_class = "CORE"
-                    core_count += 1
-                elif radius > outlier_threshold_diag4:
-                    state_class = "OUTLIER"
-                    outlier_count += 1
-                    current_outliers.append(unit_id)
-                else:
-                    state_class = "SHELL"
-                    shell_count += 1
-                current_states[unit_id] = state_class
-
-                prev_state = prev_unit_state.get(unit_id)
-                if prev_state is not None and prev_state != state_class:
-                    key = f"{prev_state}->{state_class}"
-                    transitions[key] = transitions.get(key, 0) + 1
-
-                prev_radius = prev_unit_radius.get(unit_id, radius)
-                if prev_state == "OUTLIER" and state_class == "OUTLIER" and radius < (prev_radius - 1e-9):
-                    return_attempt_count[unit_id] = return_attempt_count.get(unit_id, 0) + 1
-                if prev_state == "OUTLIER" and state_class == "SHELL":
-                    outlier_return_count[unit_id] = outlier_return_count.get(unit_id, 0) + 1
-
-                prev_duration = outlier_duration.get(unit_id, 0)
-                if state_class == "OUTLIER":
-                    next_duration = prev_duration + 1
-                    outlier_duration[unit_id] = next_duration
-                    if next_duration > max_outlier_duration.get(unit_id, 0):
-                        max_outlier_duration[unit_id] = next_duration
-                    if unit_id not in first_outlier_tick:
-                        first_outlier_tick[unit_id] = state.tick
-                else:
-                    outlier_duration[unit_id] = 0
-                    if unit_id not in max_outlier_duration:
-                        max_outlier_duration[unit_id] = max_outlier_duration.get(unit_id, 0)
-
-                prev_unit_state[unit_id] = state_class
-                prev_unit_radius[unit_id] = radius
-
-            transition_counts[fleet_id] = transitions
-
-            prev_streaks = diag4_outlier_streaks.get(fleet_id, {})
-            next_streaks = {}
-            for unit_id in current_outliers:
-                next_streaks[unit_id] = prev_streaks.get(unit_id, 0) + 1
-            diag4_outlier_streaks[fleet_id] = next_streaks
-
-            persistent_ids = sorted(
-                unit_id
-                for unit_id, streak in next_streaks.items()
-                if streak >= persistence_ticks
-            )
-            persistent_diag4_units.extend(persistent_ids)
+                radius_by_unit[unit_id] = math.sqrt((dx * dx) + (dy * dy))
 
             ranked_units = sorted(
                 alive_unit_ids,
@@ -730,7 +624,6 @@ class EngineTickSkeleton:
                 candidates.append(
                     {
                         "unit_id": unit_id,
-                        "state": current_states.get(unit_id, "SHELL"),
                         "radius": radius_by_unit.get(unit_id, 0.0),
                         "neighbor_count_sep": neighbor_sep,
                         "neighbor_count_contact": neighbor_contact,
@@ -739,166 +632,14 @@ class EngineTickSkeleton:
                 )
             module_a_topk[fleet_id] = candidates
 
-            module_b_fleet[fleet_id] = {
-                "core_count": core_count,
-                "shell_count": shell_count,
-                "outlier_count": outlier_count,
-                "r_rms": r_rms,
-                "r_p50": r_p50,
-                "r_p90": r_p90,
-                "outlier_threshold": outlier_threshold_diag4,
-                "margin": min_unit_spacing,
-                "first_outlier_tick": min(
-                    (first_outlier_tick.get(unit_id, state.tick) for unit_id in current_outliers),
-                    default=None,
-                ),
-                "persistent_outlier_unit_ids": persistent_ids,
-            }
-
-            for unit_id in persistent_ids:
-                ux, uy = final_positions[unit_id]
-                dx_c = cx - ux
-                dy_c = cy - uy
-                norm_c = math.sqrt((dx_c * dx_c) + (dy_c * dy_c))
-                if norm_c > 0.0:
-                    rx = dx_c / norm_c
-                    ry = dy_c / norm_c
-                else:
-                    rx = 0.0
-                    ry = 0.0
-                radius_u = radius_by_unit.get(unit_id, 0.0)
-
-                sector_count = 0
-                sector_distances = []
-                inner_neighbors = 0
-                outer_neighbors = 0
-                for ally_id in alive_unit_ids:
-                    if ally_id == unit_id:
-                        continue
-                    ax, ay = final_positions[ally_id]
-                    vx = ax - ux
-                    vy = ay - uy
-                    dist_sq = (vx * vx) + (vy * vy)
-                    if dist_sq <= 0.0:
-                        continue
-                    dist = math.sqrt(dist_sq)
-                    dot = (vx * rx) + (vy * ry)
-                    if dot > 0.0:
-                        cosang = dot / dist
-                        if cosang >= sector_cos:
-                            sector_count += 1
-                            sector_distances.append(dist)
-
-                    radius_ally = radius_by_unit.get(ally_id, 0.0)
-                    if (radius_u - self.attack_range) <= radius_ally < radius_u:
-                        inner_neighbors += 1
-                    elif radius_u < radius_ally <= (radius_u + self.attack_range):
-                        outer_neighbors += 1
-
-                sector_distances.sort()
-                nearest_k = sector_distances[:neighbor_k]
-                if nearest_k:
-                    nearest_k_mean = sum(nearest_k) / len(nearest_k)
-                else:
-                    nearest_k_mean = 0.0
-
-                denom = inner_neighbors + outer_neighbors
-                if denom > 0:
-                    radial_density_gradient = (inner_neighbors - outer_neighbors) / denom
-                else:
-                    radial_density_gradient = 0.0
-
-                module_d_persistent.append(
-                    {
-                        "fleet_id": fleet_id,
-                        "unit_id": unit_id,
-                        "sector_neighbor_count": sector_count,
-                        "nearest_k_distance_return_dir": nearest_k_mean,
-                        "radial_density_gradient": radial_density_gradient,
-                        "inner_neighbor_count": inner_neighbors,
-                        "outer_neighbor_count": outer_neighbors,
-                        "return_attempt_count": return_attempt_count.get(unit_id, 0),
-                        "consecutive_outlier_duration": outlier_duration.get(unit_id, 0),
-                        "max_outlier_duration": max_outlier_duration.get(unit_id, 0),
-                        "rolling_in_contact_ratio": 0.0,
-                    }
-                )
-
-        module_c_records = []
-        for unit_id in sorted(set(persistent_diag4_units)):
-            if unit_id in persistent_records:
-                continue
-            emergence_tick = first_outlier_tick.get(unit_id, state.tick)
-            history = disp_history.get(unit_id, [])
-            window_start = emergence_tick - 3
-            window_end = emergence_tick + 3
-            window = [
-                sample
-                for sample in history
-                if window_start <= sample[0] <= window_end
-            ]
-            cum_move = sum(sample[1] for sample in window)
-            cum_fsr = sum(sample[2] for sample in window)
-            cum_proj = sum(sample[3] for sample in window)
-            total = cum_move + cum_fsr + cum_proj
-            dominant = "move"
-            dominant_val = cum_move
-            if cum_fsr > dominant_val:
-                dominant = "fsr"
-                dominant_val = cum_fsr
-            if cum_proj > dominant_val:
-                dominant = "projection"
-            persistent_records[unit_id] = {
-                "unit_id": unit_id,
-                "emergence_tick": emergence_tick,
-                "window_start_tick": window_start,
-                "window_end_tick": window_end,
-                "window_samples": len(window),
-                "cum_delta_move_norm": cum_move,
-                "cum_delta_fsr_norm": cum_fsr,
-                "cum_delta_projection_norm": cum_proj,
-                "cum_delta_total_norm": total,
-                "dominant_component": dominant,
-                "delta_separation_component_available": False,
-            }
-
-        for unit_id in sorted(set(persistent_diag4_units)):
-            record = persistent_records.get(unit_id)
-            if isinstance(record, dict):
-                module_c_records.append(record)
-
-        diag4_payload = {
+        return {
             "module_a": {
                 "top_k": top_k,
                 "neighbor_radius_sep": r_sep,
                 "neighbor_radius_contact": self.attack_range,
                 "topk_candidates": module_a_topk,
             },
-            "module_b": {
-                "state_def": {
-                    "core": "r <= R_p50",
-                    "shell": "R_p50 < r <= max(R_p90 + margin, eta*R_rms)",
-                    "outlier": "r > max(R_p90 + margin, eta*R_rms)",
-                },
-                "margin": min_unit_spacing,
-                "eta": outlier_eta,
-                "fleet_state_stats": module_b_fleet,
-                "transition_counts_cumulative": transition_counts,
-                "return_attempt_count": return_attempt_count,
-                "outlier_return_count": outlier_return_count,
-            },
-            "module_c": {
-                "displacement_note": "delta_move/fsr/projection are directly measured from stage boundaries in the single-pass pipeline.",
-                "separation_component_available": False,
-                "persistent_emergence_records": module_c_records,
-            },
-            "module_d": {
-                "return_sector_deg": sector_deg,
-                "nearest_k": neighbor_k,
-                "persistent_reentry": module_d_persistent,
-            },
         }
-        return diag4_payload
 
     def _build_movement_diag_pending(
         self,
@@ -912,13 +653,9 @@ class EngineTickSkeleton:
         boundary_band_fraction: float,
         boundary_soft_strength: float,
         boundary_force_events_count_tick: int,
-        min_unit_spacing: float,
         r_sep: float,
         r_sep_sq: float,
         attack_range_sq: float,
-        snapshot_positions: dict,
-        post_move_positions: dict,
-        post_fsr_positions: dict,
         final_positions: dict,
         diag4_enabled: bool,
     ) -> dict:
@@ -961,14 +698,10 @@ class EngineTickSkeleton:
             pending["diag4"] = self._build_movement_diag4_payload(
                 state=state,
                 updated_units=updated_units,
-                snapshot_positions=snapshot_positions,
-                post_move_positions=post_move_positions,
-                post_fsr_positions=post_fsr_positions,
                 final_positions=final_positions,
                 r_sep=r_sep,
                 r_sep_sq=r_sep_sq,
                 attack_range_sq=attack_range_sq,
-                min_unit_spacing=min_unit_spacing,
             )
         return pending
 
@@ -1011,48 +744,65 @@ class EngineTickSkeleton:
         odw_posture_bias_clip_delta_fleet = max(0.0, float(movement_surface["odw_posture_bias_clip_delta"]))
 
         updated_units = dict(state.units)
+        normalized_params_by_fleet = {
+            fleet_id: fleet.parameters.normalized()
+            for fleet_id, fleet in state.fleets.items()
+        }
         for fleet_id, fleet in state.fleets.items():
             target_direction = state.last_target_direction.get(fleet_id, (0.0, 0.0))
+            normalized_params = normalized_params_by_fleet[fleet_id]
 
-            alive_units = [
-                updated_units[unit_id]
+            alive_unit_ids = [
+                unit_id
                 for unit_id in fleet.unit_ids
                 if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
             ]
-            alive_unit_ids = [unit.unit_id for unit in alive_units]
-            if alive_units:
-                centroid_x = sum(unit.position.x for unit in alive_units) / len(alive_units)
-                centroid_y = sum(unit.position.y for unit in alive_units) / len(alive_units)
+            alive_count = len(alive_unit_ids)
+            if alive_count > 0:
+                sum_x = 0.0
+                sum_y = 0.0
+                for unit_id in alive_unit_ids:
+                    unit = updated_units[unit_id]
+                    sum_x += unit.position.x
+                    sum_y += unit.position.y
+                centroid_x = sum_x / alive_count
+                centroid_y = sum_y / alive_count
             else:
                 centroid_x = 0.0
                 centroid_y = 0.0
 
-            enemy_alive_units = [
-                unit
-                for other_fleet_id, other_fleet in state.fleets.items()
-                if other_fleet_id != fleet_id
-                for unit_id in other_fleet.unit_ids
-                if unit_id in updated_units and updated_units[unit_id].hit_points > 0.0
-                for unit in [updated_units[unit_id]]
-            ]
-            if enemy_alive_units:
-                enemy_centroid_x = sum(unit.position.x for unit in enemy_alive_units) / len(enemy_alive_units)
-                enemy_centroid_y = sum(unit.position.y for unit in enemy_alive_units) / len(enemy_alive_units)
+            enemy_sum_x = 0.0
+            enemy_sum_y = 0.0
+            enemy_alive_count = 0
+            for other_fleet_id, other_fleet in state.fleets.items():
+                if other_fleet_id == fleet_id:
+                    continue
+                for unit_id in other_fleet.unit_ids:
+                    unit = updated_units.get(unit_id)
+                    if unit is None or unit.hit_points <= 0.0:
+                        continue
+                    enemy_sum_x += unit.position.x
+                    enemy_sum_y += unit.position.y
+                    enemy_alive_count += 1
+            if enemy_alive_count > 0:
+                enemy_centroid_x = enemy_sum_x / enemy_alive_count
+                enemy_centroid_y = enemy_sum_y / enemy_alive_count
             else:
                 enemy_centroid_x = centroid_x
                 enemy_centroid_y = centroid_y
 
             radius_sq_sum = 0.0
-            for unit in alive_units:
+            for unit_id in alive_unit_ids:
+                unit = updated_units[unit_id]
                 dx0 = unit.position.x - centroid_x
                 dy0 = unit.position.y - centroid_y
                 radius_sq_sum += (dx0 * dx0) + (dy0 * dy0)
-            if alive_units:
-                fleet_rms_radius = math.sqrt(radius_sq_sum / len(alive_units))
+            if alive_count > 0:
+                fleet_rms_radius = math.sqrt(radius_sq_sum / alive_count)
             else:
                 fleet_rms_radius = 0.0
 
-            if len(alive_units) >= 2:
+            if alive_count >= 2:
                 # Enemy-facing lateral span reference for ODW width redistribution.
                 fdx = enemy_centroid_x - centroid_x
                 fdy = enemy_centroid_y - centroid_y
@@ -1064,7 +814,8 @@ class EngineTickSkeleton:
                     ly = fx
                     forward_values = []
                     lateral_values = []
-                    for unit in alive_units:
+                    for unit_id in alive_unit_ids:
+                        unit = updated_units[unit_id]
                         dxm = unit.position.x - centroid_x
                         dym = unit.position.y - centroid_y
                         forward_values.append((dxm * fx) + (dym * fy))
@@ -1089,29 +840,38 @@ class EngineTickSkeleton:
                 lateral_span_ref = 0.0
 
             engaged_alive_count = 0
-            for unit in alive_units:
+            for unit_id in alive_unit_ids:
+                unit = updated_units[unit_id]
                 if bool(unit.engaged) and bool(unit.engaged_target_id):
                     engaged_alive_count += 1
-            if alive_units:
-                engaged_fraction = engaged_alive_count / float(len(alive_units))
+            if alive_count > 0:
+                engaged_fraction = engaged_alive_count / float(alive_count)
             else:
                 engaged_fraction = 0.0
             contact_gate = engaged_fraction / 0.25
             contact_gate = min(1.0, max(0.0, contact_gate))
 
             separation_accumulator = {unit_id: [0.0, 0.0] for unit_id in alive_unit_ids}
-            for i in range(len(alive_unit_ids)):
-                unit_i = alive_unit_ids[i]
-                if unit_i not in snapshot_positions:
-                    continue
-                pos_i = snapshot_positions[unit_i]
-                for j in range(i + 1, len(alive_unit_ids)):
-                    unit_j = alive_unit_ids[j]
-                    if unit_j not in snapshot_positions:
-                        continue
-                    pos_j = snapshot_positions[unit_j]
-                    dx = pos_i[0] - pos_j[0]
-                    dy = pos_i[1] - pos_j[1]
+            alive_snapshot_rows = [
+                (snapshot_positions[unit_id][0], snapshot_positions[unit_id][1], idx, unit_id)
+                for idx, unit_id in enumerate(alive_unit_ids)
+            ]
+            alive_snapshot_hash = self._build_spatial_hash(alive_snapshot_rows, r_sep)
+            for pos_i_x, pos_i_y, idx_i, unit_i in alive_snapshot_rows:
+                neighbor_rows = [
+                    row
+                    for row in self._iter_spatial_hash_neighbors(
+                        alive_snapshot_hash,
+                        pos_i_x,
+                        pos_i_y,
+                        r_sep,
+                    )
+                    if row[2] > idx_i
+                ]
+                neighbor_rows.sort(key=lambda row: row[2])
+                for pos_j_x, pos_j_y, _, unit_j in neighbor_rows:
+                    dx = pos_i_x - pos_j_x
+                    dy = pos_i_y - pos_j_y
                     distance_sq = (dx * dx) + (dy * dy)
                     if 0.0 < distance_sq < sep_threshold_sq:
                         distance = math.sqrt(distance_sq)
@@ -1123,8 +883,8 @@ class EngineTickSkeleton:
                         separation_accumulator[unit_j][0] -= vx
                         separation_accumulator[unit_j][1] -= vy
 
-            kappa = fleet.parameters.normalized()["formation_rigidity"]
-            pd_norm = fleet.parameters.normalized().get("pursuit_drive", 0.5)
+            kappa = normalized_params["formation_rigidity"]
+            pd_norm = normalized_params.get("pursuit_drive", 0.5)
             mobility_raw = float(fleet.parameters.mobility_bias)
             # Canonical 1-9 mapping:
             # MB_eff = 0.2 * (mobility_bias - 5) / 4, clipped to [-0.2, +0.2].
@@ -1423,7 +1183,7 @@ class EngineTickSkeleton:
                     r_eq = r_cur
                     s_f = 1.0
 
-                kappa_f = fleet.parameters.normalized()["formation_rigidity"]
+                kappa_f = normalized_params_by_fleet[fleet_id]["formation_rigidity"]
                 k_f = fsr_strength * (0.5 + (0.5 * kappa_f))
                 lambda_raw = 1.0 + (k_f * (s_f - 1.0))
                 lambda_min = 1.0 - delta_lambda
@@ -1493,14 +1253,26 @@ class EngineTickSkeleton:
                 rank_by_unit[unit_id] = rank
             global_alive_ids.extend(alive_ids)
 
-        for i in range(len(global_alive_ids)):
-            unit_i = global_alive_ids[i]
-            pos_i = tentative_positions[unit_i]
-            for j in range(i + 1, len(global_alive_ids)):
-                unit_j = global_alive_ids[j]
-                pos_j = tentative_positions[unit_j]
-                dx = pos_i[0] - pos_j[0]
-                dy = pos_i[1] - pos_j[1]
+        global_alive_rows = [
+            (tentative_positions[unit_id][0], tentative_positions[unit_id][1], idx, unit_id)
+            for idx, unit_id in enumerate(global_alive_ids)
+        ]
+        global_alive_hash = self._build_spatial_hash(global_alive_rows, min_unit_spacing)
+        for pos_i_x, pos_i_y, idx_i, unit_i in global_alive_rows:
+            neighbor_rows = [
+                row
+                for row in self._iter_spatial_hash_neighbors(
+                    global_alive_hash,
+                    pos_i_x,
+                    pos_i_y,
+                    min_unit_spacing,
+                )
+                if row[2] > idx_i
+            ]
+            neighbor_rows.sort(key=lambda row: row[2])
+            for pos_j_x, pos_j_y, _, unit_j in neighbor_rows:
+                dx = pos_i_x - pos_j_x
+                dy = pos_i_y - pos_j_y
                 distance_sq = (dx * dx) + (dy * dy)
                 if distance_sq < (min_unit_spacing_sq - sep_branch_eps):
                     if diag_enabled:
@@ -1581,13 +1353,9 @@ class EngineTickSkeleton:
                 boundary_band_fraction=boundary_band_fraction,
                 boundary_soft_strength=boundary_soft_strength,
                 boundary_force_events_count_tick=boundary_force_events_count_tick,
-                min_unit_spacing=min_unit_spacing,
                 r_sep=r_sep,
                 r_sep_sq=r_sep_sq,
                 attack_range_sq=attack_range_sq,
-                snapshot_positions=snapshot_positions,
-                post_move_positions=post_move_positions,
-                post_fsr_positions=post_fsr_positions,
                 final_positions=final_positions,
                 diag4_enabled=diag4_enabled,
             )
@@ -1601,6 +1369,7 @@ class EngineTickSkeleton:
         diag_surface = self._diag_surface
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
+        attack_range_sq_inv = (1.0 / attack_range_sq) if attack_range_sq > 0.0 else 0.0
         geom_gamma = 0.3
         CH_ENABLED = bool(combat_surface["ch_enabled"])
         h_raw = float(combat_surface["contact_hysteresis_h"])
@@ -1617,7 +1386,6 @@ class EngineTickSkeleton:
         snapshot_positions = {}
         alive_units = {}
         alive_by_fleet = {}
-        alive_ids_by_fleet = {}
         for unit_id, unit in state.units.items():
             if unit.hit_points <= 0.0:
                 continue
@@ -1625,34 +1393,41 @@ class EngineTickSkeleton:
             snapshot_positions[unit_id] = (unit.position.x, unit.position.y)
             fleet_id = unit.fleet_id
             alive_by_fleet[fleet_id] = alive_by_fleet.get(fleet_id, 0) + 1
-            fleet_alive_ids = alive_ids_by_fleet.get(fleet_id)
-            if fleet_alive_ids is None:
-                fleet_alive_ids = []
-                alive_ids_by_fleet[fleet_id] = fleet_alive_ids
-            fleet_alive_ids.append(unit_id)
 
-        target_local_rank = {}
+        combat_scan_rows = []
+        scan_order = 0
         for fleet in state.fleets.values():
             for rank, unit_id in enumerate(fleet.unit_ids, start=1):
-                if unit_id in alive_units:
-                    target_local_rank[unit_id] = self._fleet_local_numeric_index(unit_id, rank)
-
-        all_alive_unit_ids = tuple(alive_units.keys())
-        alive_id_sets_by_fleet = {
-            fleet_id: set(unit_ids)
-            for fleet_id, unit_ids in alive_ids_by_fleet.items()
-        }
-        enemy_alive_ids_by_fleet = {
-            fleet_id: tuple(unit_id for unit_id in all_alive_unit_ids if unit_id not in alive_id_sets_by_fleet.get(fleet_id, set()))
-            for fleet_id in alive_by_fleet
-        }
+                unit = alive_units.get(unit_id)
+                if unit is None:
+                    continue
+                ex, ey = snapshot_positions[unit_id]
+                enemy_max_hp = unit.max_hit_points
+                if enemy_max_hp > 0.0:
+                    normalized_hp = unit.hit_points / enemy_max_hp
+                else:
+                    normalized_hp = 0.0
+                combat_scan_rows.append(
+                    (
+                        ex,
+                        ey,
+                        scan_order,
+                        unit_id,
+                        unit.fleet_id,
+                        normalized_hp,
+                        self._fleet_local_numeric_index(unit_id, rank),
+                    )
+                )
+                scan_order += 1
+        combat_scan_hash = self._build_spatial_hash(combat_scan_rows, self.attack_range)
         incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
         total_hp_before = sum(unit.hit_points for unit in alive_units.values())
         in_contact_count = 0
         damage_events_count = 0
         sample_contact_debug = None
         engaged_updates = {}
-        in_contact_units_by_fleet = {}
+        in_contact_units = set()
+        attackers_by_fleet = {}
 
         # Snapshot target assignment (no HP writeback dependence).
         w_hp = 1.0
@@ -1660,44 +1435,48 @@ class EngineTickSkeleton:
         assigned_target = {}
         orientation_override = {}
         for attacker_id, attacker in alive_units.items():
-            attacker_pos = snapshot_positions[attacker_id]
-            enemy_ids = enemy_alive_ids_by_fleet.get(attacker.fleet_id, ())
-            if not enemy_ids:
-                assigned_target[attacker_id] = None
-                continue
+            attacker_pos_x, attacker_pos_y = snapshot_positions[attacker_id]
 
             best_enemy_id = None
             best_score = 0.0
             best_dist_sq = 0.0
             best_rank = 0
-            for enemy_id in enemy_ids:
-                enemy_pos = snapshot_positions[enemy_id]
-                dx = enemy_pos[0] - attacker_pos[0]
-                dy = enemy_pos[1] - attacker_pos[1]
+            best_dx = 0.0
+            best_dy = 0.0
+            best_scan_order = 0
+            for enemy_x, enemy_y, scan_order, enemy_id, enemy_fleet_id, normalized_hp, rank in self._iter_spatial_hash_neighbors(
+                combat_scan_hash,
+                attacker_pos_x,
+                attacker_pos_y,
+                self.attack_range,
+            ):
+                if enemy_fleet_id == attacker.fleet_id:
+                    continue
+                dx = enemy_x - attacker_pos_x
+                dy = enemy_y - attacker_pos_y
                 distance_sq = (dx * dx) + (dy * dy)
                 if distance_sq > (attack_range_sq - combat_cmp_eps):
                     continue
-                enemy_unit = alive_units[enemy_id]
-                enemy_max_hp = enemy_unit.max_hit_points
-                if enemy_max_hp > 0.0:
-                    normalized_hp = enemy_unit.hit_points / enemy_max_hp
-                else:
-                    normalized_hp = 0.0
-                normalized_distance = distance_sq / attack_range_sq if attack_range_sq > 0.0 else 0.0
+                normalized_distance = distance_sq * attack_range_sq_inv
                 score = (w_hp * normalized_hp) + (w_dist * normalized_distance)
-                rank = target_local_rank.get(enemy_id, 0)
 
                 if best_enemy_id is None:
                     best_enemy_id = enemy_id
                     best_score = score
                     best_dist_sq = distance_sq
                     best_rank = rank
+                    best_dx = dx
+                    best_dy = dy
+                    best_scan_order = scan_order
                     continue
                 if score < (best_score - combat_cmp_eps):
                     best_enemy_id = enemy_id
                     best_score = score
                     best_dist_sq = distance_sq
                     best_rank = rank
+                    best_dx = dx
+                    best_dy = dy
+                    best_scan_order = scan_order
                     continue
                 if abs(score - best_score) <= combat_cmp_eps:
                     if distance_sq < (best_dist_sq - combat_cmp_eps):
@@ -1705,18 +1484,24 @@ class EngineTickSkeleton:
                         best_score = score
                         best_dist_sq = distance_sq
                         best_rank = rank
+                        best_dx = dx
+                        best_dy = dy
+                        best_scan_order = scan_order
                         continue
-                    if abs(distance_sq - best_dist_sq) <= combat_cmp_eps and rank < best_rank:
-                        best_enemy_id = enemy_id
-                        best_score = score
-                        best_dist_sq = distance_sq
-                        best_rank = rank
-            assigned_target[attacker_id] = best_enemy_id
-
-        attackers_by_fleet = {}
-
-        for attacker_id, target_id in assigned_target.items():
-            if target_id is not None:
+                    if abs(distance_sq - best_dist_sq) <= combat_cmp_eps:
+                        if rank < best_rank or (rank == best_rank and scan_order < best_scan_order):
+                            best_enemy_id = enemy_id
+                            best_score = score
+                            best_dist_sq = distance_sq
+                            best_rank = rank
+                            best_dx = dx
+                            best_dy = dy
+                            best_scan_order = scan_order
+            if best_enemy_id is None:
+                assigned_target[attacker_id] = None
+            else:
+                assigned_target[attacker_id] = (best_enemy_id, best_dx, best_dy, best_dist_sq)
+            if best_enemy_id is not None:
                 attacker_fleet = alive_units[attacker_id].fleet_id
                 attackers_by_fleet[attacker_fleet] = attackers_by_fleet.get(attacker_fleet, 0) + 1
 
@@ -1727,16 +1512,12 @@ class EngineTickSkeleton:
             else:
                 participation_by_fleet[fleet_id] = 0.0
 
-        for attacker_id, target_id in assigned_target.items():
+        for attacker_id, target_payload in assigned_target.items():
             attacker = alive_units[attacker_id]
-            if target_id is None:
+            if target_payload is None:
                 engaged_updates[attacker_id] = (False, None)
                 continue
-            attacker_pos = snapshot_positions[attacker_id]
-            target_pos = snapshot_positions[target_id]
-            dx_contact = target_pos[0] - attacker_pos[0]
-            dy_contact = target_pos[1] - attacker_pos[1]
-            d_sq = (dx_contact * dx_contact) + (dy_contact * dy_contact)
+            target_id, dx_contact, dy_contact, d_sq = target_payload
             prev_engaged = attacker.engaged
             prev_target_id = attacker.engaged_target_id
 
@@ -1759,8 +1540,8 @@ class EngineTickSkeleton:
             in_contact_count += 1
             target = alive_units[target_id]
             if diag_enabled:
-                in_contact_units_by_fleet.setdefault(attacker.fleet_id, set()).add(attacker_id)
-                in_contact_units_by_fleet.setdefault(target.fleet_id, set()).add(target_id)
+                in_contact_units.add(attacker_id)
+                in_contact_units.add(target_id)
             p_attacker = participation_by_fleet.get(attacker.fleet_id, 0.0)
             p_target = participation_by_fleet.get(target.fleet_id, 0.0)
             coupling = 1.0 + (geom_gamma * (p_attacker - p_target))
@@ -1807,7 +1588,7 @@ class EngineTickSkeleton:
 
         updated_units = {}
         for unit_id, unit in alive_units.items():
-            new_hp = unit.hit_points - incoming_damage.get(unit_id, 0.0)
+            new_hp = unit.hit_points - incoming_damage[unit_id]
             if new_hp > 0.0:
                 engaged_state = engaged_updates.get(unit_id, (unit.engaged, unit.engaged_target_id))
                 if unit_id in orientation_override:
@@ -1845,9 +1626,6 @@ class EngineTickSkeleton:
                 contact_window = min(200, max(20, contact_window_raw))
                 contact_history = self._ensure_debug_dict("_debug_diag4_contact_history")
 
-                in_contact_units = set()
-                for contact_ids in in_contact_units_by_fleet.values():
-                    in_contact_units.update(contact_ids)
                 alive_diag_units = set(alive_units.keys())
                 for unit_id in alive_diag_units:
                     history = contact_history.get(unit_id, [])
@@ -1862,6 +1640,13 @@ class EngineTickSkeleton:
                 for unit_id in list(contact_history.keys()):
                     if unit_id not in alive_diag_units:
                         del contact_history[unit_id]
+
+                rolling_contact_ratio_by_unit = {}
+                for unit_id, history in contact_history.items():
+                    if history:
+                        rolling_contact_ratio_by_unit[unit_id] = sum(history) / len(history)
+                    else:
+                        rolling_contact_ratio_by_unit[unit_id] = 0.0
 
                 diag4_tick = tick_diag.get("diag4")
                 if isinstance(diag4_tick, dict):
@@ -1878,11 +1663,7 @@ class EngineTickSkeleton:
                                     if not isinstance(row, dict):
                                         continue
                                     unit_id = row.get("unit_id")
-                                    history = contact_history.get(unit_id, [])
-                                    if history:
-                                        row["rolling_in_contact_ratio"] = sum(history) / len(history)
-                                    else:
-                                        row["rolling_in_contact_ratio"] = 0.0
+                                    row["rolling_in_contact_ratio"] = rolling_contact_ratio_by_unit.get(unit_id, 0.0)
                                     neighbor_sep = int(row.get("neighbor_count_sep", 0))
                                     neighbor_contact = int(row.get("neighbor_count_contact", 0))
                                     if neighbor_sep <= 0:
@@ -1893,19 +1674,6 @@ class EngineTickSkeleton:
                             module_a["blocked_candidate_count"] = blocked_candidates
                             module_a["rolling_contact_window"] = contact_window
 
-                    module_d = diag4_tick.get("module_d")
-                    if isinstance(module_d, dict):
-                        persistent_reentry = module_d.get("persistent_reentry")
-                        if isinstance(persistent_reentry, list):
-                            for row in persistent_reentry:
-                                if not isinstance(row, dict):
-                                    continue
-                                unit_id = row.get("unit_id")
-                                history = contact_history.get(unit_id, [])
-                                if history:
-                                    row["rolling_in_contact_ratio"] = sum(history) / len(history)
-                                else:
-                                    row["rolling_in_contact_ratio"] = 0.0
             tick_diag["combat"] = {
                 "in_contact_count": in_contact_count,
                 "damage_events_count": damage_events_count,

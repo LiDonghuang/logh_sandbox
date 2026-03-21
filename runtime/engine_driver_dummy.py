@@ -9,6 +9,7 @@ def run_dummy_ticks(
     steps: int,
     capture_positions: bool = False,
     frame_stride: int = 1,
+    verbose: bool = False,
     attack_range: float = 3.0,
     damage_per_tick: float = 1.0,
     separation_radius: float = 1.0,
@@ -47,10 +48,11 @@ def run_dummy_ticks(
     position_frames = []
     for _ in range(steps):
         state = engine.step(state)
-        for fleet_id, fleet in state.fleets.items():
-            print(
-                f"tick={state.tick}, fleet_id={fleet.parameters.archetype_id}, alive_units={len(fleet.unit_ids)}"
-            )
+        if verbose:
+            for fleet_id, fleet in state.fleets.items():
+                print(
+                    f"tick={state.tick}, fleet_id={fleet.parameters.archetype_id}, alive_units={len(fleet.unit_ids)}"
+                )
         for fleet_id in trajectory:
             trajectory[fleet_id].append(state.last_fleet_cohesion.get(fleet_id, 1.0))
             alive_trajectory[fleet_id].append(len(state.fleets[fleet_id].unit_ids))

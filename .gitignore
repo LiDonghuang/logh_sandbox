@@ -14,3 +14,6 @@ __pycache__/
 *.zip
 analysis/test_run_v1_0_battlefield.mp4
 analysis/test_run_v1_0_battlefield.gif
+
+# Local retired backups should stay out of source control by default
+retired/

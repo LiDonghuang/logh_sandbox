@@ -2100,8 +2100,6 @@ def render_test_run(
             except Exception:
                 continue
 
-    freeze_plot_legends()
-
     x_limit_right = max(1, len(ticks) - 1)
     for ax in (
         alive_ax,
@@ -2127,6 +2125,10 @@ def render_test_run(
     # Keep the full fraction range so different fixtures remain directly comparable.
     wedge_ax.set_ylim(0.0, 1.0)
     center_wing_parallel_share_ax.set_ylim(-1.0, 1.0)
+
+    # Freeze plot labels only after final axis limits are in place so the
+    # legend anchor reflects the actual rendered curve geometry.
+    freeze_plot_legends()
 
     tick_cursor_style = {
         "color": "#4a4a4a",

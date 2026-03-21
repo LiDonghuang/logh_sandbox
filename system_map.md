@@ -26,6 +26,10 @@ Authority: Reference only, not canonical semantics authority
   - `integrate_movement`
   - `resolve_combat`
 - Current maintained cohesion evaluation is selected inside runtime; the maintained harness no longer owns a duplicate v3 geometry host
+- Current runtime hot-path reduction uses one local 2D spatial-hash helper across:
+  - combat candidate generation
+  - movement pair pruning with preserved original pair ordering
+  - cohesion connectivity / largest connected component search
 
 ### 3. Maintained Harness Spine
 
@@ -75,13 +79,14 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Structural Tension
 
-The current maintained launcher path no longer depends on old launcher shells.
+The current maintained launcher path no longer depends on old launcher shells, and Phase A is now in closeout rather than launcher-reset mode.
 
 Current remaining burden centers are:
 
 - active auxiliary BRF / viz weight
 - large maintained execution host weight
-- frozen runtime skeleton weight outside the harness scope
+- maintained telemetry pairwise cost
+- residual runtime skeleton weight after successful bounded cleanup/performance rounds
 
 ## Practical Interpretation Rule
 

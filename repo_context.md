@@ -11,10 +11,10 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Phase Focus
 
-- Phase A: cleanup and structural simplification
+- Phase A: closeout and residual performance cleanup
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
-- A5 `test_run` structural reset in progress
+- A5 `test_run` structural reset functionally completed; residual maintained-path weight remains as follow-on debt
 - APP-side governance mirror intentionally reduced to an 11-file active working set
 
 Current emphasis is not personality expansion.
@@ -49,6 +49,7 @@ Current emphasis is not personality expansion.
   - runtime schema and immutable state types
 - `runtime/engine_skeleton.py`
   - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
+  - current hot-path cleanup includes local spatial-hash use for combat candidate generation, movement pair pruning with preserved pair order, and cohesion connectivity search
 
 ## Test Harness Paths
 
@@ -107,6 +108,8 @@ Current emphasis is not personality expansion.
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/runtime_engine_skeleton_burden_inventory_20260320.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/documentation_hygiene_update_20260321.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/engine_skeleton_cohesion_selection_and_outlier_retirement_20260321.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/engine_skeleton_diag4_outlier_family_retirement_20260321.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/phase_a_closeout_matrix_20260321.md`
 
 ## Reading Order
 
