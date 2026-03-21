@@ -79,7 +79,7 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Structural Tension
 
-The current maintained launcher path no longer depends on old launcher shells, and Phase A is now in closeout rather than launcher-reset mode.
+The current maintained launcher path no longer depends on old launcher shells, and Phase A is now functionally closed out rather than still acting as launcher-reset headline work.
 
 Current remaining burden centers are:
 
@@ -87,6 +87,8 @@ Current remaining burden centers are:
 - large maintained execution host weight
 - maintained telemetry pairwise cost
 - residual runtime skeleton weight after successful bounded cleanup/performance rounds
+
+These are post-closeout maintained-path debts, not reasons to reopen old compatibility or launcher-reset work.
 
 ## Practical Interpretation Rule
 

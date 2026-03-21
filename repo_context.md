@@ -11,10 +11,10 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Phase Focus
 
-- Phase A: closeout and residual performance cleanup
+- Phase A: functionally closed out with note
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
-- A5 `test_run` structural reset functionally completed; residual maintained-path weight remains as follow-on debt
+- A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
 - APP-side governance mirror intentionally reduced to an 11-file active working set
 
 Current emphasis is not personality expansion.
@@ -110,6 +110,7 @@ Current emphasis is not personality expansion.
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/engine_skeleton_cohesion_selection_and_outlier_retirement_20260321.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/engine_skeleton_diag4_outlier_family_retirement_20260321.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/phase_a_closeout_matrix_20260321.md`
+- `analysis/engineering_reports/developments/20260318/structural_cleanup/phase_a_accept_closeout_with_note_20260321.md`
 
 ## Reading Order
 
