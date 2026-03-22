@@ -802,6 +802,7 @@ class EngineTickSkeleton:
             else:
                 enemy_centroid_x = centroid_x
                 enemy_centroid_y = centroid_y
+            has_enemy_alive = enemy_alive_count > 0
 
             radius_sq_sum = 0.0
             for unit_id in alive_unit_ids:
@@ -1011,15 +1012,19 @@ class EngineTickSkeleton:
                     if diag_enabled and (phi_left > 0.0 or phi_right > 0.0 or phi_bottom > 0.0 or phi_top > 0.0):
                         boundary_force_events_count_tick += 1
 
-                enemy_vec_x = enemy_centroid_x - unit.position.x
-                enemy_vec_y = enemy_centroid_y - unit.position.y
-                enemy_vec_norm = math.sqrt((enemy_vec_x * enemy_vec_x) + (enemy_vec_y * enemy_vec_y))
-                if enemy_vec_norm > 1e-12:
-                    enemy_dir_x = enemy_vec_x / enemy_vec_norm
-                    enemy_dir_y = enemy_vec_y / enemy_vec_norm
+                if not has_enemy_alive:
+                    enemy_dir_x = 0.0
+                    enemy_dir_y = 0.0
                 else:
-                    enemy_dir_x = target_direction[0]
-                    enemy_dir_y = target_direction[1]
+                    enemy_vec_x = enemy_centroid_x - unit.position.x
+                    enemy_vec_y = enemy_centroid_y - unit.position.y
+                    enemy_vec_norm = math.sqrt((enemy_vec_x * enemy_vec_x) + (enemy_vec_y * enemy_vec_y))
+                    if enemy_vec_norm > 1e-12:
+                        enemy_dir_x = enemy_vec_x / enemy_vec_norm
+                        enemy_dir_y = enemy_vec_y / enemy_vec_norm
+                    else:
+                        enemy_dir_x = target_direction[0]
+                        enemy_dir_y = target_direction[1]
 
                 if v4a_active:
                     stray_factor = 0.0

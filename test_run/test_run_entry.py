@@ -272,77 +272,50 @@ def _render_animation(
 def _export_map_batch(
     *,
     base_dir: Path,
-    viz_settings: dict,
-    prepared: dict,
-    runtime_cfg: dict,
-    viz_cfg: dict,
-    display_language: str,
-    fleet_a_label: str,
-    fleet_b_label: str,
-    fleet_a_full_name: str,
-    fleet_b_full_name: str,
-    fleet_a_avatar: str,
-    fleet_b_avatar: str,
-    fleet_a_color: str,
-    fleet_b_color: str,
+    settings: dict,
     batch_count: int,
     batch_seed: int,
 ) -> None:
     import matplotlib.pyplot as plt
+    from runtime.runtime_v0_1 import BattleState, FleetState, PersonalityParameters
     from test_run.test_run_v1_0_viz import render_test_run
 
     if batch_count <= 0:
         raise ValueError(f"LOGH_VIZ_EXPORT_MAP_COUNT must be > 0, got {batch_count}")
 
-    initial_state = prepared["initial_state"]
-    prepared_summary = prepared["summary"]
-    contact_cfg = runtime_cfg["contact"]
-    boundary_cfg = runtime_cfg["boundary"]
+    viz_settings = settings_api.load_json_file(base_dir / "test_run_v1_0.viz.settings.json")
+    arena_size = float(settings_api.get_battlefield_setting(settings, "arena_size", 200.0))
+    boundary_enabled = bool(settings_api.get_runtime_setting(settings, "boundary_enabled", False))
+    boundary_hard_enabled = bool(settings_api.get_runtime_setting(settings, "boundary_hard_enabled", True))
     output_root = (base_dir.parent / "analysis" / "exports" / "viz_maps" / datetime.now().strftime("%Y%m%d")).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
-    position_frame = {
-        "A": [
-            (
-                unit_id,
-                initial_state.units[unit_id].position.x,
-                initial_state.units[unit_id].position.y,
-                initial_state.units[unit_id].orientation_vector.x,
-                initial_state.units[unit_id].orientation_vector.y,
-                initial_state.units[unit_id].velocity.x,
-                initial_state.units[unit_id].velocity.y,
-            )
-            for unit_id in initial_state.fleets["A"].unit_ids
-            if unit_id in initial_state.units
-        ],
-        "B": [
-            (
-                unit_id,
-                initial_state.units[unit_id].position.x,
-                initial_state.units[unit_id].position.y,
-                initial_state.units[unit_id].orientation_vector.x,
-                initial_state.units[unit_id].orientation_vector.y,
-                initial_state.units[unit_id].velocity.x,
-                initial_state.units[unit_id].velocity.y,
-            )
-            for unit_id in initial_state.fleets["B"].unit_ids
-            if unit_id in initial_state.units
-        ],
-    }
-    position_frames = [position_frame]
-    initial_fleet_sizes = {
-        "A": float(len(initial_state.fleets["A"].unit_ids)),
-        "B": float(len(initial_state.fleets["B"].unit_ids)),
-    }
-    alive_trajectory = {
-        "A": [len(initial_state.fleets["A"].unit_ids)],
-        "B": [len(initial_state.fleets["B"].unit_ids)],
-    }
-    fleet_size_trajectory = {
-        "A": [float(len(initial_state.fleets["A"].unit_ids))],
-        "B": [float(len(initial_state.fleets["B"].unit_ids))],
-    }
-    trajectory = {"A": [1.0], "B": [1.0]}
+    dummy_params = PersonalityParameters(
+        archetype_id="map_export",
+        force_concentration_ratio=5.0,
+        mobility_bias=5.0,
+        offense_defense_weight=5.0,
+        risk_appetite=5.0,
+        time_preference=5.0,
+        targeting_logic=5.0,
+        formation_rigidity=5.0,
+        perception_radius=5.0,
+        pursuit_drive=5.0,
+        retreat_threshold=5.0,
+    )
+    empty_state = BattleState(
+        tick=0,
+        dt=1.0,
+        arena_size=arena_size,
+        units={},
+        fleets={
+            "A": FleetState(fleet_id="A", parameters=dummy_params, unit_ids=()),
+            "B": FleetState(fleet_id="B", parameters=dummy_params, unit_ids=()),
+        },
+        last_fleet_cohesion={"A": 0.0, "B": 0.0},
+        last_target_direction={"A": (0.0, 0.0), "B": (0.0, 0.0)},
+        last_engagement_intensity={"A": 0.0, "B": 0.0},
+    )
     seed_rng = random.Random(batch_seed)
     map_seeds = [seed_rng.randrange(0, 2**32) for _ in range(batch_count)]
 
@@ -354,40 +327,40 @@ def _export_map_batch(
         for index, map_seed in enumerate(map_seeds, start=1):
             plt.close("all")
             render_test_run(
-                arena_size=float(initial_state.arena_size),
-                trajectory=trajectory,
-                alive_trajectory=alive_trajectory,
-                fleet_size_trajectory=fleet_size_trajectory,
-                initial_fleet_sizes=initial_fleet_sizes,
-                position_frames=position_frames,
-                final_state=initial_state,
-                fleet_a_label=fleet_a_label,
-                fleet_b_label=fleet_b_label,
-                fleet_a_full_name=fleet_a_full_name,
-                fleet_b_full_name=fleet_b_full_name,
-                fleet_a_avatar=fleet_a_avatar,
-                fleet_b_avatar=fleet_b_avatar,
-                fleet_a_color=fleet_a_color,
-                fleet_b_color=fleet_b_color,
-                auto_zoom_2d=viz_cfg["auto_zoom_2d"],
-                frame_interval_ms=viz_cfg["frame_interval_ms"],
+                arena_size=arena_size,
+                trajectory={"A": [0.0], "B": [0.0]},
+                alive_trajectory={"A": [0], "B": [0]},
+                fleet_size_trajectory={"A": [0.0], "B": [0.0]},
+                initial_fleet_sizes={"A": 0.0, "B": 0.0},
+                position_frames=[],
+                final_state=empty_state,
+                fleet_a_label="",
+                fleet_b_label="",
+                fleet_a_full_name="",
+                fleet_b_full_name="",
+                fleet_a_avatar="",
+                fleet_b_avatar="",
+                fleet_a_color="#4f6cff",
+                fleet_b_color="#ff6b6b",
+                auto_zoom_2d=False,
+                frame_interval_ms=100,
                 background_seed=int(map_seed),
                 viz_settings=viz_settings,
-                tick_plots_follow_battlefield_tick=viz_cfg["tick_plots_follow_battlefield_tick"],
-                display_language=display_language,
-                unit_direction_mode=viz_cfg["unit_direction_mode"],
-                show_attack_target_lines=viz_cfg["show_attack_target_lines"],
+                tick_plots_follow_battlefield_tick=False,
+                display_language="EN",
+                unit_direction_mode="effective",
+                show_attack_target_lines=False,
                 observer_telemetry={},
                 bridge_telemetry={},
-                observer_enabled=prepared_summary["observer_enabled"],
-                plot_profile=viz_cfg["plot_profile"],
-                plot_smoothing_ticks=viz_cfg["plot_smoothing_ticks"],
+                observer_enabled=False,
+                plot_profile="baseline",
+                plot_smoothing_ticks=5,
                 combat_telemetry={"in_contact_count": [0]},
-                debug_context={},
+                debug_context={"map_export_only": True},
                 export_video_cfg={"enabled": False},
-                boundary_enabled=bool(boundary_cfg["enabled"]),
-                boundary_hard_enabled=bool(boundary_cfg["hard_enabled"]),
-                damage_per_tick=float(contact_cfg["damage_per_tick"]),
+                boundary_enabled=boundary_enabled,
+                boundary_hard_enabled=boundary_hard_enabled,
+                damage_per_tick=1.0,
             )
             output_path = output_root / f"viz_map_runtime_{index:02d}_seed_{map_seed}.png"
             plt.gcf().savefig(output_path, dpi=120, bbox_inches="tight")
@@ -640,6 +613,21 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
     settings = settings_api.load_layered_test_run_settings(base_dir)
+    map_batch_count = _get_env_int("LOGH_VIZ_EXPORT_MAP_COUNT")
+    map_batch_seed_override = _get_env_int("LOGH_VIZ_EXPORT_MAP_BASE_SEED")
+    if map_batch_count is not None:
+        configured_background_map_seed = int(settings_api.get_battlefield_setting(settings, "background_map_seed", -1))
+        _export_map_batch(
+            base_dir=base_dir,
+            settings=settings,
+            batch_count=map_batch_count,
+            batch_seed=(
+                map_batch_seed_override
+                if map_batch_seed_override is not None
+                else scenario.resolve_effective_seed(configured_background_map_seed)
+            ),
+        )
+        return
     active_mode = _require_choice(
         "fixture.active_mode",
         settings_api.get_fixture_setting(settings, ("active_mode",), execution.FIXTURE_MODE_BATTLE),
@@ -690,33 +678,6 @@ def main() -> None:
     fleet_b_avatar = scenario.resolve_avatar_with_fallback(fleet_b_data, DEFAULT_AVATAR_B)
     test_mode = int(summary["test_mode"])
     export_battle_report = int(test_mode) >= 1
-    map_batch_count = _get_env_int("LOGH_VIZ_EXPORT_MAP_COUNT")
-    map_batch_seed_override = _get_env_int("LOGH_VIZ_EXPORT_MAP_BASE_SEED")
-
-    if map_batch_count is not None:
-        _export_map_batch(
-            base_dir=base_dir,
-            viz_settings=viz_settings,
-            prepared=prepared,
-            runtime_cfg=runtime_cfg,
-            viz_cfg=viz_cfg,
-            display_language=display_language,
-            fleet_a_label=fleet_a_label,
-            fleet_b_label=fleet_b_label,
-            fleet_a_full_name=fleet_a_full_name,
-            fleet_b_full_name=fleet_b_full_name,
-            fleet_a_avatar=fleet_a_avatar,
-            fleet_b_avatar=fleet_b_avatar,
-            fleet_a_color=fleet_a_color,
-            fleet_b_color=fleet_b_color,
-            batch_count=map_batch_count,
-            batch_seed=(
-                map_batch_seed_override
-                if map_batch_seed_override is not None
-                else effective_background_map_seed
-            ),
-        )
-        return
 
     capture_target_directions = (
         viz_cfg["show_attack_target_lines"]

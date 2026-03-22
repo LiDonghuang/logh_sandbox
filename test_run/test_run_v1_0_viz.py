@@ -160,6 +160,8 @@ def render_test_run(
     display_language = str(display_language).upper()
     if display_language not in {"EN", "ZH"}:
         display_language = "EN"
+    debug_context = debug_context if isinstance(debug_context, Mapping) else {}
+    map_export_only = bool(_cfg(debug_context, "map_export_only", False))
     show_attack_target_lines = bool(show_attack_target_lines)
     settings_vector_display_mode = str(
         _cfg(viz_settings, "vector_display_mode", unit_direction_mode)
@@ -176,13 +178,15 @@ def render_test_run(
     plot_profile = str(plot_profile).strip().lower()
     if plot_profile not in {"baseline", "extended"}:
         plot_profile = "extended"
-    plot_panel_enabled = plot_profile in {"baseline", "extended"}
-    extended_plot_mode = plot_profile == "extended"
+    plot_panel_enabled = (plot_profile in {"baseline", "extended"}) and (not map_export_only)
+    extended_plot_mode = plot_panel_enabled and (plot_profile == "extended")
     zh_battle_title_suffix = "\u661f\u57df\u4f1a\u6218"
     zh_standard_time_prefix = "\u6807\u51c6\u65f6"
 
     seed_word = _seed_word_from_int(background_seed, length=6)
-    if display_language == "ZH":
+    if map_export_only:
+        battle_title_base = ""
+    elif display_language == "ZH":
         battle_title_base = f"{seed_word} {zh_battle_title_suffix}"
     else:
         battle_title_base = f"{seed_word} Starfield Engagement"
@@ -343,8 +347,8 @@ def render_test_run(
     battle_ax.set_title(battle_title_base)
     battle_ax.set_xlim(0.0, arena_size)
     battle_ax.set_ylim(0.0, arena_size)
-    battle_ax.set_xlabel("X")
-    battle_ax.set_ylabel("Y")
+    battle_ax.set_xlabel("" if map_export_only else "X")
+    battle_ax.set_ylabel("" if map_export_only else "Y")
     battle_ax.set_aspect("equal", adjustable="box", anchor="E")
     battle_ax.set_box_aspect(1)
     battle_ax.set_facecolor(battlefield_bg_color)
@@ -360,7 +364,7 @@ def render_test_run(
         spine.set_edgecolor("#444444")
     # Lock layout margins before any overlay geometry converts points -> axes fractions.
     fig.subplots_adjust(left=0.02, right=0.98, top=0.93, bottom=0.07)
-    if export_video_enabled_layout and (not export_full_plot_layout):
+    if map_export_only or (export_video_enabled_layout and (not export_full_plot_layout)):
         for ax in fig.axes:
             if ax is battle_ax:
                 continue
@@ -859,11 +863,12 @@ def render_test_run(
     boundary_hard_effective = bool(boundary_soft_effective and boundary_hard_enabled)
 
     background_gen_stats = draw_space_background(battle_ax, arena_size, random.Random(background_seed))
-    print(
-        f"[viz-bg] generated "
-        f"belts={background_gen_stats['belts_generated']}/{background_gen_stats['belts_target']} "
-        f"planets={background_gen_stats['planets_generated']}/{background_gen_stats['planets_target']}"
-    )
+    if not map_export_only:
+        print(
+            f"[viz-bg] generated "
+            f"belts={background_gen_stats['belts_generated']}/{background_gen_stats['belts_target']} "
+            f"planets={background_gen_stats['planets_generated']}/{background_gen_stats['planets_target']}"
+        )
     grid_clip_patch = Rectangle(
         (0.0, 0.0),
         arena_size,
@@ -1227,7 +1232,7 @@ def render_test_run(
         img_w_px = float(image.shape[1]) * float(zoom_value)
         return (img_w_px / ax_w_px, img_h_px / ax_h_px)
 
-    avatar_specs = {
+    avatar_specs = {} if map_export_only else {
         "A": {
             "avatar": fleet_a_avatar,
             "color": fleet_a_color,
@@ -1306,49 +1311,50 @@ def render_test_run(
             artist.set_data(avatar_images[fleet_id][next_state])
             avatar_visual_state[fleet_id] = next_state
 
-    label_specs = {
-        "A": {
-            "marker_x": avatar_inset - (0.2 * marker_w_axes),
-            "marker_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
-            "text_x": avatar_inset + (0.8 * marker_w_axes) + marker_gap_axes + name_horizontal_tune_axes,
-            "text_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
-            "va": "bottom",
-            "ha": "left",
-        },
-        "B": {
-            "marker_x": 1.0 - avatar_inset - (0.8 * marker_w_axes),
-            "marker_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - (2.0 * marker_h_axes)),
-            "text_x": 1.0 - avatar_inset - (0.8 * marker_w_axes) - marker_gap_axes - name_horizontal_tune_axes,
-            "text_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - marker_h_axes),
-            "va": "top",
-            "ha": "right",
-        },
-    }
-    for fleet_id, spec in label_specs.items():
-        battle_ax.add_patch(
-            Rectangle(
-                (spec["marker_x"], spec["marker_y"]),
-                marker_w_axes,
-                marker_h_axes,
+    if not map_export_only:
+        label_specs = {
+            "A": {
+                "marker_x": avatar_inset - (0.2 * marker_w_axes),
+                "marker_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
+                "text_x": avatar_inset + (0.8 * marker_w_axes) + marker_gap_axes + name_horizontal_tune_axes,
+                "text_y": min(0.96, avatar_inset + avatar_heights["A"] + label_touch_gap_axes + name_vertical_tune_axes + marker_h_axes),
+                "va": "bottom",
+                "ha": "left",
+            },
+            "B": {
+                "marker_x": 1.0 - avatar_inset - (0.8 * marker_w_axes),
+                "marker_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - (2.0 * marker_h_axes)),
+                "text_x": 1.0 - avatar_inset - (0.8 * marker_w_axes) - marker_gap_axes - name_horizontal_tune_axes,
+                "text_y": max(0.04, 1.0 - avatar_inset - avatar_heights["B"] - label_touch_gap_axes - name_vertical_tune_axes - marker_h_axes),
+                "va": "top",
+                "ha": "right",
+            },
+        }
+        for fleet_id, spec in label_specs.items():
+            battle_ax.add_patch(
+                Rectangle(
+                    (spec["marker_x"], spec["marker_y"]),
+                    marker_w_axes,
+                    marker_h_axes,
+                    transform=battle_ax.transAxes,
+                    facecolor=avatar_specs[fleet_id]["color"],
+                    edgecolor="none",
+                    zorder=30.0,
+                )
+            )
+            battle_ax.text(
+                spec["text_x"],
+                spec["text_y"],
+                f"{avatar_specs[fleet_id]['full_name']} ({fleet_id})",
                 transform=battle_ax.transAxes,
-                facecolor=avatar_specs[fleet_id]["color"],
-                edgecolor="none",
+                va=spec["va"],
+                ha=spec["ha"],
+                fontsize=full_name_fontsize,
+                fontfamily="sans-serif",
+                bbox=label_bbox,
+                clip_on=True,
                 zorder=30.0,
             )
-        )
-        battle_ax.text(
-            spec["text_x"],
-            spec["text_y"],
-            f"{avatar_specs[fleet_id]['full_name']} ({fleet_id})",
-            transform=battle_ax.transAxes,
-            va=spec["va"],
-            ha=spec["ha"],
-            fontsize=full_name_fontsize,
-            fontfamily="sans-serif",
-            bbox=label_bbox,
-            clip_on=True,
-            zorder=30.0,
-        )
 
     initial_size_a = float(initial_fleet_sizes.get("A", 0.0))
     initial_size_b = float(initial_fleet_sizes.get("B", 0.0))
@@ -1400,7 +1406,6 @@ def render_test_run(
     debug_param_cell_width = 7
     debug_max_row_chars = 42
 
-    debug_context = debug_context if isinstance(debug_context, Mapping) else {}
     combat_telemetry = combat_telemetry if isinstance(combat_telemetry, Mapping) else {}
     fixture_mode = str(_cfg(debug_context, "fixture_mode", "")).strip().lower()
     fixture_plot_mode = fixture_mode == "neutral_transit_v1"
@@ -1599,6 +1604,13 @@ def render_test_run(
         clip_on=True,
         zorder=0.3,
     )
+    if map_export_only:
+        count_text.set_visible(False)
+        count_marker_a.set_visible(False)
+        count_marker_b.set_visible(False)
+        battle_tick_text.set_visible(False)
+        debug_text_box.set_visible(False)
+        debug_text.set_visible(False)
     debug_text.set_text(format_debug_text(vector_display_mode, 0, 0, {}))
     count_text_cache = {"value": ""}
     debug_text_cache = {"value": debug_text.get_text()}

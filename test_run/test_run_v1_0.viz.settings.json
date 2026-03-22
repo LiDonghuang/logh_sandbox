@@ -112,7 +112,7 @@
       0.3,
       0.5
     ],
-    "secondary_min_separation_ratio": 0.7
+    "secondary_min_separation_ratio": 1.0
   },
 
   "_comment_background_orbits": "background_orbits: shared orbit controls for the discrete orbit-pool planet/belt system. orbit_radius_base_ratio=global orbit radius base (applies to both planets and belts); orbit_count_range=sampled shared orbit slot count before auto-raising to fit requested objects; draw_orbits_enabled=draw visible orbit lines around the primary star for generated/shared orbit slots; orbit_line_color/alpha/width=orbit line style; draw_extent_ratio_max=allowed draw domain expansion relative to arena (1.25 => [-0.25*arena,1.25*arena]); eccentricity_near/eccentricity_far control how circular near orbits are and how elliptical far orbits become; planet_orbit_gap_ratio_min and belt_planet_exclusion_gap_ratio now act as soft shell-spacing hints during orbit-pool shaping; belt_belt_exclusion_scale remains a secondary soft-spacing modifier.",
