@@ -1,6 +1,7 @@
 import os
 import random
 import sys
+from dataclasses import replace
 from datetime import datetime
 from functools import partial
 from pathlib import Path
@@ -149,6 +150,59 @@ def _prepare_export_video_cfg(viz_settings: dict, base_dir: Path, run_export_ste
         output_path_is_final=True,
     )
     return export_video_cfg
+
+
+def _prepare_viz_cfg(
+    *,
+    base_dir: Path,
+    settings: dict,
+    summary: dict,
+    run_export_stem: str,
+) -> tuple[dict, dict, dict, str]:
+    viz_settings = settings_api.load_json_file(base_dir / "test_run_v1_0.viz.settings.json")
+    get_viz = partial(settings_api.get_visualization_setting, settings)
+    display_language = str(get_viz("display_language", "EN")).upper()
+    display_language = display_language if display_language in {"EN", "ZH"} else "EN"
+    viz_cfg = {
+        "animate_requested": bool(get_viz("animate", True)),
+        "auto_zoom_2d": bool(get_viz("auto_zoom_2d", False)),
+        "frame_stride": execution.DEFAULT_FRAME_STRIDE,
+        "base_frame_interval_ms": int(get_viz("animation_frame_interval_ms", 100)),
+        "animation_play_speed": float(get_viz("animation_play_speed", 1.0)),
+        "unit_direction_mode": _require_choice(
+            "visualization.vector_display_mode",
+            get_viz("vector_display_mode", get_viz("unit_direction_mode", "effective")),
+            {"effective", "free", "attack", "composite", "radial_debug"},
+        ),
+        "show_attack_target_lines": bool(get_viz("show_attack_target_lines", False)),
+        "tick_plots_follow_battlefield_tick": bool(get_viz("tick_plots_follow_battlefield_tick", False)),
+        "print_tick_summary": bool(get_viz("print_tick_summary", True)),
+        "plot_smoothing_ticks": int(get_viz("plot_smoothing_ticks", 5)),
+        "plot_profile_requested": get_viz("plot_profile", "auto"),
+    }
+    if viz_cfg["base_frame_interval_ms"] < 1:
+        raise ValueError(
+            f"visualization.animation_frame_interval_ms must be >= 1, got {viz_cfg['base_frame_interval_ms']}"
+        )
+    if viz_cfg["animation_play_speed"] <= 0.0:
+        raise ValueError(
+            f"visualization.animation_play_speed must be > 0, got {viz_cfg['animation_play_speed']}"
+        )
+    viz_cfg["frame_interval_ms"] = max(
+        1,
+        int(round(viz_cfg["base_frame_interval_ms"] / viz_cfg["animation_play_speed"])),
+    )
+
+    export_video_cfg = _prepare_export_video_cfg(viz_settings, base_dir, run_export_stem)
+    viz_cfg["animate"] = bool(viz_cfg["animate_requested"] or export_video_cfg["enabled"])
+    viz_cfg["plot_diagnostics_enabled"] = bool(viz_cfg["animate"] or summary["observer_enabled"])
+    _, viz_cfg["plot_profile"] = _resolve_plot_profile(
+        viz_cfg["plot_profile_requested"],
+        int(summary["test_mode"]),
+        str(summary["runtime_decision_source_requested"]),
+        str(summary["runtime_decision_source_effective"]),
+    )
+    return viz_settings, viz_cfg, export_video_cfg, display_language
 
 
 def _maybe_export_battle_report(
@@ -403,10 +457,197 @@ def run_active_surface(
     }
 
 
+def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
+    prepared = scenario.prepare_neutral_transit_fixture(base_dir, settings_override=settings)
+    summary = prepared["summary"]
+    runtime_cfg = prepared["runtime_cfg"]
+    fleet_data = prepared["fleet_data"]
+    run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
+    viz_settings, viz_cfg, export_video_cfg, display_language = _prepare_viz_cfg(
+        base_dir=base_dir,
+        settings=settings,
+        summary=summary,
+        run_export_stem=run_export_stem,
+    )
+    capture_target_directions = (
+        viz_cfg["show_attack_target_lines"]
+        or viz_cfg["unit_direction_mode"] in {"attack", "composite"}
+    )
+    result = run_active_surface(
+        base_dir=base_dir,
+        prepared_override=prepared,
+        settings_override=settings,
+        execution_overrides={
+            "capture_positions": viz_cfg["animate"],
+            "frame_stride": viz_cfg["frame_stride"],
+            "include_target_lines": capture_target_directions,
+            "print_tick_summary": viz_cfg["print_tick_summary"],
+            "plot_diagnostics_enabled": viz_cfg["plot_diagnostics_enabled"],
+            "post_elimination_extra_ticks": max(
+                0,
+                int(viz_settings.get("post_elimination_extra_ticks", 10)),
+            ),
+        },
+        summary_override={
+            "animate": viz_cfg["animate"],
+            "export_battle_report": False,
+        },
+        emit_summary=False,
+    )
+    summary = result["prepared"]["summary"]
+    fixture_metrics = result["observer_telemetry"].get("fixture", {})
+    objective_point_xy = fixture_metrics.get("objective_point_xy", [0.0, 0.0])
+    stop_radius = float(fixture_metrics.get("stop_radius", 0.0))
+    objective_reached_tick = fixture_metrics.get("objective_reached_tick")
+    distances = [float(value) for value in fixture_metrics.get("centroid_to_objective_distance", [])]
+    radius_ratios = [float(value) for value in fixture_metrics.get("formation_rms_radius_ratio", [])]
+    projection_pairs = [int(value) for value in fixture_metrics.get("projection_pairs_count", [])]
+    projection_mean = [float(value) for value in fixture_metrics.get("projection_mean_displacement", [])]
+    projection_max = [float(value) for value in fixture_metrics.get("projection_max_displacement", [])]
+    print(
+        f"[fixture] mode={execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1} "
+        f"movement={summary['movement_model_effective']} "
+        f"arrival_tick={objective_reached_tick} "
+        f"final_tick={int(result['final_state'].tick)} "
+        f"objective=({float(objective_point_xy[0]):.2f},{float(objective_point_xy[1]):.2f}) "
+        f"stop_radius={stop_radius:.2f}"
+    )
+    if distances:
+        print(
+            f"[fixture] centroid_to_objective_distance "
+            f"initial={float(fixture_metrics.get('initial_centroid_to_objective_distance', float('nan'))):.3f} "
+            f"final={distances[-1]:.3f} "
+            f"min={min(distances):.3f}"
+        )
+    if radius_ratios:
+        print(
+            f"[fixture] formation_rms_radius_ratio "
+            f"final={radius_ratios[-1]:.3f} "
+            f"max={max(radius_ratios):.3f}"
+        )
+    if projection_pairs or projection_mean or projection_max:
+        print(
+            f"[fixture] projection_activity "
+            f"pairs_peak={max(projection_pairs) if projection_pairs else 0} "
+            f"mean_disp_peak={max(projection_mean) if projection_mean else 0.0:.3f} "
+            f"max_disp_peak={max(projection_max) if projection_max else 0.0:.3f}"
+        )
+    if not viz_cfg["animate"]:
+        return
+
+    movement_cfg = runtime_cfg["movement"]
+    boundary_cfg = runtime_cfg["boundary"]
+    contact_cfg = runtime_cfg["contact"]
+    initial_state = prepared["initial_state"]
+    fleet_a_color, _ = scenario.resolve_fleet_plot_colors(fleet_data, {})
+    fleet_b_color = "#b8b8b8"
+    fleet_a_label = scenario.resolve_display_name(fleet_data, display_language) or "A"
+    fleet_a_full_name = report_builder.resolve_name_with_fallback(
+        fleet_data,
+        display_language,
+        True,
+        "A",
+    )
+    fleet_a_avatar = scenario.resolve_avatar_with_fallback(fleet_data, DEFAULT_AVATAR_A)
+    fleet_b_label = "No Enemy"
+    fleet_b_full_name = fleet_b_label
+    tick_count = len(result["alive_trajectory"].get("A", []))
+    cohesion_tick_count = len(result["trajectory"].get("A", []))
+    render_final_state = replace(
+        result["final_state"],
+        fleets={
+            **dict(result["final_state"].fleets),
+            "B": type(initial_state.fleets["A"])(
+                fleet_id="B",
+                parameters=initial_state.fleets["A"].parameters,
+                unit_ids=(),
+            ),
+        },
+        last_fleet_cohesion={
+            **dict(result["final_state"].last_fleet_cohesion),
+            "B": 0.0,
+        },
+    )
+    render_context = {
+        "arena_size": float(initial_state.arena_size),
+        "trajectory": {
+            "A": list(result["trajectory"].get("A", [])),
+            "B": [float("nan")] * cohesion_tick_count,
+        },
+        "alive_trajectory": {
+            "A": list(result["alive_trajectory"].get("A", [])),
+            "B": [0] * tick_count,
+        },
+        "fleet_size_trajectory": {
+            "A": list(result["fleet_size_trajectory"].get("A", [])),
+            "B": [0.0] * tick_count,
+        },
+        "initial_fleet_sizes": {
+            "A": float(len(initial_state.fleets["A"].unit_ids)),
+            "B": 0.0,
+        },
+        "position_frames": result["position_frames"],
+        "final_state": render_final_state,
+        "fleet_a_label": fleet_a_label,
+        "fleet_b_label": fleet_b_label,
+        "fleet_a_full_name": fleet_a_full_name,
+        "fleet_b_full_name": fleet_b_full_name,
+        "fleet_a_avatar": fleet_a_avatar,
+        "fleet_b_avatar": "",
+        "fleet_a_color": fleet_a_color,
+        "fleet_b_color": fleet_b_color,
+        "display_language": display_language,
+        "auto_zoom_2d": viz_cfg["auto_zoom_2d"],
+        "frame_interval_ms": viz_cfg["frame_interval_ms"],
+        "tick_plots_follow_battlefield_tick": viz_cfg["tick_plots_follow_battlefield_tick"],
+        "unit_direction_mode": viz_cfg["unit_direction_mode"],
+        "show_attack_target_lines": viz_cfg["show_attack_target_lines"],
+        "background_seed": int(summary["effective_background_map_seed"]),
+        "viz_settings": viz_settings,
+        "observer_telemetry": result["observer_telemetry"],
+        "observer_enabled": bool(summary["observer_enabled"]),
+        "plot_profile": viz_cfg["plot_profile"],
+        "plot_smoothing_ticks": viz_cfg["plot_smoothing_ticks"],
+        "export_video_cfg": export_video_cfg,
+        "boundary_enabled": bool(boundary_cfg["enabled"]),
+        "boundary_hard_enabled": bool(boundary_cfg["hard_enabled"]),
+        "damage_per_tick": float(contact_cfg["damage_per_tick"]),
+    }
+    render_debug_context = {
+        "test_mode_label": summary["test_mode_name"],
+        "movement_model_effective": summary["movement_model_effective"],
+        "cohesion_decision_source_effective": summary["runtime_decision_source_effective"],
+        "pre_tl_target_substrate": movement_cfg["pre_tl_target_substrate"],
+        "symmetric_movement_sync_enabled": movement_cfg["symmetric_movement_sync_enabled"],
+        "continuous_fr_shaping_effective": movement_cfg["continuous_fr_shaping"]["effective"],
+        "continuous_fr_shaping_mode_effective": movement_cfg["continuous_fr_shaping"]["mode_effective"],
+        "odw_posture_bias_enabled_effective": movement_cfg["odw_posture_bias"]["enabled_effective"],
+        "odw_posture_bias_k_effective": movement_cfg["odw_posture_bias"]["k_effective"],
+        "odw_posture_bias_clip_delta_effective": movement_cfg["odw_posture_bias"]["clip_delta_effective"],
+        "v3_connect_radius_multiplier_effective": movement_cfg["v3_connect_radius_multiplier_effective"],
+        "plot_smoothing_ticks": viz_cfg["plot_smoothing_ticks"],
+        "fixture_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+    }
+    _render_animation(
+        render_context=render_context,
+        combat_telemetry=result["combat_telemetry"],
+        bridge_telemetry=result["bridge_telemetry"],
+        debug_context=render_debug_context,
+    )
+
+
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
     settings = settings_api.load_layered_test_run_settings(base_dir)
-    viz_settings = settings_api.load_json_file(base_dir / "test_run_v1_0.viz.settings.json")
+    active_mode = _require_choice(
+        "fixture.active_mode",
+        settings_api.get_fixture_setting(settings, ("active_mode",), execution.FIXTURE_MODE_BATTLE),
+        execution.FIXTURE_MODE_LABELS,
+    )
+    if active_mode == execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+        _run_neutral_transit_fixture(base_dir=base_dir, settings=settings)
+        return
     prepared = scenario.prepare_active_scenario(base_dir, settings_override=settings)
     summary = prepared["summary"]
     runtime_cfg = prepared["runtime_cfg"]
@@ -414,14 +655,23 @@ def main() -> None:
     fleet_a_data = prepared["fleet_a_data"]
     fleet_b_data = prepared["fleet_b_data"]
 
-    get_viz = partial(settings_api.get_visualization_setting, settings)
-
     effective_random_seed = int(summary["effective_random_seed"])
     effective_metatype_random_seed = int(summary["effective_metatype_random_seed"])
     effective_background_map_seed = int(summary["effective_background_map_seed"])
+    run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
+    (
+        viz_settings,
+        viz_cfg,
+        export_video_cfg,
+        display_language,
+    ) = _prepare_viz_cfg(
+        base_dir=base_dir,
+        settings=settings,
+        summary=summary,
+        run_export_stem=run_export_stem,
+    )
     fleet_a_color, fleet_b_color = scenario.resolve_fleet_plot_colors(fleet_a_data, fleet_b_data)
-    display_language = str(get_viz("display_language", "EN")).upper()
-    display_language = display_language if display_language in {"EN", "ZH"} else "EN"
     fleet_a_label = scenario.resolve_display_name(fleet_a_data, display_language)
     fleet_b_label = scenario.resolve_display_name(fleet_b_data, display_language)
     fleet_a_full_name = report_builder.resolve_name_with_fallback(
@@ -438,52 +688,7 @@ def main() -> None:
     )
     fleet_a_avatar = scenario.resolve_avatar_with_fallback(fleet_a_data, DEFAULT_AVATAR_A)
     fleet_b_avatar = scenario.resolve_avatar_with_fallback(fleet_b_data, DEFAULT_AVATAR_B)
-
-    viz_cfg = {
-        "animate_requested": bool(get_viz("animate", True)),
-        "auto_zoom_2d": bool(get_viz("auto_zoom_2d", False)),
-        "frame_stride": execution.DEFAULT_FRAME_STRIDE,
-        "base_frame_interval_ms": int(get_viz("animation_frame_interval_ms", 100)),
-        "animation_play_speed": float(get_viz("animation_play_speed", 1.0)),
-        "unit_direction_mode": _require_choice(
-            "visualization.vector_display_mode",
-            get_viz("vector_display_mode", get_viz("unit_direction_mode", "effective")),
-            {"effective", "free", "attack", "composite", "radial_debug"},
-        ),
-        "show_attack_target_lines": bool(get_viz("show_attack_target_lines", False)),
-        "tick_plots_follow_battlefield_tick": bool(get_viz("tick_plots_follow_battlefield_tick", False)),
-        "print_tick_summary": bool(get_viz("print_tick_summary", True)),
-        "plot_smoothing_ticks": int(get_viz("plot_smoothing_ticks", 5)),
-        "plot_profile_requested": get_viz("plot_profile", "auto"),
-    }
-    if viz_cfg["base_frame_interval_ms"] < 1:
-        raise ValueError(
-            f"visualization.animation_frame_interval_ms must be >= 1, got {viz_cfg['base_frame_interval_ms']}"
-        )
-    if viz_cfg["animation_play_speed"] <= 0.0:
-        raise ValueError(
-            f"visualization.animation_play_speed must be > 0, got {viz_cfg['animation_play_speed']}"
-        )
-    viz_cfg["frame_interval_ms"] = max(
-        1,
-        int(round(viz_cfg["base_frame_interval_ms"] / viz_cfg["animation_play_speed"])),
-    )
-
-    run_export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_export_stem = f"{DEFAULT_BATTLE_REPORT_TOPIC}_{run_export_timestamp}"
-    export_video_cfg = _prepare_export_video_cfg(viz_settings, base_dir, run_export_stem)
-    viz_cfg["animate"] = bool(viz_cfg["animate_requested"] or export_video_cfg["enabled"])
-    viz_cfg["plot_diagnostics_enabled"] = bool(viz_cfg["animate"] or summary["observer_enabled"])
-
     test_mode = int(summary["test_mode"])
-    runtime_decision_source_requested = str(summary["runtime_decision_source_requested"])
-    runtime_decision_source_effective = str(summary["runtime_decision_source_effective"])
-    _, viz_cfg["plot_profile"] = _resolve_plot_profile(
-        viz_cfg["plot_profile_requested"],
-        test_mode,
-        runtime_decision_source_requested,
-        runtime_decision_source_effective,
-    )
     export_battle_report = int(test_mode) >= 1
     map_batch_count = _get_env_int("LOGH_VIZ_EXPORT_MAP_COUNT")
     map_batch_seed_override = _get_env_int("LOGH_VIZ_EXPORT_MAP_BASE_SEED")

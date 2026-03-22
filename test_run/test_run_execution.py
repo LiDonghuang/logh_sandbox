@@ -78,6 +78,12 @@ SimulationContactConfig = dict
 SimulationBoundaryConfig = dict
 SimulationRuntimeConfig = dict
 SimulationObserverConfig = dict
+FIXTURE_MODE_BATTLE = "battle"
+FIXTURE_MODE_NEUTRAL_TRANSIT_V1 = "neutral_transit_v1"
+FIXTURE_MODE_LABELS = {
+    FIXTURE_MODE_BATTLE,
+    FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+}
 
 
 def _clamp01(value: float) -> float:
@@ -196,6 +202,45 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         if norm > 0.0:
             return (dx / norm, dy / norm), 1.0
         return (0.0, 0.0), 0.0
+
+    def _evaluate_target_with_fixture_objective(self, state: BattleState) -> BattleState | None:
+        fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        if not isinstance(fixture_cfg, Mapping):
+            return None
+        active_mode = str(fixture_cfg.get("active_mode", FIXTURE_MODE_BATTLE)).strip().lower()
+        if active_mode != FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+            return None
+        if len(state.fleets) != 1:
+            return None
+
+        fleet_id, fleet = next(iter(state.fleets.items()))
+        objective_point_xy = fixture_cfg.get("objective_point_xy", (0.0, 0.0))
+        own_units = [
+            state.units[uid]
+            for uid in fleet.unit_ids
+            if uid in state.units and float(state.units[uid].hit_points) > 0.0
+        ]
+        enemy_units = [
+            unit
+            for unit in state.units.values()
+            if unit.fleet_id != fleet_id and float(unit.hit_points) > 0.0
+        ]
+        if enemy_units:
+            return None
+        if not own_units:
+            direction = (0.0, 0.0)
+            intensity = 0.0
+        else:
+            centroid_x, centroid_y = self._compute_position_centroid(own_units)
+            direction, intensity = self._normalize_direction(
+                float(objective_point_xy[0]) - centroid_x,
+                float(objective_point_xy[1]) - centroid_y,
+            )
+        return replace(
+            state,
+            last_target_direction={fleet_id: direction},
+            last_engagement_intensity={fleet_id: intensity},
+        )
 
     def _evaluate_target_with_pre_tl_substrate(self, state: BattleState) -> BattleState:
         substrate = str(
@@ -322,6 +367,9 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
 
     def evaluate_target(self, state: BattleState) -> BattleState:
+        fixture_state = self._evaluate_target_with_fixture_objective(state)
+        if fixture_state is not None:
+            return fixture_state
         return self._evaluate_target_with_pre_tl_substrate(state)
 
     def _integrate_movement_symmetric_merge(self, state: BattleState) -> BattleState:
@@ -1040,6 +1088,48 @@ def run_simulation(
     boundary_cfg = _require_mapping(runtime_cfg, "boundary")
     bridge_cfg = _require_mapping(observer_cfg, "bridge")
     collapse_shadow_cfg = _require_mapping(observer_cfg, "collapse_shadow")
+    fixture_cfg = execution_cfg.get("fixture", {})
+    if fixture_cfg is None:
+        fixture_cfg = {}
+    if not isinstance(fixture_cfg, Mapping):
+        raise TypeError(f"run_simulation requires execution_cfg['fixture'] to be a mapping, got {type(fixture_cfg).__name__}")
+    fixture_active_mode = str(fixture_cfg.get("active_mode", FIXTURE_MODE_BATTLE)).strip().lower() or FIXTURE_MODE_BATTLE
+    if fixture_active_mode not in FIXTURE_MODE_LABELS:
+        raise ValueError(
+            f"run_simulation execution_cfg['fixture']['active_mode'] must be one of {sorted(FIXTURE_MODE_LABELS)}, "
+            f"got {fixture_active_mode!r}"
+        )
+    fixture_active = fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1
+    fixture_fleet_id = ""
+    fixture_objective_point_xy = (0.0, 0.0)
+    fixture_stop_radius = 0.0
+    if fixture_active:
+        if len(initial_state.fleets) != 1:
+            raise ValueError(
+                "neutral_transit_v1 requires a single-fleet initial_state, "
+                f"got fleet_ids={list(initial_state.fleets.keys())}"
+            )
+        fixture_fleet_id = str(fixture_cfg.get("fleet_id", next(iter(initial_state.fleets.keys())))).strip()
+        if fixture_fleet_id not in initial_state.fleets:
+            raise ValueError(
+                "neutral_transit_v1 fixture fleet_id must exist in initial_state.fleets, "
+                f"got {fixture_fleet_id!r}"
+            )
+        objective_point_xy = fixture_cfg.get("objective_point_xy")
+        if not isinstance(objective_point_xy, Sequence) or isinstance(objective_point_xy, (str, bytes)) or len(objective_point_xy) < 2:
+            raise TypeError(
+                "neutral_transit_v1 execution_cfg['fixture']['objective_point_xy'] must be a 2-item sequence"
+            )
+        fixture_objective_point_xy = (
+            float(objective_point_xy[0]),
+            float(objective_point_xy[1]),
+        )
+        fixture_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+        if fixture_stop_radius < 0.0:
+            raise ValueError(
+                "neutral_transit_v1 execution_cfg['fixture']['stop_radius'] must be >= 0, "
+                f"got {fixture_stop_radius}"
+            )
     continuous_fr_shaping_cfg = movement_cfg.get("continuous_fr_shaping", {})
     if not isinstance(continuous_fr_shaping_cfg, Mapping):
         continuous_fr_shaping_cfg = {}
@@ -1070,6 +1160,12 @@ def run_simulation(
         damage_per_tick=float(contact_cfg["damage_per_tick"]),
         separation_radius=float(contact_cfg["separation_radius"]),
     )
+    if fixture_active:
+        engine.TEST_RUN_FIXTURE_CFG = {
+            "active_mode": fixture_active_mode,
+            "fleet_id": fixture_fleet_id,
+            "objective_point_xy": fixture_objective_point_xy,
+        }
     for attr, value in (
         (
             "PRE_TL_TARGET_SUBSTRATE",
@@ -1187,6 +1283,19 @@ def run_simulation(
     def _per_fleet_series() -> dict[str, list]:
         return {fleet_id: [] for fleet_id in fleet_ids}
 
+    def _compute_centroid_and_rms_radius(position_map: Mapping[str, tuple[float, float]]) -> tuple[float, float, float]:
+        if not position_map:
+            return (float("nan"), float("nan"), 0.0)
+        xs = [float(position[0]) for position in position_map.values()]
+        ys = [float(position[1]) for position in position_map.values()]
+        centroid_x = sum(xs) / float(len(xs))
+        centroid_y = sum(ys) / float(len(ys))
+        radius_sq_mean = sum(
+            ((x - centroid_x) * (x - centroid_x)) + ((y - centroid_y) * (y - centroid_y))
+            for x, y in zip(xs, ys, strict=False)
+        ) / float(len(xs))
+        return (centroid_x, centroid_y, math.sqrt(max(0.0, radius_sq_mean)))
+
     trajectory = _per_fleet_series()
     alive_trajectory = _per_fleet_series()
     fleet_size_trajectory = _per_fleet_series()
@@ -1215,6 +1324,36 @@ def run_simulation(
         "hostile_intermix_severity": [],
         "hostile_intermix_coverage": [],
     }
+    if fixture_active:
+        initial_positions = {
+            str(unit_id): (
+                float(initial_state.units[unit_id].position.x),
+                float(initial_state.units[unit_id].position.y),
+            )
+            for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids
+            if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
+        }
+        initial_centroid_x, initial_centroid_y, initial_rms_radius = _compute_centroid_and_rms_radius(initial_positions)
+        initial_distance = math.sqrt(
+            ((initial_centroid_x - fixture_objective_point_xy[0]) ** 2)
+            + ((initial_centroid_y - fixture_objective_point_xy[1]) ** 2)
+        ) if math.isfinite(initial_centroid_x) and math.isfinite(initial_centroid_y) else float("nan")
+        observer_telemetry["fixture"] = {
+            "active_mode": fixture_active_mode,
+            "fleet_id": fixture_fleet_id,
+            "objective_point_xy": [fixture_objective_point_xy[0], fixture_objective_point_xy[1]],
+            "stop_radius": fixture_stop_radius,
+            "initial_centroid_to_objective_distance": float(initial_distance),
+            "initial_rms_radius": float(initial_rms_radius),
+            "objective_reached_tick": None,
+            "centroid_to_objective_distance": [],
+            "formation_rms_radius": [],
+            "formation_rms_radius_ratio": [],
+            "corrected_unit_ratio": [],
+            "projection_pairs_count": [],
+            "projection_mean_displacement": [],
+            "projection_max_displacement": [],
+        }
     combat_telemetry = {
         "in_contact_count": [],
         "damage_events_count": [],
@@ -1256,6 +1395,39 @@ def run_simulation(
         posture_persistence_state[fleet_id]["sign"] = 0
         posture_persistence_state[fleet_id]["length"] = 0
 
+    def _capture_position_frame(current_state: BattleState) -> None:
+        if not capture_positions or frame_stride <= 0 or current_state.tick % frame_stride != 0:
+            return
+        frame = {"tick": current_state.tick}
+        targets = {}
+        for fleet_id, fleet in current_state.fleets.items():
+            points = []
+            for unit_id in fleet.unit_ids:
+                if unit_id in current_state.units:
+                    unit = current_state.units[unit_id]
+                    points.append(
+                        (
+                            unit_id,
+                            unit.position.x,
+                            unit.position.y,
+                            unit.orientation_vector.x,
+                            unit.orientation_vector.y,
+                            unit.velocity.x,
+                            unit.velocity.y,
+                        )
+                    )
+                    if include_target_lines and unit.engaged and unit.engaged_target_id:
+                        target_id = str(unit.engaged_target_id)
+                        if target_id in current_state.units and current_state.units[target_id].hit_points > 0.0:
+                            targets[str(unit_id)] = target_id
+            frame[fleet_id] = points
+        if include_target_lines:
+            frame["targets"] = targets
+        frame["runtime_debug"] = extract_runtime_debug_payload(
+            getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
+        )
+        position_frames.append(frame)
+
     if steps <= 0:
         tick_limit = 999
         elimination_tick = None
@@ -1272,9 +1444,6 @@ def run_simulation(
             combat_stats = {}
         combat_telemetry["in_contact_count"].append(int(combat_stats.get("in_contact_count", 0)))
         combat_telemetry["damage_events_count"].append(int(combat_stats.get("damage_events_count", 0)))
-        runtime_debug_payload = extract_runtime_debug_payload(
-            getattr(engine, "debug_diag_last_tick", {}) if diagnostics_enabled else {}
-        )
         contact_active_tick = int(combat_stats.get("in_contact_count", 0)) > 0
 
         if print_tick_summary:
@@ -1292,6 +1461,7 @@ def run_simulation(
                 name = str(getattr(fleet.parameters, "archetype_id", "") or ordered_fleet_ids[0])
                 print(f"t={state.tick}, [{name}], {len(fleet.unit_ids)}")
 
+        current_unit_position_maps: dict[str, dict[str, tuple[float, float]]] = {}
         for fleet_id, fleet in state.fleets.items():
             trajectory[fleet_id].append(state.last_fleet_cohesion.get(fleet_id, 1.0))
             alive_trajectory[fleet_id].append(len(fleet.unit_ids))
@@ -1309,6 +1479,7 @@ def run_simulation(
                     centroid_count += 1
                     unit_position_map[str(unit_id)] = (float(unit_state.position.x), float(unit_state.position.y))
             fleet_size_trajectory[fleet_id].append(fleet_size)
+            current_unit_position_maps[fleet_id] = unit_position_map
             center_wing_position_history[fleet_id].append(unit_position_map)
             if centroid_count > 0:
                 observer_telemetry["centroid_x"][fleet_id].append(centroid_sum_x / float(centroid_count))
@@ -1316,6 +1487,55 @@ def run_simulation(
             else:
                 observer_telemetry["centroid_x"][fleet_id].append(float("nan"))
                 observer_telemetry["centroid_y"][fleet_id].append(float("nan"))
+
+        if fixture_active:
+            fixture_metrics = observer_telemetry.get("fixture", {})
+            fixture_positions = current_unit_position_maps.get(fixture_fleet_id, {})
+            centroid_x, centroid_y, rms_radius = _compute_centroid_and_rms_radius(fixture_positions)
+            if math.isfinite(centroid_x) and math.isfinite(centroid_y):
+                distance_to_objective = math.sqrt(
+                    ((centroid_x - fixture_objective_point_xy[0]) ** 2)
+                    + ((centroid_y - fixture_objective_point_xy[1]) ** 2)
+                )
+            else:
+                distance_to_objective = float("nan")
+            fixture_runtime_debug = extract_runtime_debug_payload(
+                getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
+            )
+            initial_rms_radius = float(fixture_metrics.get("initial_rms_radius", 0.0))
+            fixture_metrics["centroid_to_objective_distance"].append(float(distance_to_objective))
+            fixture_metrics["formation_rms_radius"].append(float(rms_radius))
+            fixture_metrics["formation_rms_radius_ratio"].append(
+                (float(rms_radius) / initial_rms_radius)
+                if initial_rms_radius > 1e-12
+                else 1.0
+            )
+            fixture_metrics["corrected_unit_ratio"].append(
+                float(fixture_runtime_debug.get("corrected_unit_ratio", 0.0))
+            )
+            fixture_metrics["projection_pairs_count"].append(int(fixture_runtime_debug.get("projection_pairs_count", 0)))
+            fixture_metrics["projection_mean_displacement"].append(
+                float(fixture_runtime_debug.get("projection_mean_displacement", 0.0))
+            )
+            fixture_metrics["projection_max_displacement"].append(
+                float(fixture_runtime_debug.get("projection_max_displacement", 0.0))
+            )
+            if (
+                fixture_metrics.get("objective_reached_tick") is None
+                and math.isfinite(distance_to_objective)
+                and distance_to_objective <= fixture_stop_radius
+            ):
+                fixture_metrics["objective_reached_tick"] = int(state.tick)
+                elimination_tick = int(state.tick)
+                post_elimination_stop_tick = min(999, elimination_tick + post_elimination_extra_ticks)
+            _capture_position_frame(state)
+            if (
+                fixture_metrics.get("objective_reached_tick") is not None
+                and post_elimination_stop_tick is not None
+                and state.tick >= post_elimination_stop_tick
+            ):
+                break
+            continue
 
         hostile_intermix_metrics = compute_hostile_intermix_metrics(
             state,
@@ -1554,36 +1774,7 @@ def run_simulation(
             ):
                 bridge_telemetry[metric_key][fleet_id].append(metric_value)
 
-        if capture_positions and frame_stride > 0 and state.tick % frame_stride == 0:
-            frame = {"tick": state.tick}
-            targets = {}
-            for fleet_id, fleet in state.fleets.items():
-                points = []
-                for unit_id in fleet.unit_ids:
-                    if unit_id in state.units:
-                        unit = state.units[unit_id]
-                        points.append(
-                            (
-                                unit_id,
-                                unit.position.x,
-                                unit.position.y,
-                                unit.orientation_vector.x,
-                                unit.orientation_vector.y,
-                                unit.velocity.x,
-                                unit.velocity.y,
-                            )
-                        )
-                        if include_target_lines and unit.engaged and unit.engaged_target_id:
-                            target_id = str(unit.engaged_target_id)
-                            if target_id in state.units and state.units[target_id].hit_points > 0.0:
-                                targets[str(unit_id)] = target_id
-                frame[fleet_id] = points
-            if include_target_lines:
-                frame["targets"] = targets
-            frame["runtime_debug"] = extract_runtime_debug_payload(
-                getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
-            )
-            position_frames.append(frame)
+        _capture_position_frame(state)
 
         any_fleet_eliminated = any(len(fleet.unit_ids) == 0 for fleet in state.fleets.values())
         if steps <= 0:
@@ -1594,6 +1785,19 @@ def run_simulation(
                 break
         elif any_fleet_eliminated:
             break
+
+    if fixture_active:
+        return (
+            state,
+            trajectory,
+            alive_trajectory,
+            fleet_size_trajectory,
+            observer_telemetry,
+            combat_telemetry,
+            bridge_telemetry,
+            {},
+            position_frames,
+        )
 
     net_axis_push_interval_ticks = int(observer_telemetry.get("net_axis_push_interval_ticks", 10))
     center_wing_interval_ticks = int(observer_telemetry.get("center_wing_advance_gap_interval_ticks", 10))

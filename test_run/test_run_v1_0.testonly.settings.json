@@ -1,4 +1,22 @@
 {
+  "fixture": {
+    "active_mode": "neutral_transit_v1",
+    "neutral_transit_v1": {
+      "objective_point_xy": [
+        350.0,
+        350.0
+      ],
+      "stop_radius": 2.0,
+      "fleet_archetype_id": "lobos",
+      "fleet_size": 100,
+      "aspect_ratio": 4.0,
+      "origin_xy": [
+        50.0,
+        50.0
+      ],
+      "facing_angle_deg": 45.0
+    }
+  },
   "runtime": {
     "physical": {
       "contact_model": {

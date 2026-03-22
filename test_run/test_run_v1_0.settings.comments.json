@@ -1,4 +1,16 @@
 {
+  "fixture": {
+    "active_mode": "Test-only harness mode selector: battle | neutral_transit_v1. This is the only activation switch; default should remain battle so the maintained battle path stays unchanged.",
+    "neutral_transit_v1": {
+      "objective_point_xy": "Single objective point as [x, y] for fixture-only objective injection. This is not canonical runtime target semantics.",
+      "stop_radius": "Fixture-only completion radius around objective_point_xy. Simulation stops when the single fleet centroid enters this radius.",
+      "fleet_archetype_id": "Single-fleet archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
+      "fleet_size": "Single-fleet initial unit count for neutral_transit_v1.",
+      "aspect_ratio": "Single-fleet initial formation col/row ratio for neutral_transit_v1.",
+      "origin_xy": "Single-fleet initial formation center anchor as [x, y] for neutral_transit_v1.",
+      "facing_angle_deg": "Single-fleet initial facing angle in degrees for neutral_transit_v1. 0=+X, 90=+Y."
+    }
+  },
   "fleet": {
     "fleet_a_archetype_id": "Fleet A archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
     "fleet_b_archetype_id": "Fleet B archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",

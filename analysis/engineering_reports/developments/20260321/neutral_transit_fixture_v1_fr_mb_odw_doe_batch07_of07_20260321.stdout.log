@@ -1,0 +1,6 @@
+[batch07_of07] 1/5 done :: FR=9 MB=9 ODW=1 arrival=193 final_tick=203
+[batch07_of07] 2/5 done :: FR=9 MB=9 ODW=3 arrival=177 final_tick=187
+[batch07_of07] 3/5 done :: FR=9 MB=9 ODW=5 arrival=161 final_tick=171
+[batch07_of07] 4/5 done :: FR=9 MB=9 ODW=7 arrival=153 final_tick=163
+[batch07_of07] 5/5 done :: FR=9 MB=9 ODW=9 arrival=151 final_tick=161
+[batch07_of07] completed rows=5 out_csv=e:\logh_sandbox\analysis\engineering_reports\developments\20260321\neutral_transit_fixture_v1_fr_mb_odw_doe_batch07_of07_20260321.csv

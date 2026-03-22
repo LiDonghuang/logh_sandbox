@@ -95,6 +95,7 @@ def extract_runtime_debug_payload(diag_tick: dict) -> dict:
         "tick": int(diag_tick.get("tick", 0)),
         "projection_max_displacement": float(projection.get("max_projection_displacement", 0.0)),
         "projection_mean_displacement": float(projection.get("mean_projection_displacement", 0.0)),
+        "corrected_unit_ratio": float(projection.get("corrected_unit_ratio", 0.0)),
         "projection_pairs_count": int(projection.get("projection_pairs_count", 0)),
         "in_contact_count": int(combat.get("in_contact_count", 0)),
         "damage_events_count": int(combat.get("damage_events_count", 0)),

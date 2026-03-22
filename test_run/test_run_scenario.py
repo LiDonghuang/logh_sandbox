@@ -418,6 +418,211 @@ def _resolve_point_setting(
     )
 
 
+def _load_common_scenario_context(
+    base_dir: Path,
+    settings: dict,
+    *,
+    get_battlefield,
+    get_run,
+    get_runtime_metatype,
+) -> dict:
+    archetypes = settings_api.load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
+    metatype_settings = load_metatype_settings(base_dir, settings)
+    random_seed = int(get_run("random_seed", -1))
+    metatype_random_seed = int(get_runtime_metatype("random_seed", random_seed))
+    background_map_seed = int(get_battlefield("background_map_seed", -1))
+    effective_random_seed = resolve_effective_seed(random_seed)
+    effective_metatype_random_seed = resolve_effective_seed(metatype_random_seed)
+    effective_background_map_seed = resolve_effective_seed(background_map_seed)
+    return {
+        "archetypes": archetypes,
+        "metatype_settings": metatype_settings,
+        "effective_random_seed": effective_random_seed,
+        "effective_metatype_random_seed": effective_metatype_random_seed,
+        "effective_background_map_seed": effective_background_map_seed,
+        "battlefield_cfg": {
+            "arena_size": float(get_battlefield("arena_size", 200.0)),
+            "effective_background_map_seed": effective_background_map_seed,
+        },
+    }
+
+
+def _build_unit_cfg(get_unit, get_runtime) -> dict:
+    return {
+        "speed": float(get_unit("unit_speed", 1.0)),
+        "max_hit_points": float(get_unit("unit_max_hit_points", 100.0)),
+        "attack_range": float(get_unit("attack_range", get_runtime("attack_range", 3.0))),
+        "damage_per_tick": float(get_unit("damage_per_tick", get_runtime("damage_per_tick", 1.0))),
+    }
+
+
+def _build_run_cfg(
+    get_run,
+    get_runtime,
+    *,
+    max_time_steps_override: int | None = None,
+    test_mode_name_override: str | None = None,
+) -> dict:
+    test_mode = parse_test_mode(get_run("test_mode", 0))
+    runtime_decision_source_requested, runtime_decision_source_effective = resolve_runtime_decision_source(
+        get_runtime("cohesion_decision_source", "baseline"),
+        test_mode,
+    )
+    return {
+        "max_time_steps": (
+            int(get_run("max_time_steps", -1))
+            if max_time_steps_override is None
+            else int(max_time_steps_override)
+        ),
+        "test_mode": test_mode,
+        "test_mode_name": (
+            str(test_mode_name_override)
+            if test_mode_name_override is not None
+            else test_mode_label(test_mode)
+        ),
+        "observer_enabled": test_mode >= 1,
+        "export_battle_report": False,
+        "runtime_decision_source_requested": runtime_decision_source_requested,
+        "runtime_decision_source_effective": runtime_decision_source_effective,
+    }
+
+
+def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str) -> dict:
+    movement_cfg = {
+        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"))[1],
+        "experiment_effective": _require_choice(
+            "runtime.movement_v3a_experiment",
+            get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
+            execution.V3A_EXPERIMENT_LABELS,
+        ),
+        "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
+        "pre_tl_target_substrate": _require_choice(
+            "runtime.pre_tl_target_substrate",
+            get_runtime("pre_tl_target_substrate", execution.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
+            execution.PRE_TL_TARGET_SUBSTRATE_LABELS,
+        ),
+        "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
+        "continuous_fr_shaping": {
+            "enabled": bool(get_runtime("continuous_fr_shaping_enabled", False)),
+            "mode": _require_choice(
+                "runtime.continuous_fr_shaping_mode",
+                get_runtime("continuous_fr_shaping_mode", execution.CONTINUOUS_FR_SHAPING_OFF),
+                execution.CONTINUOUS_FR_SHAPING_LABELS,
+            ),
+            **{
+                key: float(get_runtime(f"continuous_fr_shaping_{key}", default))
+                for key, default in {
+                    "a": 0.0,
+                    "sigma": 0.15,
+                    "p": 1.0,
+                    "q": 1.0,
+                    "beta": 0.0,
+                    "gamma": 0.0,
+                }.items()
+            },
+        },
+        "odw_posture_bias": {
+            "enabled": bool(get_runtime("odw_posture_bias_enabled", False)),
+            "k": float(get_runtime("odw_posture_bias_k", 0.3)),
+            "clip_delta": float(get_runtime("odw_posture_bias_clip_delta", 0.2)),
+        },
+        "v2_connect_radius_multiplier": 1.0,
+        "v3_connect_radius_multiplier_effective": (
+            float(get_runtime("v3_connect_radius_multiplier", execution.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
+            if runtime_decision_source_effective == "v3_test"
+            else 1.0
+        ),
+        "v3_r_ref_radius_multiplier_effective": (
+            float(get_runtime("v3_r_ref_radius_multiplier", execution.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
+            if runtime_decision_source_effective == "v3_test"
+            else 1.0
+        ),
+    }
+    movement_cfg["centroid_probe_scale_effective"] = (
+        movement_cfg["centroid_probe_scale"]
+        if movement_cfg["model_effective"] == "v3a"
+        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+        else 1.0
+    )
+    movement_cfg["continuous_fr_shaping"]["effective"] = (
+        movement_cfg["model_effective"] == "v3a"
+        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+        and movement_cfg["continuous_fr_shaping"]["enabled"]
+        and movement_cfg["continuous_fr_shaping"]["mode"] != execution.CONTINUOUS_FR_SHAPING_OFF
+        and movement_cfg["continuous_fr_shaping"]["a"] > 0.0
+    )
+    movement_cfg["continuous_fr_shaping"]["mode_effective"] = (
+        movement_cfg["continuous_fr_shaping"]["mode"]
+        if movement_cfg["continuous_fr_shaping"]["effective"]
+        else execution.CONTINUOUS_FR_SHAPING_OFF
+    )
+    movement_cfg["odw_posture_bias"]["enabled_effective"] = (
+        movement_cfg["model_effective"] == "v3a"
+        and movement_cfg["odw_posture_bias"]["enabled"]
+    )
+    movement_cfg["odw_posture_bias"]["k_effective"] = (
+        movement_cfg["odw_posture_bias"]["k"]
+        if movement_cfg["odw_posture_bias"]["enabled_effective"]
+        else 0.0
+    )
+    movement_cfg["odw_posture_bias"]["clip_delta_effective"] = (
+        movement_cfg["odw_posture_bias"]["clip_delta"]
+        if movement_cfg["odw_posture_bias"]["enabled_effective"]
+        else 0.2
+    )
+    return movement_cfg
+
+
+def _build_boundary_cfg(get_runtime) -> dict:
+    return {
+        "enabled": bool(get_runtime("boundary_enabled", False)),
+        "hard_enabled": bool(get_runtime("boundary_hard_enabled", True)),
+        "soft_strength": float(get_runtime("boundary_soft_strength", 1.0)),
+    }
+
+
+def _spawn_formation_units(
+    *,
+    units: dict[str, UnitState],
+    fleet_id: str,
+    unit_count: int,
+    aspect_ratio_local: float,
+    origin_x: float,
+    origin_y: float,
+    dir_xy: tuple[float, float],
+    perp_xy: tuple[float, float],
+    unit_spacing: float,
+    unit_speed: float,
+    unit_max_hit_points: float,
+    arena_size: float,
+) -> list[str]:
+    unit_ids = []
+    row_counts = _resolve_initial_formation_layout(unit_count, aspect_ratio_local)
+    half_depth = (len(row_counts) - 1) / 2.0
+    unit_index = 0
+    for row, row_count in enumerate(row_counts):
+        row_offset = row - half_depth
+        half_width = (row_count - 1) / 2.0
+        for col in range(row_count):
+            lateral = col - half_width
+            unit_id = f"{fleet_id}{unit_index + 1}"
+            px = origin_x + (dir_xy[0] * row_offset * unit_spacing) + (perp_xy[0] * lateral * unit_spacing)
+            py = origin_y + (dir_xy[1] * row_offset * unit_spacing) + (perp_xy[1] * lateral * unit_spacing)
+            units[unit_id] = UnitState(
+                unit_id=unit_id,
+                fleet_id=fleet_id,
+                position=Vec2(x=clamp(px, 0.0, arena_size), y=clamp(py, 0.0, arena_size)),
+                velocity=Vec2(x=0.0, y=0.0),
+                hit_points=unit_max_hit_points,
+                max_hit_points=unit_max_hit_points,
+                max_speed=unit_speed,
+                orientation_vector=Vec2(x=dir_xy[0], y=dir_xy[1]),
+            )
+            unit_ids.append(unit_id)
+            unit_index += 1
+    return unit_ids
+
+
 def resolve_effective_seed(seed_value: int) -> int:
     if seed_value < 0:
         return random.SystemRandom().randrange(0, 2**32)
@@ -469,43 +674,8 @@ def build_initial_state(
     perp_b = (-dir_b[1], dir_b[0])
     units = {}
 
-    def _spawn_side(
-        *,
-        fleet_id: str,
-        unit_count: int,
-        aspect_ratio_local: float,
-        origin_x: float,
-        origin_y: float,
-        dir_xy: tuple[float, float],
-        perp_xy: tuple[float, float],
-    ) -> list[str]:
-        unit_ids = []
-        row_counts = _resolve_initial_formation_layout(unit_count, aspect_ratio_local)
-        half_depth = (len(row_counts) - 1) / 2.0
-        unit_index = 0
-        for row, row_count in enumerate(row_counts):
-            row_offset = row - half_depth
-            half_width = (row_count - 1) / 2.0
-            for col in range(row_count):
-                lateral = col - half_width
-                unit_id = f"{fleet_id}{unit_index + 1}"
-                px = origin_x + (dir_xy[0] * row_offset * unit_spacing) + (perp_xy[0] * lateral * unit_spacing)
-                py = origin_y + (dir_xy[1] * row_offset * unit_spacing) + (perp_xy[1] * lateral * unit_spacing)
-                units[unit_id] = UnitState(
-                    unit_id=unit_id,
-                    fleet_id=fleet_id,
-                    position=Vec2(x=clamp(px, 0.0, arena_size), y=clamp(py, 0.0, arena_size)),
-                    velocity=Vec2(x=0.0, y=0.0),
-                    hit_points=unit_max_hit_points,
-                    max_hit_points=unit_max_hit_points,
-                    max_speed=unit_speed,
-                    orientation_vector=Vec2(x=dir_xy[0], y=dir_xy[1]),
-                )
-                unit_ids.append(unit_id)
-                unit_index += 1
-        return unit_ids
-
-    fleet_a_unit_ids = _spawn_side(
+    fleet_a_unit_ids = _spawn_formation_units(
+        units=units,
         fleet_id="A",
         unit_count=fleet_a_size_effective,
         aspect_ratio_local=fleet_a_aspect_ratio_effective,
@@ -513,8 +683,13 @@ def build_initial_state(
         origin_y=fleet_a_origin_y_effective,
         dir_xy=dir_a,
         perp_xy=perp_a,
+        unit_spacing=unit_spacing,
+        unit_speed=unit_speed,
+        unit_max_hit_points=unit_max_hit_points,
+        arena_size=arena_size,
     )
-    fleet_b_unit_ids = _spawn_side(
+    fleet_b_unit_ids = _spawn_formation_units(
+        units=units,
         fleet_id="B",
         unit_count=fleet_b_size_effective,
         aspect_ratio_local=fleet_b_aspect_ratio_effective,
@@ -522,11 +697,70 @@ def build_initial_state(
         origin_y=fleet_b_origin_y_effective,
         dir_xy=dir_b,
         perp_xy=perp_b,
+        unit_spacing=unit_spacing,
+        unit_speed=unit_speed,
+        unit_max_hit_points=unit_max_hit_points,
+        arena_size=arena_size,
     )
 
     fleets = {
         "A": FleetState(fleet_id="A", parameters=fleet_a_params, unit_ids=tuple(fleet_a_unit_ids)),
         "B": FleetState(fleet_id="B", parameters=fleet_b_params, unit_ids=tuple(fleet_b_unit_ids)),
+    }
+    return BattleState(
+        tick=0,
+        dt=DEFAULT_DT,
+        arena_size=arena_size,
+        units=units,
+        fleets=fleets,
+        last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
+    )
+
+
+def build_single_fleet_initial_state(
+    *,
+    fleet_params: PersonalityParameters,
+    fleet_size: int,
+    fleet_aspect_ratio: float,
+    unit_spacing: float,
+    unit_speed: float,
+    unit_max_hit_points: float,
+    arena_size: float,
+    fleet_origin_x: float | None = None,
+    fleet_origin_y: float | None = None,
+    fleet_facing_angle_deg: float | None = None,
+) -> BattleState:
+    fleet_size_effective = int(fleet_size)
+    if fleet_size_effective < 1:
+        raise ValueError(f"fleet_size must be >= 1, got {fleet_size_effective}")
+    fleet_aspect_ratio_effective = float(fleet_aspect_ratio)
+    if fleet_aspect_ratio_effective <= 0.0:
+        raise ValueError(f"fleet_aspect_ratio must be > 0, got {fleet_aspect_ratio_effective}")
+
+    spawn_margin = max(1.0, arena_size * DEFAULT_SPAWN_MARGIN_RATIO)
+    fleet_origin_x_effective = spawn_margin if fleet_origin_x is None else float(fleet_origin_x)
+    fleet_origin_y_effective = spawn_margin if fleet_origin_y is None else float(fleet_origin_y)
+    fleet_facing_angle_deg_effective = 0.0 if fleet_facing_angle_deg is None else float(fleet_facing_angle_deg)
+    dir_a = _direction_from_angle_deg(fleet_facing_angle_deg_effective)
+    perp_a = (-dir_a[1], dir_a[0])
+
+    units: dict[str, UnitState] = {}
+    fleet_unit_ids = _spawn_formation_units(
+        units=units,
+        fleet_id="A",
+        unit_count=fleet_size_effective,
+        aspect_ratio_local=fleet_aspect_ratio_effective,
+        origin_x=fleet_origin_x_effective,
+        origin_y=fleet_origin_y_effective,
+        dir_xy=dir_a,
+        perp_xy=perp_a,
+        unit_spacing=unit_spacing,
+        unit_speed=unit_speed,
+        unit_max_hit_points=unit_max_hit_points,
+        arena_size=arena_size,
+    )
+    fleets = {
+        "A": FleetState(fleet_id="A", parameters=fleet_params, unit_ids=tuple(fleet_unit_ids)),
     }
     return BattleState(
         tick=0,
@@ -554,14 +788,18 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
     get_unit = partial(settings_api.get_unit_setting, settings)
 
-    archetypes = settings_api.load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
-    metatype_settings = load_metatype_settings(base_dir, settings)
-    random_seed = int(get_run("random_seed", -1))
-    metatype_random_seed = int(get_runtime_metatype("random_seed", random_seed))
-    background_map_seed = int(get_battlefield("background_map_seed", -1))
-    effective_random_seed = resolve_effective_seed(random_seed)
-    effective_metatype_random_seed = resolve_effective_seed(metatype_random_seed)
-    effective_background_map_seed = resolve_effective_seed(background_map_seed)
+    common_context = _load_common_scenario_context(
+        base_dir,
+        settings,
+        get_battlefield=get_battlefield,
+        get_run=get_run,
+        get_runtime_metatype=get_runtime_metatype,
+    )
+    archetypes = common_context["archetypes"]
+    metatype_settings = common_context["metatype_settings"]
+    effective_random_seed = common_context["effective_random_seed"]
+    effective_metatype_random_seed = common_context["effective_metatype_random_seed"]
+    effective_background_map_seed = common_context["effective_background_map_seed"]
 
     archetype_rng = random.Random(int(effective_metatype_random_seed))
     fleet_a_data = resolve_fleet_archetype_data(
@@ -579,10 +817,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     fleet_a_params = to_personality_parameters(fleet_a_data)
     fleet_b_params = to_personality_parameters(fleet_b_data)
 
-    battlefield_cfg = {
-        "arena_size": float(get_battlefield("arena_size", 200.0)),
-        "effective_background_map_seed": effective_background_map_seed,
-    }
+    battlefield_cfg = common_context["battlefield_cfg"]
     spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
         settings,
@@ -627,12 +862,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             f"got {fleet_cfg['aspect_ratios']}, spacing={fleet_cfg['unit_spacing']}"
         )
 
-    unit_cfg = {
-        "speed": float(get_unit("unit_speed", 1.0)),
-        "max_hit_points": float(get_unit("unit_max_hit_points", 100.0)),
-        "attack_range": float(get_unit("attack_range", get_runtime("attack_range", 3.0))),
-        "damage_per_tick": float(get_unit("damage_per_tick", get_runtime("damage_per_tick", 1.0))),
-    }
+    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
     initial_state = build_initial_state(
         fleet_a_params=fleet_a_params,
         fleet_b_params=fleet_b_params,
@@ -683,78 +913,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
     contact_cfg["fsr_enabled"] = contact_cfg["fsr_strength"] > 0.0
 
-    movement_cfg = {
-        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"))[1],
-        "experiment_effective": _require_choice(
-            "runtime.movement_v3a_experiment",
-            get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
-            execution.V3A_EXPERIMENT_LABELS,
-        ),
-        "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
-        "pre_tl_target_substrate": _require_choice(
-            "runtime.pre_tl_target_substrate",
-            get_runtime("pre_tl_target_substrate", execution.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
-            execution.PRE_TL_TARGET_SUBSTRATE_LABELS,
-        ),
-        "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
-        "continuous_fr_shaping": {
-            "enabled": bool(get_runtime("continuous_fr_shaping_enabled", False)),
-            "mode": _require_choice(
-                "runtime.continuous_fr_shaping_mode",
-                get_runtime("continuous_fr_shaping_mode", execution.CONTINUOUS_FR_SHAPING_OFF),
-                execution.CONTINUOUS_FR_SHAPING_LABELS,
-            ),
-            **{
-                key: float(get_runtime(f"continuous_fr_shaping_{key}", default))
-                for key, default in {
-                    "a": 0.0,
-                    "sigma": 0.15,
-                    "p": 1.0,
-                    "q": 1.0,
-                    "beta": 0.0,
-                    "gamma": 0.0,
-                }.items()
-            },
-        },
-        "odw_posture_bias": {
-            "enabled": bool(get_runtime("odw_posture_bias_enabled", False)),
-            "k": float(get_runtime("odw_posture_bias_k", 0.3)),
-            "clip_delta": float(get_runtime("odw_posture_bias_clip_delta", 0.2)),
-        },
-    }
-    movement_cfg["centroid_probe_scale_effective"] = (
-        movement_cfg["centroid_probe_scale"]
-        if movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        else 1.0
-    )
-    movement_cfg["continuous_fr_shaping"]["effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        and movement_cfg["continuous_fr_shaping"]["enabled"]
-        and movement_cfg["continuous_fr_shaping"]["mode"] != execution.CONTINUOUS_FR_SHAPING_OFF
-        and movement_cfg["continuous_fr_shaping"]["a"] > 0.0
-    )
-    movement_cfg["continuous_fr_shaping"]["mode_effective"] = (
-        movement_cfg["continuous_fr_shaping"]["mode"]
-        if movement_cfg["continuous_fr_shaping"]["effective"]
-        else execution.CONTINUOUS_FR_SHAPING_OFF
-    )
-    movement_cfg["odw_posture_bias"]["enabled_effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["odw_posture_bias"]["enabled"]
-    )
-    movement_cfg["odw_posture_bias"]["k_effective"] = (
-        movement_cfg["odw_posture_bias"]["k"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.0
-    )
-    movement_cfg["odw_posture_bias"]["clip_delta_effective"] = (
-        movement_cfg["odw_posture_bias"]["clip_delta"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.2
-    )
-
     observer_cfg = {
         "bridge": {
             "theta_split": float(get_event_bridge("theta_split", execution.BRIDGE_THETA_SPLIT_DEFAULT)),
@@ -775,37 +933,12 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         },
     }
 
-    boundary_cfg = {
-        "enabled": bool(get_runtime("boundary_enabled", False)),
-        "hard_enabled": bool(get_runtime("boundary_hard_enabled", True)),
-        "soft_strength": float(get_runtime("boundary_soft_strength", 1.0)),
-    }
-
-    run_cfg = {
-        "max_time_steps": int(get_run("max_time_steps", -1)),
-        "test_mode": parse_test_mode(get_run("test_mode", 0)),
-    }
-    run_cfg["test_mode_name"] = test_mode_label(run_cfg["test_mode"])
-    run_cfg["observer_enabled"] = run_cfg["test_mode"] >= 1
-    run_cfg["export_battle_report"] = False
-    (
-        run_cfg["runtime_decision_source_requested"],
-        run_cfg["runtime_decision_source_effective"],
-    ) = resolve_runtime_decision_source(
-        get_runtime("cohesion_decision_source", "baseline"),
-        run_cfg["test_mode"],
+    run_cfg = _build_run_cfg(get_run, get_runtime)
+    movement_cfg = _build_movement_cfg(
+        get_runtime,
+        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
     )
-    movement_cfg["v2_connect_radius_multiplier"] = 1.0
-    movement_cfg["v3_connect_radius_multiplier_effective"] = (
-        float(get_runtime("v3_connect_radius_multiplier", execution.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
-        if run_cfg["runtime_decision_source_effective"] == "v3_test"
-        else 1.0
-    )
-    movement_cfg["v3_r_ref_radius_multiplier_effective"] = (
-        float(get_runtime("v3_r_ref_radius_multiplier", execution.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
-        if run_cfg["runtime_decision_source_effective"] == "v3_test"
-        else 1.0
-    )
+    boundary_cfg = _build_boundary_cfg(get_runtime)
 
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
@@ -854,5 +987,192 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
             "export_battle_report": False,
+        },
+    }
+
+
+def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict | None = None) -> dict:
+    settings = (
+        settings_override
+        if settings_override is not None
+        else settings_api.load_layered_test_run_settings(base_dir)
+    )
+    get_battlefield = partial(settings_api.get_battlefield_setting, settings)
+    get_fixture = partial(settings_api.get_fixture_setting, settings)
+    get_run = partial(settings_api.get_run_control_setting, settings)
+    get_runtime = partial(settings_api.get_runtime_setting, settings)
+    get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
+    get_unit = partial(settings_api.get_unit_setting, settings)
+
+    active_mode = _require_choice(
+        "fixture.active_mode",
+        get_fixture(("active_mode",), execution.FIXTURE_MODE_BATTLE),
+        execution.FIXTURE_MODE_LABELS,
+    )
+    if active_mode != execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+        raise ValueError(
+            "prepare_neutral_transit_fixture requires fixture.active_mode=neutral_transit_v1, "
+            f"got {active_mode!r}"
+        )
+    common_context = _load_common_scenario_context(
+        base_dir,
+        settings,
+        get_battlefield=get_battlefield,
+        get_run=get_run,
+        get_runtime_metatype=get_runtime_metatype,
+    )
+    archetypes = common_context["archetypes"]
+    metatype_settings = common_context["metatype_settings"]
+    effective_random_seed = common_context["effective_random_seed"]
+    effective_metatype_random_seed = common_context["effective_metatype_random_seed"]
+    effective_background_map_seed = common_context["effective_background_map_seed"]
+
+    archetype_rng = random.Random(int(effective_metatype_random_seed))
+    fleet_data = resolve_fleet_archetype_data(
+        archetypes,
+        metatype_settings,
+        str(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_archetype_id"), "default")),
+        rng=archetype_rng,
+    )
+    fleet_params = to_personality_parameters(fleet_data)
+
+    battlefield_cfg = common_context["battlefield_cfg"]
+    default_origin_x = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
+    default_origin_y = battlefield_cfg["arena_size"] * 0.5
+    origin_x, origin_y = (
+        float(value)
+        for value in get_fixture(
+            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "origin_xy"),
+            (default_origin_x, default_origin_y),
+        )
+    )
+    objective_x, objective_y = (
+        float(value)
+        for value in get_fixture(
+            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "objective_point_xy"),
+            (battlefield_cfg["arena_size"] - default_origin_x, default_origin_y),
+        )
+    )
+    fleet_size = int(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_size"), 100))
+    fleet_aspect_ratio = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "aspect_ratio"), 4.0))
+    stop_radius = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "stop_radius"), 2.0))
+    facing_angle_deg = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "facing_angle_deg"), 0.0))
+
+    if stop_radius < 0.0:
+        raise ValueError(f"fixture.neutral_transit_v1.stop_radius must be >= 0, got {stop_radius}")
+
+    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
+    unit_spacing = float(get_runtime("min_unit_spacing", 1.0))
+    if fleet_aspect_ratio <= 0.0 or unit_spacing <= 0.0:
+        raise ValueError(
+            "fixture.neutral_transit_v1.aspect_ratio and runtime min_unit_spacing must be > 0, "
+            f"got aspect_ratio={fleet_aspect_ratio}, spacing={unit_spacing}"
+        )
+
+    initial_state = build_single_fleet_initial_state(
+        fleet_params=fleet_params,
+        fleet_size=fleet_size,
+        fleet_aspect_ratio=fleet_aspect_ratio,
+        unit_spacing=unit_spacing,
+        unit_speed=unit_cfg["speed"],
+        unit_max_hit_points=unit_cfg["max_hit_points"],
+        arena_size=battlefield_cfg["arena_size"],
+        fleet_origin_x=origin_x,
+        fleet_origin_y=origin_y,
+        fleet_facing_angle_deg=facing_angle_deg,
+    )
+
+    run_cfg = _build_run_cfg(
+        get_run,
+        get_runtime,
+        test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+    )
+    movement_cfg = _build_movement_cfg(
+        get_runtime,
+        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+    )
+
+    execution_cfg = {
+        "steps": run_cfg["max_time_steps"],
+        "capture_positions": False,
+        "frame_stride": execution.DEFAULT_FRAME_STRIDE,
+        "include_target_lines": False,
+        "print_tick_summary": False,
+        "plot_diagnostics_enabled": True,
+        "post_elimination_extra_ticks": ACTIVE_POST_ELIMINATION_EXTRA_TICKS,
+        "fixture": {
+            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "fleet_id": "A",
+            "objective_point_xy": (objective_x, objective_y),
+            "stop_radius": stop_radius,
+        },
+    }
+    simulation_runtime_cfg = {
+        "decision_source": run_cfg["runtime_decision_source_effective"],
+        "movement_model": movement_cfg["model_effective"],
+        "movement": movement_cfg,
+        "contact": {
+            "attack_range": unit_cfg["attack_range"],
+            "damage_per_tick": unit_cfg["damage_per_tick"],
+            "fire_quality_alpha": 0.0,
+            "contact_hysteresis_h": 0.0,
+            "fsr_strength": 0.0,
+            "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
+            "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
+            "hybrid_v2": {
+                "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+                "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+                "forward_damping_strength": execution.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+            },
+            "intent_unified_spacing_v1": {
+                "scale": execution.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
+                "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
+            },
+            "ch_enabled": False,
+            "fsr_enabled": False,
+            "separation_radius": unit_spacing,
+        },
+        "boundary": _build_boundary_cfg(get_runtime),
+    }
+    simulation_observer_cfg = {
+        "enabled": run_cfg["observer_enabled"],
+        "bridge": {
+            "theta_split": execution.BRIDGE_THETA_SPLIT_DEFAULT,
+            "theta_env": execution.BRIDGE_THETA_ENV_DEFAULT,
+            "sustain_ticks": execution.BRIDGE_SUSTAIN_TICKS_DEFAULT,
+        },
+        "collapse_shadow": {
+            "theta_conn_default": execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT,
+            "theta_coh_default": execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT,
+            "theta_force_default": execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT,
+            "theta_attr_default": execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT,
+            "attrition_window": execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT,
+            "sustain_ticks": execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT,
+            "min_conditions": execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT,
+        },
+        "runtime_diag_enabled": True,
+    }
+
+    return {
+        "initial_state": initial_state,
+        "engine_cls": execution.TestModeEngineTickSkeleton,
+        "execution_cfg": execution_cfg,
+        "runtime_cfg": simulation_runtime_cfg,
+        "observer_cfg": simulation_observer_cfg,
+        "fleet_data": fleet_data,
+        "summary": {
+            "effective_random_seed": effective_random_seed,
+            "effective_metatype_random_seed": effective_metatype_random_seed,
+            "effective_background_map_seed": effective_background_map_seed,
+            "test_mode": run_cfg["test_mode"],
+            "test_mode_name": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
+            "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
+            "movement_model_effective": movement_cfg["model_effective"],
+            "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
+            "animate": False,
+            "observer_enabled": run_cfg["observer_enabled"],
+            "export_battle_report": False,
+            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
         },
     }

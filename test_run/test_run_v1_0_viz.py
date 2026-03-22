@@ -219,6 +219,22 @@ def render_test_run(
             result.extend([float("nan")] * (length - len(result)))
         return result
 
+    def extract_fixture_series(metric_key: str, length: int) -> list[float]:
+        result: list[float] = []
+        if isinstance(observer_telemetry, Mapping):
+            fixture_bucket = observer_telemetry.get("fixture", {})
+            if isinstance(fixture_bucket, Mapping):
+                raw = fixture_bucket.get(metric_key, [])
+                if isinstance(raw, (list, tuple)):
+                    for value in raw[:length]:
+                        try:
+                            result.append(float(value))
+                        except (TypeError, ValueError):
+                            result.append(float("nan"))
+        if len(result) < length:
+            result.extend([float("nan")] * (length - len(result)))
+        return result
+
     def has_finite_value(series: Sequence[float]) -> bool:
         for value in series:
             if math.isfinite(float(value)):
@@ -1386,6 +1402,8 @@ def render_test_run(
 
     debug_context = debug_context if isinstance(debug_context, Mapping) else {}
     combat_telemetry = combat_telemetry if isinstance(combat_telemetry, Mapping) else {}
+    fixture_mode = str(_cfg(debug_context, "fixture_mode", "")).strip().lower()
+    fixture_plot_mode = fixture_mode == "neutral_transit_v1"
 
     def format_runtime_diag_lines(
         tick_index: int,
@@ -1898,6 +1916,24 @@ def render_test_run(
     hostile_intermix_coverage_plot = _smooth_plot_series(
         _fill_nonfinite_with_zero(hostile_intermix_coverage_series)
     )
+    fixture_objective_distance_plot = _smooth_plot_series(
+        extract_fixture_series("centroid_to_objective_distance", len(ticks))
+    )
+    fixture_rms_radius_ratio_plot = _smooth_plot_series(
+        extract_fixture_series("formation_rms_radius_ratio", len(ticks))
+    )
+    fixture_corrected_unit_ratio_plot = _smooth_plot_series(
+        extract_fixture_series("corrected_unit_ratio", len(ticks))
+    )
+    fixture_projection_pairs_plot = _smooth_plot_series(
+        extract_fixture_series("projection_pairs_count", len(ticks))
+    )
+    fixture_projection_mean_disp_plot = _smooth_plot_series(
+        extract_fixture_series("projection_mean_displacement", len(ticks))
+    )
+    fixture_projection_max_disp_plot = _smooth_plot_series(
+        extract_fixture_series("projection_max_displacement", len(ticks))
+    )
 
     split_series_a = [float("nan")] * len(ticks)
     split_series_b = [float("nan")] * len(ticks)
@@ -1936,13 +1972,13 @@ def render_test_run(
         cohesion_axis_ylabel = "Coh_v3"
     else:
         cohesion_axis_ylabel = "Coh_v2"
-    wedge_axis_ylabel = "IntermixCov"
-    front_curvature_axis_ylabel = "FrontCurv"
-    center_wing_parallel_share_axis_ylabel = "C_W_PShare"
-    split_axis_ylabel = "SplitSep"
+    wedge_axis_ylabel = "ProjMean" if fixture_plot_mode else "IntermixCov"
+    front_curvature_axis_ylabel = "ProjPairs" if fixture_plot_mode else "FrontCurv"
+    center_wing_parallel_share_axis_ylabel = "ProjMax" if fixture_plot_mode else "C_W_PShare"
+    split_axis_ylabel = "ProjCURatio" if fixture_plot_mode else "SplitSep"
     fire_efficiency_axis_ylabel = "FireEff"
-    loss_rate_axis_ylabel = "LossRate"
-    collapse_signal_axis_ylabel = "CollapseSig"
+    loss_rate_axis_ylabel = "RMSRad" if fixture_plot_mode else "LossRate"
+    collapse_signal_axis_ylabel = "ObjDist" if fixture_plot_mode else "CollapseSig"
 
     def apply_time_axis_label(ax: plt.Axes) -> None:
         ax.set_xlabel("t", fontsize=plot_label_fontsize, labelpad=0.0)
@@ -1969,6 +2005,22 @@ def render_test_run(
         apply_plot_legend(ax)
         return (line_a, line_b)
 
+    def setup_single_plot(
+        ax: plt.Axes,
+        series: Sequence[float | int],
+        ylabel: str,
+        *,
+        label: str,
+        color: str,
+    ):
+        line_a, = ax.plot(ticks, series, label=label, color=color)
+        line_b, = ax.plot([], [], label="_nolegend_", color=color)
+        apply_time_axis_label(ax)
+        ax.set_ylabel(ylabel, fontsize=plot_label_fontsize)
+        ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+        apply_plot_legend(ax)
+        return (line_a, line_b)
+
     collapse_signal_series_a_raw = [
         (1.0 - float(cohesion_series_b[idx])) if idx < len(cohesion_series_b) and math.isfinite(float(cohesion_series_b[idx])) else float("nan")
         for idx in range(len(ticks))
@@ -1985,33 +2037,87 @@ def render_test_run(
     for key, axis, series_a, series_b, ylabel in (
         ("alive", alive_ax, alive_trajectory["A"], alive_trajectory["B"], "Alive"),
         ("fire_efficiency", fire_efficiency_ax, runtime_series["fire_efficiency_a"], runtime_series["fire_efficiency_b"], fire_efficiency_axis_ylabel),
-        ("collapse_signal", collapse_signal_ax, collapse_signal_series_a, collapse_signal_series_b, collapse_signal_axis_ylabel),
-        ("split", split_ax, runtime_series["split_a"], runtime_series["split_b"], split_axis_ylabel),
-        ("loss_rate", loss_rate_ax, runtime_series["loss_rate_a"], runtime_series["loss_rate_b"], loss_rate_axis_ylabel),
         ("cohesion", cohesion_ax, cohesion_plot_series_a, cohesion_plot_series_b, cohesion_axis_ylabel),
-        ("front_curvature", front_curvature_ax, runtime_series["front_curvature_a"], runtime_series["front_curvature_b"], front_curvature_axis_ylabel),
-        (
-            "center_wing_parallel_share",
-            center_wing_parallel_share_ax,
-            runtime_series["center_wing_parallel_share_a"],
-            runtime_series["center_wing_parallel_share_b"],
-            center_wing_parallel_share_axis_ylabel,
-        ),
     ):
         plot_lines[key] = setup_side_plot(axis, series_a, series_b, ylabel)
+    if not fixture_plot_mode:
+        plot_lines["loss_rate"] = setup_side_plot(
+            loss_rate_ax,
+            runtime_series["loss_rate_a"],
+            runtime_series["loss_rate_b"],
+            loss_rate_axis_ylabel,
+        )
 
-    wedge_line_a, = wedge_ax.plot(
-        ticks,
-        runtime_series["hostile_intermix_coverage"],
-        label="Coverage",
-        color="#333333",
-    )
-    wedge_line_b, = wedge_ax.plot([], [], label="_nolegend_", color="#333333")
-    apply_time_axis_label(wedge_ax)
-    wedge_ax.set_ylabel(wedge_axis_ylabel, fontsize=plot_label_fontsize)
-    wedge_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
-    apply_plot_legend(wedge_ax)
-    plot_lines["wedge"] = (wedge_line_a, wedge_line_b)
+    if fixture_plot_mode:
+        plot_lines["loss_rate"] = setup_single_plot(
+            loss_rate_ax,
+            fixture_rms_radius_ratio_plot,
+            loss_rate_axis_ylabel,
+            label="RMS Ratio",
+            color="#6c757d",
+        )
+        plot_lines["collapse_signal"] = setup_single_plot(
+            collapse_signal_ax,
+            fixture_objective_distance_plot,
+            collapse_signal_axis_ylabel,
+            label="Distance",
+            color="#2d6a4f",
+        )
+        plot_lines["split"] = setup_single_plot(
+            split_ax,
+            fixture_corrected_unit_ratio_plot,
+            split_axis_ylabel,
+            label="Corrected Ratio",
+            color="#4a4e69",
+        )
+        plot_lines["front_curvature"] = setup_single_plot(
+            front_curvature_ax,
+            fixture_projection_pairs_plot,
+            front_curvature_axis_ylabel,
+            label="Pairs",
+            color="#1d3557",
+        )
+        plot_lines["wedge"] = setup_single_plot(
+            wedge_ax,
+            fixture_projection_mean_disp_plot,
+            wedge_axis_ylabel,
+            label="Mean Disp",
+            color="#7f5539",
+        )
+        plot_lines["center_wing_parallel_share"] = setup_single_plot(
+            center_wing_parallel_share_ax,
+            fixture_projection_max_disp_plot,
+            center_wing_parallel_share_axis_ylabel,
+            label="Max Disp",
+            color="#bc6c25",
+        )
+    else:
+        for key, axis, series_a, series_b, ylabel in (
+            ("collapse_signal", collapse_signal_ax, collapse_signal_series_a, collapse_signal_series_b, collapse_signal_axis_ylabel),
+            ("split", split_ax, runtime_series["split_a"], runtime_series["split_b"], split_axis_ylabel),
+            ("front_curvature", front_curvature_ax, runtime_series["front_curvature_a"], runtime_series["front_curvature_b"], front_curvature_axis_ylabel),
+            (
+                "center_wing_parallel_share",
+                center_wing_parallel_share_ax,
+                runtime_series["center_wing_parallel_share_a"],
+                runtime_series["center_wing_parallel_share_b"],
+                center_wing_parallel_share_axis_ylabel,
+            ),
+        ):
+            plot_lines[key] = setup_side_plot(axis, series_a, series_b, ylabel)
+
+        wedge_line_a, = wedge_ax.plot(
+            ticks,
+            runtime_series["hostile_intermix_coverage"],
+            label="Coverage",
+            color="#333333",
+        )
+        wedge_line_b, = wedge_ax.plot([], [], label="_nolegend_", color="#333333")
+        apply_time_axis_label(wedge_ax)
+        wedge_ax.set_ylabel(wedge_axis_ylabel, fontsize=plot_label_fontsize)
+        wedge_ax.tick_params(axis="both", which="major", labelsize=plot_tick_fontsize)
+        apply_plot_legend(wedge_ax)
+        plot_lines["wedge"] = (wedge_line_a, wedge_line_b)
 
     observer_series_lines = [
         line
@@ -2116,15 +2222,25 @@ def render_test_run(
 
     alive_ax.set_ylim(*compute_axis_limits_many(alive_trajectory["A"], alive_trajectory["B"]))
     fire_efficiency_ax.set_ylim(0.0, 1.0)
-    loss_rate_ax.set_ylim(*compute_axis_limits_many(runtime_series["loss_rate_a"], runtime_series["loss_rate_b"]))
+    if fixture_plot_mode:
+        loss_rate_ax.set_ylim(*compute_axis_limits_many(fixture_rms_radius_ratio_plot))
+    else:
+        loss_rate_ax.set_ylim(*compute_axis_limits_many(runtime_series["loss_rate_a"], runtime_series["loss_rate_b"]))
     cohesion_ax.set_ylim(*compute_axis_limits_many(cohesion_series_a, cohesion_series_b))
-    collapse_signal_ax.set_ylim(*compute_axis_limits_many(collapse_signal_series_a, collapse_signal_series_b))
-    split_ax.set_ylim(1.5, 2.5)
-    front_curvature_ax.set_ylim(*compute_axis_limits_many(runtime_series["front_curvature_a"], runtime_series["front_curvature_b"]))
-    # IntermixCoverage is a prototype-grade diagnostic for broad hostile overlap.
-    # Keep the full fraction range so different fixtures remain directly comparable.
-    wedge_ax.set_ylim(0.0, 1.0)
-    center_wing_parallel_share_ax.set_ylim(-1.0, 1.0)
+    if fixture_plot_mode:
+        collapse_signal_ax.set_ylim(*compute_axis_limits_many(fixture_objective_distance_plot))
+        split_ax.set_ylim(0.0, 1.0)
+        front_curvature_ax.set_ylim(*compute_axis_limits_many(fixture_projection_pairs_plot))
+        wedge_ax.set_ylim(*compute_axis_limits_many(fixture_projection_mean_disp_plot))
+        center_wing_parallel_share_ax.set_ylim(*compute_axis_limits_many(fixture_projection_max_disp_plot))
+    else:
+        collapse_signal_ax.set_ylim(*compute_axis_limits_many(collapse_signal_series_a, collapse_signal_series_b))
+        split_ax.set_ylim(1.5, 2.5)
+        front_curvature_ax.set_ylim(*compute_axis_limits_many(runtime_series["front_curvature_a"], runtime_series["front_curvature_b"]))
+        # IntermixCoverage is a prototype-grade diagnostic for broad hostile overlap.
+        # Keep the full fraction range so different fixtures remain directly comparable.
+        wedge_ax.set_ylim(0.0, 1.0)
+        center_wing_parallel_share_ax.set_ylim(-1.0, 1.0)
 
     # Freeze plot labels only after final axis limits are in place so the
     # legend anchor reflects the actual rendered curve geometry.
@@ -2158,19 +2274,52 @@ def render_test_run(
         (plot_lines["alive"][1], alive_trajectory["B"]),
         (plot_lines["fire_efficiency"][0], runtime_series["fire_efficiency_a"]),
         (plot_lines["fire_efficiency"][1], runtime_series["fire_efficiency_b"]),
-        (plot_lines["loss_rate"][0], runtime_series["loss_rate_a"]),
-        (plot_lines["loss_rate"][1], runtime_series["loss_rate_b"]),
+        (
+            plot_lines["loss_rate"][0],
+            fixture_rms_radius_ratio_plot if fixture_plot_mode else runtime_series["loss_rate_a"],
+        ),
+        (
+            plot_lines["loss_rate"][1],
+            [] if fixture_plot_mode else runtime_series["loss_rate_b"],
+        ),
         (plot_lines["cohesion"][0], cohesion_series_a),
         (plot_lines["cohesion"][1], cohesion_series_b),
-        (plot_lines["collapse_signal"][0], collapse_signal_series_a),
-        (plot_lines["collapse_signal"][1], collapse_signal_series_b),
-        (plot_lines["split"][0], runtime_series["split_a"]),
-        (plot_lines["split"][1], runtime_series["split_b"]),
-        (plot_lines["front_curvature"][0], runtime_series["front_curvature_a"]),
-        (plot_lines["front_curvature"][1], runtime_series["front_curvature_b"]),
-        (plot_lines["wedge"][0], runtime_series["hostile_intermix_coverage"]),
-        (plot_lines["center_wing_parallel_share"][0], runtime_series["center_wing_parallel_share_a"]),
-        (plot_lines["center_wing_parallel_share"][1], runtime_series["center_wing_parallel_share_b"]),
+        (
+            plot_lines["collapse_signal"][0],
+            fixture_objective_distance_plot if fixture_plot_mode else collapse_signal_series_a,
+        ),
+        (
+            plot_lines["collapse_signal"][1],
+            [] if fixture_plot_mode else collapse_signal_series_b,
+        ),
+        (
+            plot_lines["split"][0],
+            fixture_corrected_unit_ratio_plot if fixture_plot_mode else runtime_series["split_a"],
+        ),
+        (
+            plot_lines["split"][1],
+            [] if fixture_plot_mode else runtime_series["split_b"],
+        ),
+        (
+            plot_lines["front_curvature"][0],
+            fixture_projection_pairs_plot if fixture_plot_mode else runtime_series["front_curvature_a"],
+        ),
+        (
+            plot_lines["front_curvature"][1],
+            [] if fixture_plot_mode else runtime_series["front_curvature_b"],
+        ),
+        (
+            plot_lines["wedge"][0],
+            fixture_projection_mean_disp_plot if fixture_plot_mode else runtime_series["hostile_intermix_coverage"],
+        ),
+        (
+            plot_lines["center_wing_parallel_share"][0],
+            fixture_projection_max_disp_plot if fixture_plot_mode else runtime_series["center_wing_parallel_share_a"],
+        ),
+        (
+            plot_lines["center_wing_parallel_share"][1],
+            [] if fixture_plot_mode else runtime_series["center_wing_parallel_share_b"],
+        ),
     ]
 
     tick_plots_follow_enabled = bool(tick_plots_follow_battlefield_tick and len(prepared_frames) > 0)

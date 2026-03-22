@@ -659,9 +659,11 @@ class EngineTickSkeleton:
         final_positions: dict,
         diag4_enabled: bool,
     ) -> dict:
+        projection_eps = 1e-9
         projection_displacement_sum = 0.0
         projection_displacement_max = 0.0
         projection_displacement_count = 0
+        corrected_unit_count = 0
         for unit_id in tentative_positions:
             dx_proj, dy_proj = delta_position[unit_id]
             displacement = math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
@@ -669,16 +671,21 @@ class EngineTickSkeleton:
             projection_displacement_count += 1
             if displacement > projection_displacement_max:
                 projection_displacement_max = displacement
+            if displacement > projection_eps:
+                corrected_unit_count += 1
         if projection_displacement_count > 0:
             projection_displacement_mean = projection_displacement_sum / projection_displacement_count
+            corrected_unit_ratio = corrected_unit_count / projection_displacement_count
         else:
             projection_displacement_mean = 0.0
+            corrected_unit_ratio = 0.0
 
         pending = {
             "tick": state.tick,
             "projection": {
                 "max_projection_displacement": projection_displacement_max,
                 "mean_projection_displacement": projection_displacement_mean,
+                "corrected_unit_ratio": corrected_unit_ratio,
                 "projection_pairs_count": projection_pairs_count,
                 "collision_pairs_count": projection_pairs_count,
             },

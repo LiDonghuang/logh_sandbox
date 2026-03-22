@@ -5,7 +5,7 @@
     "test_mode": 2
   },
   "battlefield": {
-    "arena_size": 200.0,
+    "arena_size": 400.0,
     "background_map_seed": -1
   },
   "fleet": {

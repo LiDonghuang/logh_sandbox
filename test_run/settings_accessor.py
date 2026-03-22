@@ -217,6 +217,15 @@ def get_run_control_setting(settings: dict, key: str, default):
     return default
 
 
+def get_fixture_setting(settings: dict, path: tuple[str, ...], default=MISSING):
+    nested_value = get_nested_mapping_value(settings, ("fixture", *path), MISSING)
+    if nested_value is not MISSING:
+        return nested_value
+    if default is MISSING:
+        return None
+    return default
+
+
 def get_contact_model_test_setting(settings: dict, path: tuple[str, ...], default):
     runtime_section = settings.get("runtime", {})
     if isinstance(runtime_section, dict):

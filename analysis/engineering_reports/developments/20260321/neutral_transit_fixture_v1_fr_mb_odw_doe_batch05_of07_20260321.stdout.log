@@ -1,0 +1,21 @@
+[batch05_of07] 1/20 done :: FR=7 MB=3 ODW=1 arrival=157 final_tick=167
+[batch05_of07] 2/20 done :: FR=7 MB=3 ODW=3 arrival=151 final_tick=161
+[batch05_of07] 3/20 done :: FR=7 MB=3 ODW=5 arrival=146 final_tick=156
+[batch05_of07] 4/20 done :: FR=7 MB=3 ODW=7 arrival=144 final_tick=154
+[batch05_of07] 5/20 done :: FR=7 MB=3 ODW=9 arrival=143 final_tick=153
+[batch05_of07] 6/20 done :: FR=7 MB=5 ODW=1 arrival=163 final_tick=173
+[batch05_of07] 7/20 done :: FR=7 MB=5 ODW=3 arrival=155 final_tick=165
+[batch05_of07] 8/20 done :: FR=7 MB=5 ODW=5 arrival=149 final_tick=159
+[batch05_of07] 9/20 done :: FR=7 MB=5 ODW=7 arrival=146 final_tick=156
+[batch05_of07] 10/20 done :: FR=7 MB=5 ODW=9 arrival=145 final_tick=155
+[batch05_of07] 11/20 done :: FR=7 MB=7 ODW=1 arrival=172 final_tick=182
+[batch05_of07] 12/20 done :: FR=7 MB=7 ODW=3 arrival=161 final_tick=171
+[batch05_of07] 13/20 done :: FR=7 MB=7 ODW=5 arrival=152 final_tick=162
+[batch05_of07] 14/20 done :: FR=7 MB=7 ODW=7 arrival=148 final_tick=158
+[batch05_of07] 15/20 done :: FR=7 MB=7 ODW=9 arrival=147 final_tick=157
+[batch05_of07] 16/20 done :: FR=7 MB=9 ODW=1 arrival=182 final_tick=192
+[batch05_of07] 17/20 done :: FR=7 MB=9 ODW=3 arrival=168 final_tick=178
+[batch05_of07] 18/20 done :: FR=7 MB=9 ODW=5 arrival=157 final_tick=167
+[batch05_of07] 19/20 done :: FR=7 MB=9 ODW=7 arrival=152 final_tick=162
+[batch05_of07] 20/20 done :: FR=7 MB=9 ODW=9 arrival=150 final_tick=160
+[batch05_of07] completed rows=20 out_csv=e:\logh_sandbox\analysis\engineering_reports\developments\20260321\neutral_transit_fixture_v1_fr_mb_odw_doe_batch05_of07_20260321.csv
