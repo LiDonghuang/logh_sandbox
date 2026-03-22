@@ -37,6 +37,7 @@ class EngineTickSkeleton:
         # Active movement surface retained after v1 retirement.
         self._movement_surface = {
             "alpha_sep": 0.6,
+            "model": "v3a",
             "v3a_experiment": "base",
             "centroid_probe_scale": 1.0,
             "odw_posture_bias_enabled": False,
@@ -741,6 +742,10 @@ class EngineTickSkeleton:
             if unit.hit_points > 0.0
         }
 
+        movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
+        if movement_model not in {"v3a", "v4a"}:
+            movement_model = "v3a"
+        v4a_active = movement_model == "v4a"
         movement_v3a_experiment = str(movement_surface["v3a_experiment"]).strip().lower()
         allowed_v3a_experiments = {"base", "exp_precontact_centroid_probe"}
         if movement_v3a_experiment not in allowed_v3a_experiments:
@@ -900,6 +905,8 @@ class EngineTickSkeleton:
                 mb = -0.2
             elif mb > 0.2:
                 mb = 0.2
+            if v4a_active:
+                mb = 0.0
 
             # Phase V3 canonical PD activation:
             # EnemyCollapseSignal = 1 - EnemyCohesion
@@ -937,7 +944,7 @@ class EngineTickSkeleton:
             cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
             extension_gain = 1.0 + (0.25 * pursuit_intensity)
             mb_is_zero = abs(mb) <= 1e-12
-            odw_posture_bias_active = odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
+            odw_posture_bias_active = (not v4a_active) and odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
             tx = target_direction[0]
             ty = target_direction[1]
             target_norm = 0.0
@@ -1014,19 +1021,21 @@ class EngineTickSkeleton:
                     enemy_dir_x = target_direction[0]
                     enemy_dir_y = target_direction[1]
 
-                if fleet_rms_radius > 1e-12:
-                    stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
-                else:
-                    stray_ratio_raw = 0.0
-                if stray_ratio_raw <= stray_threshold_ratio:
+                if v4a_active:
                     stray_factor = 0.0
                 else:
-                    stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
-                stray_factor = min(1.0, max(0.0, stray_factor))
+                    if fleet_rms_radius > 1e-12:
+                        stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
+                    else:
+                        stray_ratio_raw = 0.0
+                    if stray_ratio_raw <= stray_threshold_ratio:
+                        stray_factor = 0.0
+                    else:
+                        stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
+                    stray_factor = min(1.0, max(0.0, stray_factor))
 
                 anti_stretch = 0.0
 
-                attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
                 cohesion_scale = 1.0 + (0.40 * anti_stretch)
                 cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
                 cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
@@ -1034,13 +1043,18 @@ class EngineTickSkeleton:
                     # A-line causal probe: only scale centroid restoration term.
                     cohesion_x *= centroid_probe_scale
                     cohesion_y *= centroid_probe_scale
-                enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
-                attract_x = attract_gain * (
-                    (enemy_pull_gain * enemy_dir_x) + ((1.0 - enemy_pull_gain) * target_direction[0])
-                )
-                attract_y = attract_gain * (
-                    (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
-                )
+                if v4a_active:
+                    attract_x = 0.0
+                    attract_y = 0.0
+                else:
+                    attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
+                    enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
+                    attract_x = attract_gain * (
+                        (enemy_pull_gain * enemy_dir_x) + ((1.0 - enemy_pull_gain) * target_direction[0])
+                    )
+                    attract_y = attract_gain * (
+                        (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
+                    )
                 maneuver_x = (
                     (forward_gain * target_direction[0])
                     + attract_x

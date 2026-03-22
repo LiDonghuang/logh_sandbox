@@ -161,7 +161,7 @@
     "color_code": "",
     "force_concentration_ratio": 5.0,
     "mobility_bias": 5.0,
-    "offense_defense_weight": 1.0,
+    "offense_defense_weight": 5.0,
     "risk_appetite": 5.0,
     "time_preference": 5.0,
     "targeting_logic": 5.0,

@@ -1,6 +1,6 @@
 {
   "fixture": {
-    "active_mode": "neutral_transit_v1",
+    "active_mode": "battle",
     "neutral_transit_v1": {
       "objective_point_xy": [
         350.0,
@@ -18,6 +18,24 @@
     }
   },
   "runtime": {
+    "selectors": {
+      "movement_model": "v4a"
+    },
+    "movement": {
+      "v3a": {
+        "test_only": {
+          "experiment": "exp_precontact_centroid_probe",
+          "centroid_probe_scale": 0.5,
+          "pre_tl_target_substrate": "nearest5_centroid",
+          "symmetric_movement_sync_enabled": true,
+          "odw_posture_bias": {
+            "enabled": true,
+            "k": 0.5,
+            "clip_delta": 0.4
+          }
+        }
+      }
+    },
     "physical": {
       "contact_model": {
         "test_only": {

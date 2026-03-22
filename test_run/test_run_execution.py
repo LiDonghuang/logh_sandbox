@@ -1150,9 +1150,10 @@ def run_simulation(
     observer_enabled = bool(observer_cfg["enabled"])
     post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
     movement_model = str(runtime_cfg["movement_model"]).strip().lower() or "v3a"
-    if movement_model != "v3a":
+    if movement_model not in {"v3a", "v4a"}:
         raise ValueError(
-            f"test_run maintained path only supports runtime_cfg['movement_model']=v3a, got {runtime_cfg['movement_model']!r}"
+            "test_run maintained path only supports runtime_cfg['movement_model'] in {'v3a', 'v4a'}, "
+            f"got {runtime_cfg['movement_model']!r}"
         )
 
     engine = engine_cls(
@@ -1226,6 +1227,7 @@ def run_simulation(
     if not isinstance(movement_surface, dict):
         raise TypeError("EngineTickSkeleton._movement_surface missing or invalid")
     movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
+    movement_surface["model"] = movement_model
     movement_surface["v3a_experiment"] = (
         str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
     )
@@ -1247,7 +1249,7 @@ def run_simulation(
     fsr_surface = getattr(engine, "_fsr_surface", None)
     if not isinstance(fsr_surface, dict):
         raise TypeError("EngineTickSkeleton._fsr_surface missing or invalid")
-    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"])
+    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"]) and not (fixture_active and movement_model == "v4a")
     fsr_surface["strength"] = float(contact_cfg["fsr_strength"])
 
     boundary_surface = getattr(engine, "_boundary_surface", None)

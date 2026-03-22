@@ -20,8 +20,8 @@
       50.0
     ],
     "initial_fleet_b_origin_xy": [
-      150.0,
-      150.0
+      350.0,
+      350.0
     ],
     "initial_fleet_a_facing_angle_deg": 45.0,
     "initial_fleet_b_facing_angle_deg": 225.0
@@ -40,21 +40,6 @@
     "selectors": {
       "movement_model": "baseline",
       "cohesion_decision_source": "baseline"
-    },
-    "movement": {
-      "v3a": {
-        "test_only": {
-          "experiment": "exp_precontact_centroid_probe",
-          "centroid_probe_scale": 0.5,
-          "pre_tl_target_substrate": "nearest5_centroid",
-          "symmetric_movement_sync_enabled": true,
-          "odw_posture_bias": {
-            "enabled": true,
-            "k": 0.5,
-            "clip_delta": 0.4
-          }
-        }
-      }
     },
     "semantics": {
       "collapse_signal": {

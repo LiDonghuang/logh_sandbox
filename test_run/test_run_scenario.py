@@ -349,12 +349,12 @@ def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str
     return requested, effective
 
 
-def resolve_movement_model(raw_value) -> tuple[str, str]:
+def resolve_movement_model(raw_value, test_mode: int) -> tuple[str, str]:
     requested = str(raw_value).strip().lower()
     if requested == "v1":
-        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline or v3a")
-    if requested not in {"baseline", "v3a"}:
-        allowed_text = ", ".join(sorted({"baseline", "v3a"}))
+        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline, v3a, or v4a")
+    if requested not in {"baseline", "v3a", "v4a"}:
+        allowed_text = ", ".join(sorted({"baseline", "v3a", "v4a"}))
         raise ValueError(
             f"runtime.selectors.movement_model must be one of {{{allowed_text}}}, got {raw_value!r}"
         )
@@ -363,6 +363,11 @@ def resolve_movement_model(raw_value) -> tuple[str, str]:
         effective = baseline_model
     else:
         effective = requested
+    if int(test_mode) < 2 and effective != baseline_model:
+        print(
+            f"[mode] movement_model={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_model}"
+        )
+        effective = baseline_model
     return requested, effective
 
 
@@ -487,9 +492,9 @@ def _build_run_cfg(
     }
 
 
-def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str) -> dict:
+def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, test_mode: int) -> dict:
     movement_cfg = {
-        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"))[1],
+        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
         "experiment_effective": _require_choice(
             "runtime.movement_v3a_experiment",
             get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
@@ -540,7 +545,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str) 
     }
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
-        if movement_cfg["model_effective"] == "v3a"
+        if movement_cfg["model_effective"] in {"v3a", "v4a"}
         and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
         else 1.0
     )
@@ -937,6 +942,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     movement_cfg = _build_movement_cfg(
         get_runtime,
         runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+        test_mode=run_cfg["test_mode"],
     )
     boundary_cfg = _build_boundary_cfg(get_runtime)
 
@@ -1090,6 +1096,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     movement_cfg = _build_movement_cfg(
         get_runtime,
         runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+        test_mode=run_cfg["test_mode"],
     )
 
     execution_cfg = {
