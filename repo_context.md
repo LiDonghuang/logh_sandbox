@@ -7,17 +7,18 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Primary development branch: `dev_v1.1`
+- Primary development branch: `dev_v2.0`
 
 ## Current Phase Focus
 
-- Phase A: functionally closed out with note
+- 2D mainline functionally closed out with note
+- first bounded 3D viewer bootstrap active on `dev_v2.0`
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
 - APP-side governance mirror intentionally reduced to an 11-file active working set
 
-Current emphasis is not personality expansion.
+Current emphasis is bounded 3D viewer bootstrap rather than personality expansion or 3D runtime semantics.
 
 ## Key Entry Documents
 
@@ -54,7 +55,7 @@ Current emphasis is not personality expansion.
 ## Test Harness Paths
 
 - `test_run/test_run_entry.py`
-  - maintained launcher ground truth for routine run, daily animation, video export, and BRF handoff
+  - maintained 2D launcher ground truth for routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
   - scenario build, archetype resolution, and maintained harness helper surface
 - `test_run/test_run_execution.py`
@@ -75,6 +76,28 @@ Current emphasis is not personality expansion.
 - `test_run/test_run_v1_0_viz.py`
   - active auxiliary renderer, plots, and animation/export display layer
 
+## 3D Viewer Bootstrap Paths
+
+- `viz3d_panda/app.py`
+  - additive Panda3D viewer entrypoint for the `dev_v2.0` bootstrap container
+- `viz3d_panda/replay_source.py`
+  - consumes existing `test_run` active-surface output and normalizes in-memory `position_frames` for viewer use
+- `viz3d_panda/scene_builder.py`
+  - minimal scene/grid/light bootstrap
+- `viz3d_panda/unit_renderer.py`
+  - placeholder unit rendering and frame-to-frame updates
+- `viz3d_panda/camera_controller.py`
+  - bounded camera orbit/pan/zoom controls
+- `launch_dev_v2_0_viewer.bat`
+  - thin human-facing launcher for the Panda3D viewer bootstrap
+
+Current availability status:
+
+- Panda3D is active as the first candidate viewer bootstrap container on `dev_v2.0`
+- current 3D surface is replay/viewer only
+- it consumes existing 2D `position_frames` in memory
+- no 3D runtime combat/movement baseline is established by this surface
+
 ## Settings Paths
 
 - `test_run/test_run_v1_0.settings.json`
@@ -92,6 +115,10 @@ Current emphasis is not personality expansion.
 
 ## Key Current Records
 
+- `analysis/engineering_reports/developments/20260325/2d_phase_closeout_and_3d_transition_memo_20260326.md`
+- `analysis/engineering_reports/developments/20260325/3d_transition_packet_20260326.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_panda3d_bootstrap_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_first_demo_note.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`
@@ -120,6 +147,7 @@ Current emphasis is not personality expansion.
 4. `test_run/test_run_scenario.py`
 5. `test_run/test_run_execution.py`
 6. `test_run/test_run_telemetry.py`
-7. `test_run/battle_report_builder.py`
-8. `test_run/test_run_v1_0_viz.py`
-9. `runtime/engine_skeleton.py`
+7. `viz3d_panda/replay_source.py`
+8. `viz3d_panda/app.py`
+9. `test_run/battle_report_builder.py`
+10. `test_run/test_run_v1_0_viz.py`

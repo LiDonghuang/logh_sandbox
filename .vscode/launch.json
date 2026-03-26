@@ -41,6 +41,18 @@
         "LOGH_VIZ_EXPORT_MAP_COUNT": "10"
       },
       "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
+    },
+    {
+      "name": "dev_v2.0 Viewer (Panda3D)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/viz3d_panda/app.py",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "python": "${workspaceFolder}\\.venv_dev_v2_0\\Scripts\\python.exe"
     }
   ]
 }

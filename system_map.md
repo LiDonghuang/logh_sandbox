@@ -34,7 +34,7 @@ Authority: Reference only, not canonical semantics authority
 ### 3. Maintained Harness Spine
 
 - `test_run/test_run_entry.py`
-  - thin maintained launcher ground truth
+  - thin maintained 2D launcher ground truth
   - routine run, daily animation, video export, and BRF handoff
 - `test_run/test_run_scenario.py`
   - settings resolution, archetype/build helper surface, and initial scenario build
@@ -77,6 +77,30 @@ Authority: Reference only, not canonical semantics authority
 - `docs/APP_Files_Prefix_Mapping_v1.0.md`
   - APP-side flat mirror policy and active 11-file governance working set
 
+### 8. Additive 3D Viewer Bootstrap Layer
+
+- `viz3d_panda/app.py`
+  - Panda3D viewer entrypoint and playback loop
+- `viz3d_panda/replay_source.py`
+  - in-memory replay bundle build from existing `test_run` returned `position_frames`
+- `viz3d_panda/scene_builder.py`
+  - simple scene/grid/light setup
+- `viz3d_panda/unit_renderer.py`
+  - placeholder unit rendering
+- `viz3d_panda/camera_controller.py`
+  - simple orbit/pan/zoom controls
+- `launch_dev_v2_0_viewer.bat`
+  - thin human-facing launcher
+- `.vscode/launch.json`
+  - includes `dev_v2.0 Viewer (Panda3D)` launch entry for local debug/run use
+
+Current availability:
+
+- active on `dev_v2.0`
+- viewer/replay bootstrap only
+- additive to the current 2D maintained path
+- no 3D runtime semantics or baseline protocol owned here
+
 ## Current Structural Tension
 
 The current maintained launcher path no longer depends on old launcher shells, and Phase A is now functionally closed out rather than still acting as launcher-reset headline work.
@@ -87,6 +111,7 @@ Current remaining burden centers are:
 - large maintained execution host weight
 - maintained telemetry pairwise cost
 - residual runtime skeleton weight after successful bounded cleanup/performance rounds
+- viewer bootstrap readability and replay ergonomics inside `viz3d_panda/`
 
 These are post-closeout maintained-path debts, not reasons to reopen old compatibility or launcher-reset work.
 
@@ -96,5 +121,10 @@ Read the current maintained path as:
 
 schema -> engine -> maintained harness spine -> active auxiliary surface
 
+Read the new viewer bootstrap as:
+
+maintained harness output -> additive `viz3d_panda/` replay/view layer
+
 Do not read observer wording as runtime ontology.
 Do not read test-only selectors as canonical semantics.
+Do not read the Panda3D bootstrap container as a 3D combat-engine baseline.
