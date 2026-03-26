@@ -84,6 +84,9 @@ FIXTURE_MODE_LABELS = {
     FIXTURE_MODE_BATTLE,
     FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
 }
+OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE = "fixture"
+OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR = "point_anchor"
+OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS = "enemy_term_zero"
 
 
 def _clamp01(value: float) -> float:
@@ -103,6 +106,57 @@ def _sigmoid(value: float) -> float:
         return 1.0 / (1.0 + z)
     z = math.exp(value)
     return z / (1.0 + z)
+
+
+def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[str, Any], tuple[float, float]]:
+    if not isinstance(contract_cfg, Mapping):
+        raise TypeError(
+            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d'] must be a mapping"
+        )
+    if "transit_axis_hint_xyz" in contract_cfg:
+        raise ValueError(
+            "neutral_transit_v1 first implementation must not set "
+            "execution_cfg['fixture']['objective_contract_3d']['transit_axis_hint_xyz']"
+        )
+    anchor_point_xyz = contract_cfg.get("anchor_point_xyz")
+    if (
+        not isinstance(anchor_point_xyz, Sequence)
+        or isinstance(anchor_point_xyz, (str, bytes))
+        or len(anchor_point_xyz) != 3
+    ):
+        raise TypeError(
+            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['anchor_point_xyz'] "
+            "must be a 3-item sequence"
+        )
+    normalized_contract = {
+        "anchor_point_xyz": (
+            float(anchor_point_xyz[0]),
+            float(anchor_point_xyz[1]),
+            float(anchor_point_xyz[2]),
+        ),
+        "source_owner": str(contract_cfg.get("source_owner", "")).strip(),
+        "objective_mode": str(contract_cfg.get("objective_mode", "")).strip(),
+        "no_enemy_semantics": str(contract_cfg.get("no_enemy_semantics", "")).strip(),
+    }
+    if normalized_contract["source_owner"] != OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE:
+        raise ValueError(
+            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['source_owner'] "
+            f"must be {OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE!r}, got {normalized_contract['source_owner']!r}"
+        )
+    if normalized_contract["objective_mode"] != OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR:
+        raise ValueError(
+            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['objective_mode'] "
+            f"must be {OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR!r}, got {normalized_contract['objective_mode']!r}"
+        )
+    if normalized_contract["no_enemy_semantics"] != OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS:
+        raise ValueError(
+            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['no_enemy_semantics'] "
+            f"must be {OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS!r}, got {normalized_contract['no_enemy_semantics']!r}"
+        )
+    return normalized_contract, (
+        float(normalized_contract["anchor_point_xyz"][0]),
+        float(normalized_contract["anchor_point_xyz"][1]),
+    )
 
 
 def _continuous_fr_midband_gate(kappa: float, sigma: float) -> float:
@@ -214,7 +268,20 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             return None
 
         fleet_id, fleet = next(iter(state.fleets.items()))
-        objective_point_xy = fixture_cfg.get("objective_point_xy", (0.0, 0.0))
+        objective_contract_3d = fixture_cfg.get("objective_contract_3d")
+        if not isinstance(objective_contract_3d, Mapping):
+            raise TypeError("neutral_transit_v1 engine fixture config requires objective_contract_3d mapping")
+        anchor_point_xyz = objective_contract_3d.get("anchor_point_xyz")
+        if (
+            not isinstance(anchor_point_xyz, Sequence)
+            or isinstance(anchor_point_xyz, (str, bytes))
+            or len(anchor_point_xyz) != 3
+        ):
+            raise TypeError("neutral_transit_v1 engine fixture config requires 3-item anchor_point_xyz")
+        objective_point_xy = (
+            float(anchor_point_xyz[0]),
+            float(anchor_point_xyz[1]),
+        )
         own_units = [
             state.units[uid]
             for uid in fleet.unit_ids
@@ -1102,6 +1169,7 @@ def run_simulation(
     fixture_active = fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1
     fixture_fleet_id = ""
     fixture_objective_point_xy = (0.0, 0.0)
+    fixture_objective_contract_3d: dict[str, Any] = {}
     fixture_stop_radius = 0.0
     if fixture_active:
         if len(initial_state.fleets) != 1:
@@ -1116,14 +1184,31 @@ def run_simulation(
                 f"got {fixture_fleet_id!r}"
             )
         objective_point_xy = fixture_cfg.get("objective_point_xy")
-        if not isinstance(objective_point_xy, Sequence) or isinstance(objective_point_xy, (str, bytes)) or len(objective_point_xy) < 2:
-            raise TypeError(
-                "neutral_transit_v1 execution_cfg['fixture']['objective_point_xy'] must be a 2-item sequence"
-            )
-        fixture_objective_point_xy = (
-            float(objective_point_xy[0]),
-            float(objective_point_xy[1]),
+        fixture_objective_contract_3d, projected_anchor_point_xy = _normalize_fixture_objective_contract_3d(
+            fixture_cfg.get("objective_contract_3d")
         )
+        fixture_objective_point_xy = projected_anchor_point_xy
+        if objective_point_xy is not None:
+            if (
+                not isinstance(objective_point_xy, Sequence)
+                or isinstance(objective_point_xy, (str, bytes))
+                or len(objective_point_xy) < 2
+            ):
+                raise TypeError(
+                    "neutral_transit_v1 execution_cfg['fixture']['objective_point_xy'] must be a 2-item sequence"
+                )
+            raw_objective_point_xy = (
+                float(objective_point_xy[0]),
+                float(objective_point_xy[1]),
+            )
+            if (
+                abs(raw_objective_point_xy[0] - fixture_objective_point_xy[0]) > 1e-9
+                or abs(raw_objective_point_xy[1] - fixture_objective_point_xy[1]) > 1e-9
+            ):
+                raise ValueError(
+                    "neutral_transit_v1 execution_cfg['fixture']['objective_point_xy'] must match the projected "
+                    "xy of execution_cfg['fixture']['objective_contract_3d']['anchor_point_xyz']"
+                )
         fixture_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
         if fixture_stop_radius < 0.0:
             raise ValueError(
@@ -1167,6 +1252,7 @@ def run_simulation(
             "active_mode": fixture_active_mode,
             "fleet_id": fixture_fleet_id,
             "objective_point_xy": fixture_objective_point_xy,
+            "objective_contract_3d": dict(fixture_objective_contract_3d),
         }
     for attr, value in (
         (
@@ -1433,6 +1519,15 @@ def run_simulation(
         observer_telemetry["fixture"] = {
             "active_mode": fixture_active_mode,
             "fleet_id": fixture_fleet_id,
+            "anchor_point_xyz": [
+                float(fixture_objective_contract_3d["anchor_point_xyz"][0]),
+                float(fixture_objective_contract_3d["anchor_point_xyz"][1]),
+                float(fixture_objective_contract_3d["anchor_point_xyz"][2]),
+            ],
+            "projected_anchor_point_xy": [fixture_objective_point_xy[0], fixture_objective_point_xy[1]],
+            "source_owner": str(fixture_objective_contract_3d["source_owner"]),
+            "objective_mode": str(fixture_objective_contract_3d["objective_mode"]),
+            "no_enemy_semantics": str(fixture_objective_contract_3d["no_enemy_semantics"]),
             "objective_point_xy": [fixture_objective_point_xy[0], fixture_objective_point_xy[1]],
             "stop_radius": fixture_stop_radius,
             "initial_centroid_to_objective_distance": float(initial_distance),

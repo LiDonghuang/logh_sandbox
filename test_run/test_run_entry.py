@@ -475,6 +475,11 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
     )
     summary = result["prepared"]["summary"]
     fixture_metrics = result["observer_telemetry"].get("fixture", {})
+    anchor_point_xyz = fixture_metrics.get("anchor_point_xyz", [0.0, 0.0, 0.0])
+    projected_anchor_point_xy = fixture_metrics.get("projected_anchor_point_xy", [0.0, 0.0])
+    source_owner = str(fixture_metrics.get("source_owner", ""))
+    objective_mode = str(fixture_metrics.get("objective_mode", ""))
+    no_enemy_semantics = str(fixture_metrics.get("no_enemy_semantics", ""))
     objective_point_xy = fixture_metrics.get("objective_point_xy", [0.0, 0.0])
     stop_radius = float(fixture_metrics.get("stop_radius", 0.0))
     objective_reached_tick = fixture_metrics.get("objective_reached_tick")
@@ -490,6 +495,13 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
         f"final_tick={int(result['final_state'].tick)} "
         f"objective=({float(objective_point_xy[0]):.2f},{float(objective_point_xy[1]):.2f}) "
         f"stop_radius={stop_radius:.2f}"
+    )
+    print(
+        f"[fixture] objective_contract_3d "
+        f"anchor_xyz=({float(anchor_point_xyz[0]):.2f},{float(anchor_point_xyz[1]):.2f},{float(anchor_point_xyz[2]):.2f}) "
+        f"projected_xy=({float(projected_anchor_point_xy[0]):.2f},{float(projected_anchor_point_xy[1]):.2f}) "
+        f"owner={source_owner} mode={objective_mode} no_enemy={no_enemy_semantics} "
+        f"fleet_id={fixture_metrics.get('fleet_id', 'A')}"
     )
     if distances:
         print(
