@@ -14,7 +14,7 @@ except ImportError as exc:  # pragma: no cover - import guard for incorrect env 
     ) from exc
 
 from viz3d_panda.camera_controller import OrbitCameraController
-from viz3d_panda.replay_source import DEFAULT_FRAME_STRIDE, DEFAULT_VIEWER_MAX_STEPS, ReplayBundle, load_active_battle_replay
+from viz3d_panda.replay_source import DEFAULT_FRAME_STRIDE, ReplayBundle, load_active_battle_replay
 from viz3d_panda.scene_builder import build_scene
 from viz3d_panda.unit_renderer import UnitRenderer
 
@@ -115,10 +115,14 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         counts_text = _count_units_by_fleet(self._replay, self._current_frame_index)
         playback_label = "playing" if self._playing else "paused"
+        max_steps_effective = self._replay.metadata.get("max_steps_effective")
+        max_steps_source = self._replay.metadata.get("max_steps_source", "settings")
+        vector_display_mode = self._replay.metadata.get("vector_display_mode", "effective")
         self._status_text.setText(
             f"{WINDOW_TITLE}\n"
             f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  "
-            f"tick={frame.tick}  fps={self._playback_fps:.1f}  state={playback_label}\n"
+            f"tick={frame.tick}  fps={self._playback_fps:.1f}  state={playback_label}  "
+            f"sim_limit={max_steps_source}:{max_steps_effective}  dir_mode={vector_display_mode}\n"
             f"{counts_text}"
         )
 
@@ -139,7 +143,12 @@ class FleetViewerApp(ShowBase):
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=WINDOW_TITLE)
-    parser.add_argument("--steps", type=int, default=DEFAULT_VIEWER_MAX_STEPS)
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=None,
+        help="Override simulation max_time_steps. When omitted, layered 2D settings semantics are preserved.",
+    )
     parser.add_argument("--frame-stride", type=int, default=DEFAULT_FRAME_STRIDE)
     parser.add_argument("--playback-fps", type=float, default=12.0)
     parser.add_argument("--window-width", type=int, default=1440)
@@ -151,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     _configure_window(width=args.window_width, height=args.window_height)
     replay = load_active_battle_replay(
-        max_steps=int(args.steps),
+        max_steps=args.steps,
         frame_stride=int(args.frame_stride),
     )
     app = FleetViewerApp(replay, playback_fps=float(args.playback_fps))

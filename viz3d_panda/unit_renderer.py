@@ -2,9 +2,27 @@ from __future__ import annotations
 
 import math
 
-from panda3d.core import LineSegs, NodePath, TransparencyAttrib
+from panda3d.core import (
+    Geom,
+    GeomNode,
+    GeomTriangles,
+    GeomVertexData,
+    GeomVertexFormat,
+    GeomVertexWriter,
+    NodePath,
+    TransparencyAttrib,
+)
 
 from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
+
+TOKEN_ALPHA = 0.8
+HP_BUCKET_SCALES = {
+    5: 1.28,
+    4: 1.12,
+    3: 0.96,
+    2: 0.80,
+    1: 0.64,
+}
 
 
 def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
@@ -14,13 +32,71 @@ def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     red = int(normalized[0:2], 16) / 255.0
     green = int(normalized[2:4], 16) / 255.0
     blue = int(normalized[4:6], 16) / 255.0
-    return (red, green, blue, 1.0)
+    return (red, green, blue, TOKEN_ALPHA)
 
 
 def _heading_to_h(heading_x: float, heading_y: float) -> float:
     if heading_x == 0.0 and heading_y == 0.0:
         return 0.0
     return math.degrees(math.atan2(float(heading_x), float(heading_y)))
+
+
+def _hp_bucket(hit_points: float, max_hit_points: float) -> int:
+    if max_hit_points <= 1e-9:
+        return 1
+    percent = max(0.0, min(100.0, (float(hit_points) / float(max_hit_points)) * 100.0))
+    if percent > 80.0:
+        return 5
+    if percent > 60.0:
+        return 4
+    if percent > 40.0:
+        return 3
+    if percent > 20.0:
+        return 2
+    return 1
+
+
+def _build_wedge_template(name: str) -> NodePath:
+    vertex_format = GeomVertexFormat.getV3()
+    vertex_data = GeomVertexData(name, vertex_format, Geom.UHStatic)
+    vertex_writer = GeomVertexWriter(vertex_data, "vertex")
+
+    vertices = (
+        (-0.14, 0.84, 0.22),
+        (0.14, 0.84, 0.22),
+        (-0.14, 0.84, -0.22),
+        (0.14, 0.84, -0.22),
+        (-0.48, -0.62, 0.32),
+        (0.48, -0.62, 0.32),
+        (-0.48, -0.62, -0.32),
+        (0.48, -0.62, -0.32),
+    )
+    for x_value, y_value, z_value in vertices:
+        vertex_writer.addData3(float(x_value), float(y_value), float(z_value))
+
+    triangles = GeomTriangles(Geom.UHStatic)
+    faces = (
+        (0, 4, 5),
+        (0, 5, 1),
+        (2, 3, 7),
+        (2, 7, 6),
+        (0, 2, 6),
+        (0, 6, 4),
+        (1, 5, 7),
+        (1, 7, 3),
+        (4, 6, 7),
+        (4, 7, 5),
+        (0, 1, 3),
+        (0, 3, 2),
+    )
+    for a_index, b_index, c_index in faces:
+        triangles.addVertices(int(a_index), int(b_index), int(c_index))
+
+    geom = Geom(vertex_data)
+    geom.addPrimitive(triangles)
+    geom_node = GeomNode(name)
+    geom_node.addGeom(geom)
+    return NodePath(geom_node)
 
 
 class UnitRenderer:
@@ -36,20 +112,10 @@ class UnitRenderer:
             return template
 
         rgba = _hex_to_rgba(self._replay.fleet_colors[fleet_id])
-        arrow = LineSegs(f"unit_template_{fleet_id}")
-        arrow.setThickness(2.8)
-        arrow.setColor(*rgba)
-        arrow.moveTo(0.0, -0.2, 0.35)
-        arrow.drawTo(0.0, 1.35, 0.35)
-        arrow.drawTo(-0.35, 0.95, 0.35)
-        arrow.moveTo(0.0, 1.35, 0.35)
-        arrow.drawTo(0.35, 0.95, 0.35)
-        arrow.moveTo(-0.28, -0.1, 0.35)
-        arrow.drawTo(0.28, -0.1, 0.35)
-
-        template = NodePath(arrow.create())
+        template = _build_wedge_template(f"unit_template_{fleet_id}")
+        template.setColor(*rgba)
         template.setTransparency(TransparencyAttrib.MAlpha)
-        template.setScale(1.35)
+        template.setTwoSided(True)
         template.hide()
         template.reparentTo(self._parent)
         self._templates[fleet_id] = template
@@ -65,7 +131,10 @@ class UnitRenderer:
                 node.setName(node_key)
                 node.show()
                 self._unit_nodes[node_key] = node
-            node.setPos(unit.x, unit.y, unit.z)
+            bucket = _hp_bucket(unit.hit_points, unit.max_hit_points)
+            scale = HP_BUCKET_SCALES[bucket]
+            node.setScale(scale)
+            node.setPos(unit.x, unit.y, unit.z + (0.55 * scale))
             node.setH(_heading_to_h(unit.heading_x, unit.heading_y))
             active_keys.add(node_key)
 

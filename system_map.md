@@ -80,13 +80,13 @@ Authority: Reference only, not canonical semantics authority
 ### 8. Additive 3D Viewer Bootstrap Layer
 
 - `viz3d_panda/app.py`
-  - Panda3D viewer entrypoint and playback loop
+  - Panda3D viewer entrypoint and playback loop; defaults to inherited layered stop semantics unless `--steps` is explicitly passed
 - `viz3d_panda/replay_source.py`
-  - in-memory replay bundle build from existing `test_run` returned `position_frames`
+  - in-memory replay bundle build from existing `test_run` returned `position_frames` with inheritance-first settings consumption
 - `viz3d_panda/scene_builder.py`
   - simple scene/grid/light setup
 - `viz3d_panda/unit_renderer.py`
-  - placeholder unit rendering
+  - wedge-token unit rendering with viewer-local HP size buckets
 - `viz3d_panda/camera_controller.py`
   - simple orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
@@ -99,6 +99,8 @@ Current availability:
 - active on `dev_v2.0`
 - viewer/replay bootstrap only
 - additive to the current 2D maintained path
+- readability pass active: single semi-transparent wedge token replaces the earlier thin line-arrow marker
+- launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - no 3D runtime semantics or baseline protocol owned here
 
 ## Current Structural Tension
@@ -111,7 +113,7 @@ Current remaining burden centers are:
 - large maintained execution host weight
 - maintained telemetry pairwise cost
 - residual runtime skeleton weight after successful bounded cleanup/performance rounds
-- viewer bootstrap readability and replay ergonomics inside `viz3d_panda/`
+- viewer bootstrap replay ergonomics and remaining human-readability refinement inside `viz3d_panda/`
 
 These are post-closeout maintained-path debts, not reasons to reopen old compatibility or launcher-reset work.
 

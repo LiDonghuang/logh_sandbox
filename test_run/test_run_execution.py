@@ -1144,6 +1144,7 @@ def run_simulation(
         intent_unified_spacing_cfg = {}
     steps = int(execution_cfg["steps"])
     capture_positions = bool(execution_cfg["capture_positions"])
+    capture_hit_points = bool(execution_cfg.get("capture_hit_points", False))
     frame_stride = int(execution_cfg["frame_stride"])
     include_target_lines = bool(execution_cfg["include_target_lines"])
     print_tick_summary = bool(execution_cfg["print_tick_summary"])
@@ -1502,6 +1503,18 @@ def run_simulation(
                     unit = current_state.units[unit_id]
                     points.append(
                         (
+                            unit_id,
+                            unit.position.x,
+                            unit.position.y,
+                            unit.orientation_vector.x,
+                            unit.orientation_vector.y,
+                            unit.velocity.x,
+                            unit.velocity.y,
+                            unit.hit_points,
+                            unit.max_hit_points,
+                        )
+                        if capture_hit_points
+                        else (
                             unit_id,
                             unit.position.x,
                             unit.position.y,
