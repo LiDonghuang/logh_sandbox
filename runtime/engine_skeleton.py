@@ -208,6 +208,72 @@ class EngineTickSkeleton:
         return alive_positions, (sum_x / n_alive), (sum_y / n_alive)
 
     @staticmethod
+    def _normalize_direction_with_fallback(
+        dx: float,
+        dy: float,
+        fallback_x: float,
+        fallback_y: float,
+    ) -> tuple[float, float]:
+        norm = math.sqrt((dx * dx) + (dy * dy))
+        if norm > 1e-12:
+            return (dx / norm, dy / norm)
+        fallback_norm = math.sqrt((fallback_x * fallback_x) + (fallback_y * fallback_y))
+        if fallback_norm > 1e-12:
+            return (fallback_x / fallback_norm, fallback_y / fallback_norm)
+        return (1.0, 0.0)
+
+    def _build_fixture_expected_position_map(
+        self,
+        *,
+        state: BattleState,
+        fleet_id: str,
+        centroid_x: float,
+        centroid_y: float,
+        target_direction: tuple[float, float],
+    ) -> dict | None:
+        fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        if not isinstance(fixture_cfg, dict):
+            return None
+        if not bool(fixture_cfg.get("expected_position_candidate_active", False)):
+            return None
+        if str(fixture_cfg.get("active_mode", "")).strip().lower() != "neutral_transit_v1":
+            return None
+        if str(fixture_cfg.get("fleet_id", "")).strip() != str(fleet_id):
+            return None
+        local_offsets = fixture_cfg.get("expected_slot_offsets_local")
+        if not isinstance(local_offsets, dict):
+            return None
+        fallback_axis = fixture_cfg.get("initial_forward_hat_xy", (1.0, 0.0))
+        if not isinstance(fallback_axis, (list, tuple)) or len(fallback_axis) < 2:
+            fallback_axis = (1.0, 0.0)
+        primary_axis_x, primary_axis_y = self._normalize_direction_with_fallback(
+            float(target_direction[0]),
+            float(target_direction[1]),
+            float(fallback_axis[0]),
+            float(fallback_axis[1]),
+        )
+        secondary_axis_x = -primary_axis_y
+        secondary_axis_y = primary_axis_x
+        expected_positions = {}
+        for unit_id, offsets in local_offsets.items():
+            unit = state.units.get(str(unit_id))
+            if unit is None or unit.hit_points <= 0.0 or str(unit.fleet_id) != str(fleet_id):
+                continue
+            if not isinstance(offsets, (list, tuple)) or len(offsets) < 2:
+                continue
+            forward_offset = float(offsets[0])
+            lateral_offset = float(offsets[1])
+            expected_positions[str(unit_id)] = (
+                centroid_x + (forward_offset * primary_axis_x) + (lateral_offset * secondary_axis_x),
+                centroid_y + (forward_offset * primary_axis_y) + (lateral_offset * secondary_axis_y),
+            )
+        return {
+            "expected_positions": expected_positions,
+            "primary_axis_xy": (primary_axis_x, primary_axis_y),
+            "secondary_axis_xy": (secondary_axis_x, secondary_axis_y),
+        }
+
+    @staticmethod
     def _largest_connected_component_size(
         alive_positions: list[tuple[float, float]],
         connect_radius_sq: float,
@@ -959,6 +1025,19 @@ class EngineTickSkeleton:
                     t_hat_y = ty / target_norm
                     has_target_axis = True
 
+            fixture_expected_reference = self._build_fixture_expected_position_map(
+                state=state,
+                fleet_id=fleet_id,
+                centroid_x=centroid_x,
+                centroid_y=centroid_y,
+                target_direction=target_direction,
+            )
+            fixture_expected_positions = (
+                fixture_expected_reference.get("expected_positions", {})
+                if isinstance(fixture_expected_reference, dict)
+                else {}
+            )
+
             # Movement 3A constants (observer-audited switch path only).
             attract_gain_base = 0.35
             attract_gain_max = 0.85
@@ -969,8 +1048,13 @@ class EngineTickSkeleton:
                 if unit_id not in updated_units:
                     continue
                 unit = updated_units[unit_id]
-                cohesion_vector_x = centroid_x - unit.position.x
-                cohesion_vector_y = centroid_y - unit.position.y
+                expected_position = fixture_expected_positions.get(str(unit_id))
+                if isinstance(expected_position, tuple) and len(expected_position) >= 2:
+                    cohesion_vector_x = float(expected_position[0]) - unit.position.x
+                    cohesion_vector_y = float(expected_position[1]) - unit.position.y
+                else:
+                    cohesion_vector_x = centroid_x - unit.position.x
+                    cohesion_vector_y = centroid_y - unit.position.y
                 cohesion_norm = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
                 if cohesion_norm > 0.0:
                     cohesion_dir = (cohesion_vector_x / cohesion_norm, cohesion_vector_y / cohesion_norm)

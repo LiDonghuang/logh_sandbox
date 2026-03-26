@@ -1298,6 +1298,87 @@ def run_simulation(
         ) / float(len(xs))
         return (centroid_x, centroid_y, math.sqrt(max(0.0, radius_sq_mean)))
 
+    def _build_fixture_expected_reference_bundle(
+        position_map: Mapping[str, tuple[float, float]],
+        objective_point_xy: tuple[float, float],
+    ) -> dict:
+        centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
+        if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
+            raise ValueError("neutral_transit_v1 expected-position reference requires at least one alive unit")
+        primary_dx = float(objective_point_xy[0]) - centroid_x
+        primary_dy = float(objective_point_xy[1]) - centroid_y
+        primary_norm = math.sqrt((primary_dx * primary_dx) + (primary_dy * primary_dy))
+        if primary_norm <= 1e-12:
+            raise ValueError(
+                "neutral_transit_v1 expected-position reference requires objective_point_xy to differ from the initial fleet centroid"
+            )
+        primary_axis_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
+        secondary_axis_xy = (-primary_axis_xy[1], primary_axis_xy[0])
+        expected_slot_offsets_local = {}
+        initial_front_extent = 0.0
+        for unit_id, position in position_map.items():
+            rel_x = float(position[0]) - centroid_x
+            rel_y = float(position[1]) - centroid_y
+            forward_offset = (rel_x * primary_axis_xy[0]) + (rel_y * primary_axis_xy[1])
+            lateral_offset = (rel_x * secondary_axis_xy[0]) + (rel_y * secondary_axis_xy[1])
+            expected_slot_offsets_local[str(unit_id)] = (forward_offset, lateral_offset)
+            if forward_offset > initial_front_extent:
+                initial_front_extent = forward_offset
+        return {
+            "initial_forward_hat_xy": primary_axis_xy,
+            "initial_secondary_hat_xy": secondary_axis_xy,
+            "expected_slot_offsets_local": expected_slot_offsets_local,
+            "initial_front_extent": float(initial_front_extent),
+        }
+
+    def _compute_expected_position_rms_error(
+        position_map: Mapping[str, tuple[float, float]],
+        expected_position_map: Mapping[str, tuple[float, float]],
+    ) -> float:
+        if not position_map or not expected_position_map:
+            return float("nan")
+        error_sq_sum = 0.0
+        count = 0
+        for unit_id, position in position_map.items():
+            expected_position = expected_position_map.get(str(unit_id))
+            if not isinstance(expected_position, tuple) or len(expected_position) < 2:
+                continue
+            dx = float(position[0]) - float(expected_position[0])
+            dy = float(position[1]) - float(expected_position[1])
+            error_sq_sum += (dx * dx) + (dy * dy)
+            count += 1
+        if count <= 0:
+            return float("nan")
+        return math.sqrt(error_sq_sum / float(count))
+
+    def _compute_front_extent_ratio(
+        position_map: Mapping[str, tuple[float, float]],
+        objective_point_xy: tuple[float, float],
+        initial_front_extent: float,
+        fallback_axis_xy: tuple[float, float],
+    ) -> float:
+        if not position_map:
+            return float("nan")
+        centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
+        if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
+            return float("nan")
+        axis_dx = float(objective_point_xy[0]) - centroid_x
+        axis_dy = float(objective_point_xy[1]) - centroid_y
+        axis_norm = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
+        if axis_norm > 1e-12:
+            axis_x = axis_dx / axis_norm
+            axis_y = axis_dy / axis_norm
+        else:
+            axis_x = float(fallback_axis_xy[0])
+            axis_y = float(fallback_axis_xy[1])
+        front_extent = max(
+            (((float(position[0]) - centroid_x) * axis_x) + ((float(position[1]) - centroid_y) * axis_y))
+            for position in position_map.values()
+        )
+        if initial_front_extent <= 1e-12:
+            return float("nan")
+        return float(front_extent) / float(initial_front_extent)
+
     trajectory = _per_fleet_series()
     alive_trajectory = _per_fleet_series()
     fleet_size_trajectory = _per_fleet_series()
@@ -1335,11 +1416,19 @@ def run_simulation(
             for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids
             if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
         }
+        fixture_reference_bundle = _build_fixture_expected_reference_bundle(
+            initial_positions,
+            fixture_objective_point_xy,
+        )
         initial_centroid_x, initial_centroid_y, initial_rms_radius = _compute_centroid_and_rms_radius(initial_positions)
         initial_distance = math.sqrt(
             ((initial_centroid_x - fixture_objective_point_xy[0]) ** 2)
             + ((initial_centroid_y - fixture_objective_point_xy[1]) ** 2)
         ) if math.isfinite(initial_centroid_x) and math.isfinite(initial_centroid_y) else float("nan")
+        fixture_candidate_a_active = movement_model == "v4a"
+        engine.TEST_RUN_FIXTURE_CFG["expected_position_candidate_active"] = fixture_candidate_a_active
+        engine.TEST_RUN_FIXTURE_CFG["initial_forward_hat_xy"] = fixture_reference_bundle["initial_forward_hat_xy"]
+        engine.TEST_RUN_FIXTURE_CFG["expected_slot_offsets_local"] = fixture_reference_bundle["expected_slot_offsets_local"]
         observer_telemetry["fixture"] = {
             "active_mode": fixture_active_mode,
             "fleet_id": fixture_fleet_id,
@@ -1347,10 +1436,14 @@ def run_simulation(
             "stop_radius": fixture_stop_radius,
             "initial_centroid_to_objective_distance": float(initial_distance),
             "initial_rms_radius": float(initial_rms_radius),
+            "initial_front_extent": float(fixture_reference_bundle["initial_front_extent"]),
+            "expected_position_candidate_active": bool(fixture_candidate_a_active),
             "objective_reached_tick": None,
             "centroid_to_objective_distance": [],
             "formation_rms_radius": [],
             "formation_rms_radius_ratio": [],
+            "expected_position_rms_error": [],
+            "front_extent_ratio": [],
             "corrected_unit_ratio": [],
             "projection_pairs_count": [],
             "projection_mean_displacement": [],
@@ -1504,6 +1597,18 @@ def run_simulation(
             fixture_runtime_debug = extract_runtime_debug_payload(
                 getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
             )
+            expected_position_payload = engine._build_fixture_expected_position_map(
+                state=state,
+                fleet_id=fixture_fleet_id,
+                centroid_x=centroid_x if math.isfinite(centroid_x) else 0.0,
+                centroid_y=centroid_y if math.isfinite(centroid_y) else 0.0,
+                target_direction=state.last_target_direction.get(fixture_fleet_id, (0.0, 0.0)),
+            )
+            expected_position_map = (
+                expected_position_payload.get("expected_positions", {})
+                if isinstance(expected_position_payload, Mapping)
+                else {}
+            )
             initial_rms_radius = float(fixture_metrics.get("initial_rms_radius", 0.0))
             fixture_metrics["centroid_to_objective_distance"].append(float(distance_to_objective))
             fixture_metrics["formation_rms_radius"].append(float(rms_radius))
@@ -1511,6 +1616,17 @@ def run_simulation(
                 (float(rms_radius) / initial_rms_radius)
                 if initial_rms_radius > 1e-12
                 else 1.0
+            )
+            fixture_metrics["expected_position_rms_error"].append(
+                _compute_expected_position_rms_error(fixture_positions, expected_position_map)
+            )
+            fixture_metrics["front_extent_ratio"].append(
+                _compute_front_extent_ratio(
+                    fixture_positions,
+                    fixture_objective_point_xy,
+                    float(fixture_metrics.get("initial_front_extent", 0.0)),
+                    tuple(fixture_reference_bundle["initial_forward_hat_xy"]),
+                )
             )
             fixture_metrics["corrected_unit_ratio"].append(
                 float(fixture_runtime_debug.get("corrected_unit_ratio", 0.0))

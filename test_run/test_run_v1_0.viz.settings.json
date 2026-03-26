@@ -117,19 +117,19 @@
 
   "_comment_background_orbits": "background_orbits: shared orbit controls for the discrete orbit-pool planet/belt system. orbit_radius_base_ratio=global orbit radius base (applies to both planets and belts); orbit_count_range=sampled shared orbit slot count before auto-raising to fit requested objects; draw_orbits_enabled=draw visible orbit lines around the primary star for generated/shared orbit slots; orbit_line_color/alpha/width=orbit line style; draw_extent_ratio_max=allowed draw domain expansion relative to arena (1.25 => [-0.25*arena,1.25*arena]); eccentricity_near/eccentricity_far control how circular near orbits are and how elliptical far orbits become; planet_orbit_gap_ratio_min and belt_planet_exclusion_gap_ratio now act as soft shell-spacing hints during orbit-pool shaping; belt_belt_exclusion_scale remains a secondary soft-spacing modifier.",
   "background_orbits": {
-    "orbit_radius_base_ratio": 0.7,
+    "orbit_radius_base_ratio": 0.85,
     "orbit_count_range": [
       8,
       12
     ],
     "eccentricity_near": 0.0,
-    "eccentricity_far": 0.35,
+    "eccentricity_far": 0.2,
     "draw_orbits_enabled": true,
     "orbit_line_color": "#778899",
-    "orbit_line_alpha": 0.3,
+    "orbit_line_alpha": 0.2,
     "orbit_line_width": 0.5,
     "draw_extent_ratio_max": 1.25,
-    "planet_orbit_gap_ratio_min": 0.05,
+    "planet_orbit_gap_ratio_min": 0.1,
     "belt_planet_exclusion_gap_ratio": 0.05,
     "belt_belt_exclusion_scale": 0.25
   },
@@ -145,16 +145,16 @@
       0.80
     ],
     "orbit_jitter_range": [
-      0.92,
-      1.08
+      1.00,
+      1.00
     ],
     "angle_jitter_deg": 12.0,
     "min_separation_ratio": 0.11,
     "small_zone_max_ratio": 0.42,
     "mid_zone_max_ratio": 0.72,
     "radius_range": [
-      2.0,
-      6.0
+      3.0,
+      7.0
     ],
     "colors": [
       "#6f7f95",
@@ -165,7 +165,7 @@
     "moons": {
       "enabled": true,
       "size_ratio_range": [
-        0.25,
+        0.35,
         0.5
       ],
       "orbit_scale_range": [
@@ -217,20 +217,20 @@
       1.0
     ],
     "thickness_ratio_range": [
-      0.025,
-      0.05
+      0.02,
+      0.03
     ],
     "arc_span_deg_range": [
-      180.0,
+      135.0,
       270.0
     ],
     "curve_strength_range": [
-      -0.1,
-      0.1
+      -0.02,
+      0.02
     ],
     "asteroid_radius_range": [
       0.2,
-      0.4
+      0.8
     ],
     "color": "#595F68",
     "alpha": 0.4
