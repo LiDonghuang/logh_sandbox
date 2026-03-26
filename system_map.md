@@ -106,7 +106,8 @@ Current availability:
 - Step 3 opening review is doc-only: a minimum 3D objective contract draft and bounded neutral-transit first-carrier notes now exist under `analysis/`
 - Step 3 next-mainline planning is also doc-only: first bounded fixture-side implementation touchpoints and validation notes now exist under `analysis/`
 - Step 3 first implementation is now bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
-- the Panda3D viewer still reads the active battle replay path only; it does not yet consume the neutral-transit fixture path and therefore needs a separate governance clarification before any viewer-side hookup
+- the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
+- current viewer-side neutral-transit support is still readout-only: source selection plus small contract echo overlay, without scene-level objective markers or semantic ownership
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 

@@ -14,7 +14,13 @@ except ImportError as exc:  # pragma: no cover - import guard for incorrect env 
     ) from exc
 
 from viz3d_panda.camera_controller import OrbitCameraController
-from viz3d_panda.replay_source import DEFAULT_FRAME_STRIDE, ReplayBundle, load_active_battle_replay
+from viz3d_panda.replay_source import (
+    DEFAULT_FRAME_STRIDE,
+    VIEWER_SOURCE_AUTO,
+    VIEWER_SOURCE_CHOICES,
+    ReplayBundle,
+    load_viewer_replay,
+)
 from viz3d_panda.scene_builder import build_scene
 from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
@@ -51,6 +57,16 @@ def _resolve_playback_level_index(playback_fps: float) -> int:
     raise ValueError(
         f"playback-fps must be one of the fixed viewer speed levels: {supported_values}; got {playback_fps}."
     )
+
+
+def _format_point(values: object, *, dimensions: int) -> str | None:
+    if not isinstance(values, (list, tuple)) or len(values) != dimensions:
+        return None
+    try:
+        parts = [f"{float(value):.1f}" for value in values]
+    except (TypeError, ValueError):
+        return None
+    return f"({', '.join(parts)})"
 
 
 class FleetViewerApp(ShowBase):
@@ -143,13 +159,27 @@ class FleetViewerApp(ShowBase):
         max_steps_source = self._replay.metadata.get("max_steps_source", "settings")
         vector_display_mode = self._replay.metadata.get("vector_display_mode", "effective")
         fire_link_mode = self._unit_renderer.fire_link_mode
-        self._status_text.setText(
-            f"{WINDOW_TITLE}\n"
-            f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tick={frame.tick}\n"
-            f"fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}  state={playback_label}\n"
-            f"sim_limit={max_steps_source}:{max_steps_effective}  dir_mode={vector_display_mode}  fire_links={fire_link_mode}\n"
-            f"{counts_text}"
-        )
+        status_lines = [
+            WINDOW_TITLE,
+            f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tick={frame.tick}",
+            f"fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}  state={playback_label}",
+            f"sim_limit={max_steps_source}:{max_steps_effective}  dir_mode={vector_display_mode}  fire_links={fire_link_mode}",
+        ]
+        fixture_readout = self._replay.metadata.get("fixture_readout")
+        if isinstance(fixture_readout, dict) and fixture_readout:
+            owner = str(fixture_readout.get("source_owner", ""))
+            objective_mode = str(fixture_readout.get("objective_mode", ""))
+            no_enemy = str(fixture_readout.get("no_enemy_semantics", ""))
+            status_lines.append(f"fixture_contract owner={owner}  mode={objective_mode}  no_enemy={no_enemy}")
+            anchor_xyz = _format_point(fixture_readout.get("anchor_point_xyz"), dimensions=3)
+            if anchor_xyz is not None:
+                projected_xy = _format_point(fixture_readout.get("projected_anchor_point_xy"), dimensions=2)
+                if projected_xy is None:
+                    status_lines.append(f"anchor_xyz={anchor_xyz}")
+                else:
+                    status_lines.append(f"anchor_xyz={anchor_xyz}  projected_xy={projected_xy}")
+        status_lines.append(counts_text)
+        self._status_text.setText("\n".join(status_lines))
 
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
@@ -168,6 +198,15 @@ class FleetViewerApp(ShowBase):
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=WINDOW_TITLE)
+    parser.add_argument(
+        "--source",
+        choices=VIEWER_SOURCE_CHOICES,
+        default=VIEWER_SOURCE_AUTO,
+        help=(
+            "Viewer replay source. 'auto' follows the current layered fixture.active_mode when it is "
+            "neutral_transit_v1; otherwise it uses the active battle path."
+        ),
+    )
     parser.add_argument(
         "--steps",
         type=int,
@@ -195,7 +234,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     _configure_window(width=args.window_width, height=args.window_height)
-    replay = load_active_battle_replay(
+    replay = load_viewer_replay(
+        source=str(args.source),
         max_steps=args.steps,
         frame_stride=int(args.frame_stride),
     )
