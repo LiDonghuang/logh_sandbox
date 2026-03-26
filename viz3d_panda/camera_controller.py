@@ -14,6 +14,8 @@ DEFAULT_TOPDOWN_PITCH_DEGREES = -89.0
 FLEET_VIEW_PITCH_DEGREES = -42.0
 FLEET_VIEW_DISTANCE_PADDING = 56.0
 FLEET_VIEW_DISTANCE_RADIUS_SCALE = 4.5
+MIN_CAMERA_PITCH_DEGREES = -90.0
+MAX_CAMERA_PITCH_DEGREES = 90.0
 
 
 class OrbitCameraController:
@@ -143,7 +145,7 @@ class OrbitCameraController:
         if self._drag_action == "orbit":
             self._yaw_np.setH(self._yaw_np.getH() - (delta_x * self._mouse_orbit_scale))
             next_pitch = self._pitch_np.getP() + (delta_y * self._mouse_pitch_scale)
-            self._pitch_np.setP(max(-85.0, min(-15.0, next_pitch)))
+            self._pitch_np.setP(max(MIN_CAMERA_PITCH_DEGREES, min(MAX_CAMERA_PITCH_DEGREES, next_pitch)))
 
     def _clamp_focus(self, value: float) -> float:
         lower = -self._focus_margin
@@ -229,8 +231,8 @@ class OrbitCameraController:
         summary = self._summarize_fleet_frame(frame, fleet_id)
         if summary is None:
             return None
-        min_distance = max(25.0, self._arena_size * 0.18)
-        max_distance = max(self._default_distance * 1.6, self._arena_size * 2.0)
+        min_distance = max(12.5, self._arena_size * 0.09)
+        max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         requested_distance = (float(summary["radius"]) * FLEET_VIEW_DISTANCE_RADIUS_SCALE) + FLEET_VIEW_DISTANCE_PADDING
         requested_distance = max(min_distance, min(max_distance, requested_distance))
         self._set_view(
@@ -264,8 +266,8 @@ class OrbitCameraController:
 
     def zoom(self, delta: float) -> None:
         next_distance = self._distance + float(delta)
-        min_distance = max(25.0, self._arena_size * 0.18)
-        max_distance = max(self._default_distance * 1.6, self._arena_size * 2.0)
+        min_distance = max(12.5, self._arena_size * 0.09)
+        max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         self._distance = max(min_distance, min(max_distance, next_distance))
         self._apply_camera_distance()
 
@@ -286,6 +288,6 @@ class OrbitCameraController:
         if self._keys["e"]:
             self._yaw_np.setH(self._yaw_np.getH() - (self._orbit_speed * dt))
         if self._keys["r"]:
-            self._pitch_np.setP(min(-15.0, self._pitch_np.getP() + (self._pitch_speed * dt)))
+            self._pitch_np.setP(min(MAX_CAMERA_PITCH_DEGREES, self._pitch_np.getP() + (self._pitch_speed * dt)))
         if self._keys["f"]:
-            self._pitch_np.setP(max(-85.0, self._pitch_np.getP() - (self._pitch_speed * dt)))
+            self._pitch_np.setP(max(MIN_CAMERA_PITCH_DEGREES, self._pitch_np.getP() - (self._pitch_speed * dt)))

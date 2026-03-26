@@ -17,6 +17,8 @@ Summary
 - While tracking is active, backquote/tilde cancels tracking instead of resetting the camera.
 - While tracking is inactive, backquote/tilde performs the normal reset.
 - Tracking updates focus only after initialization, so manual yaw/pitch/zoom adjustments remain under human control.
+- Viewer-local zoom range is widened relative to the earlier clamp.
+- Viewer-local pitch range is widened to allow a fuller top-down / underside orbit sweep.
 
 ## Scope
 
@@ -81,6 +83,16 @@ and deliberately does **not** keep forcing:
 - zoom distance
 
 This preserves human control after tracking begins.
+
+### Zoom / Pitch Range
+
+The camera clamp was also widened in this refinement round:
+
+- zoom minimum is now approximately half of the earlier lower clamp
+- zoom maximum is now approximately double the earlier upper clamp
+- pitch range is now widened to `-90 .. +90`
+
+These remain viewer-local comfort controls only.
 
 ### Conditional Reset Behavior
 

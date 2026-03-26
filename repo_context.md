@@ -15,9 +15,8 @@ Authority: Reference only, not canonical semantics authority
 - first bounded 3D viewer bootstrap active on `dev_v2.0`
 - Step 1 viewer readability / launch semantics alignment completed in the additive 3D viewer layer
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
-- Step 3 opening review is active at structural-draft-only level for a minimum 3D objective contract and bounded neutral-transit first carrier
-- Step 3 next-mainline planning now exists as an implementation-bounded structural draft
-- Step 3 first very small implementation is now active on the bounded neutral-transit fixture path; runtime schema and viewer ownership remain unopened
+- Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
+- Step 3 next unopened mainline is now the structural-draft-only opening review for `3D Formation Contract v0.1`
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
@@ -107,7 +106,8 @@ Current availability status:
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup
-- current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, and fleet `1/2` centroid tracking with manual angle retention after initialization
+- current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
+- current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -153,6 +153,9 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_viewer_consumption_hookup_note.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_tick1_effective_direction_read_note_20260326.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_viewer_input_camera_refinement_note.md`
+- `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
+- `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
+- `analysis/engineering_reports/developments/20260326/step3_3d_formation_mapping_legality_split_note.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`

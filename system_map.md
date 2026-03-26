@@ -103,12 +103,12 @@ Current availability:
 - limited visual refinement active: deeper semi-transparent side colors and subordinate straight-beam fire-links with `minimal` / `full` viewer-local display modes
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
-- viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, and fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization
-- Step 3 opening review is doc-only: a minimum 3D objective contract draft and bounded neutral-transit first-carrier notes now exist under `analysis/`
-- Step 3 next-mainline planning is also doc-only: first bounded fixture-side implementation touchpoints and validation notes now exist under `analysis/`
-- Step 3 first implementation is now bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
+- viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization, and broader zoom/pitch limits
+- Step 3 objective line is now sufficiently established in bounded scope: draft, bounded first carrier, harness-side validation, and very small viewer-consumption hookup are all complete
+- Step 3 first implementation remains bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
 - current viewer-side neutral-transit support is still readout-only: source selection plus small contract echo overlay, without scene-level objective markers or semantic ownership
+- the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 
