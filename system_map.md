@@ -104,6 +104,7 @@ Current availability:
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
 - Step 3 opening review is doc-only: a minimum 3D objective contract draft and bounded neutral-transit first-carrier notes now exist under `analysis/`
+- Step 3 next-mainline planning is also doc-only: first bounded fixture-side implementation touchpoints and validation notes now exist under `analysis/`
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 

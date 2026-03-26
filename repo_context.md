@@ -16,6 +16,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 1 viewer readability / launch semantics alignment completed in the additive 3D viewer layer
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 opening review is active at structural-draft-only level for a minimum 3D objective contract and bounded neutral-transit first carrier
+- Step 3 next-mainline planning now exists as an implementation-bounded structural draft; runtime code is still unopened
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
@@ -139,6 +140,9 @@ Current availability status:
 - `analysis/specs/objective/objective_location_spec_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_neutral_transit_fixture_boundary_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_ownership_and_layering_note.md`
+- `analysis/engineering_reports/developments/20260326/step3_3d_objective_impl_bounded_structural_draft.md`
+- `analysis/engineering_reports/developments/20260326/step3_3d_objective_touchpoint_inventory.md`
+- `analysis/engineering_reports/developments/20260326/step3_3d_objective_first_validation_note.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
