@@ -15,6 +15,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEST_RUN_BASE_DIR = PROJECT_ROOT / "test_run"
 DEFAULT_FRAME_STRIDE = 1
 DEFAULT_FLEET_PALETTE = ("#4f8cff", "#ff7b52", "#59d38c", "#f3c84b")
+FIXED_VIEWER_FLEET_COLORS = {
+    "A": "#2a63b8",
+    "B": "#b6404a",
+}
 FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug"}
 VALID_VECTOR_DISPLAY_MODES = {"effective", "free", "attack", "composite", "radial_debug"}
 
@@ -321,7 +325,6 @@ def load_active_battle_replay(
 
     fleet_a_data = prepared["fleet_a_data"]
     fleet_b_data = prepared["fleet_b_data"]
-    fleet_a_color, fleet_b_color = scenario.resolve_fleet_plot_colors(fleet_a_data, fleet_b_data)
 
     return build_replay_bundle(
         source_kind="test_run_active_surface",
@@ -332,8 +335,8 @@ def load_active_battle_replay(
             "B": scenario.resolve_display_name(fleet_b_data, "EN"),
         },
         fleet_colors={
-            "A": fleet_a_color,
-            "B": fleet_b_color,
+            "A": FIXED_VIEWER_FLEET_COLORS["A"],
+            "B": FIXED_VIEWER_FLEET_COLORS["B"],
         },
         metadata={
             "summary": dict(result["prepared"]["summary"]),

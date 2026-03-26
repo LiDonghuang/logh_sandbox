@@ -9,13 +9,29 @@ from panda3d.core import (
     GeomVertexData,
     GeomVertexFormat,
     GeomVertexWriter,
+    LineSegs,
     NodePath,
     TransparencyAttrib,
 )
 
 from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
 
-TOKEN_ALPHA = 0.8
+TOKEN_ALPHA = 0.72
+FIRE_LINK_MODES = {"minimal", "full"}
+FIRE_LINK_MODE_STYLE = {
+    "minimal": {
+        "alpha": 0.12,
+        "thickness": 1.05,
+    },
+    "full": {
+        "alpha": 0.22,
+        "thickness": 1.55,
+    },
+}
+FIRE_LINK_BASE_HEIGHT = 1.18
+FIRE_LINK_TARGET_HEIGHT = 1.06
+FIRE_LINK_SOURCE_OFFSET = 0.92
+FIRE_LINK_TARGET_OFFSET = 0.70
 HP_BUCKET_SCALES = {
     5: 1.28,
     4: 1.12,
@@ -103,11 +119,27 @@ def _build_wedge_template(name: str) -> NodePath:
 
 
 class UnitRenderer:
-    def __init__(self, parent: NodePath, replay: ReplayBundle) -> None:
+    def __init__(self, parent: NodePath, replay: ReplayBundle, *, fire_link_mode: str = "minimal") -> None:
         self._parent = parent.attachNewNode("unit_renderer")
         self._replay = replay
         self._templates: dict[str, NodePath] = {}
         self._unit_nodes: dict[str, NodePath] = {}
+        self._target_links_np = self._parent.attachNewNode("viewer_fire_links")
+        self._fire_link_mode = self._validate_fire_link_mode(fire_link_mode)
+
+    def _validate_fire_link_mode(self, fire_link_mode: str) -> str:
+        normalized = str(fire_link_mode).strip().lower()
+        if normalized not in FIRE_LINK_MODES:
+            allowed = ", ".join(sorted(FIRE_LINK_MODES))
+            raise ValueError(f"fire_link_mode must be one of: {allowed}; got {fire_link_mode!r}.")
+        return normalized
+
+    def set_fire_link_mode(self, fire_link_mode: str) -> None:
+        self._fire_link_mode = self._validate_fire_link_mode(fire_link_mode)
+
+    @property
+    def fire_link_mode(self) -> str:
+        return self._fire_link_mode
 
     def _get_template(self, fleet_id: str) -> NodePath:
         template = self._templates.get(fleet_id)
@@ -145,3 +177,48 @@ class UnitRenderer:
         for stale_key in stale_keys:
             self._unit_nodes[stale_key].removeNode()
             del self._unit_nodes[stale_key]
+
+        self._sync_fire_links(frame)
+
+    def _sync_fire_links(self, frame: ViewerFrame) -> None:
+        self._target_links_np.removeNode()
+        self._target_links_np = self._parent.attachNewNode("viewer_fire_links")
+        if not frame.targets:
+            return
+
+        segments = LineSegs("viewer_fire_links")
+        style = FIRE_LINK_MODE_STYLE[self._fire_link_mode]
+        segments.setThickness(float(style["thickness"]))
+        point_map = {str(unit.unit_id): unit for unit in frame.units}
+        for attacker_id, defender_id in frame.targets.items():
+            attacker = point_map.get(str(attacker_id))
+            defender = point_map.get(str(defender_id))
+            if attacker is None or defender is None:
+                continue
+
+            attacker_rgba = _hex_to_rgba(self._replay.fleet_colors.get(attacker.fleet_id, "#4f8cff"))
+            delta_x = float(defender.x) - float(attacker.x)
+            delta_y = float(defender.y) - float(attacker.y)
+            distance = math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
+            if distance <= 1e-9:
+                continue
+
+            dir_x = delta_x / distance
+            dir_y = delta_y / distance
+            attacker_scale = HP_BUCKET_SCALES[_hp_bucket(attacker.hit_points, attacker.max_hit_points)]
+            defender_scale = HP_BUCKET_SCALES[_hp_bucket(defender.hit_points, defender.max_hit_points)]
+            source_offset = FIRE_LINK_SOURCE_OFFSET * attacker_scale
+            target_offset = FIRE_LINK_TARGET_OFFSET * defender_scale
+            source_x = float(attacker.x) + (dir_x * source_offset)
+            source_y = float(attacker.y) + (dir_y * source_offset)
+            source_z = float(attacker.z) + (FIRE_LINK_BASE_HEIGHT * attacker_scale)
+            target_x = float(defender.x) - (dir_x * target_offset)
+            target_y = float(defender.y) - (dir_y * target_offset)
+            target_z = float(defender.z) + (FIRE_LINK_TARGET_HEIGHT * defender_scale)
+
+            segments.setColor(attacker_rgba[0], attacker_rgba[1], attacker_rgba[2], float(style["alpha"]))
+            segments.moveTo(source_x, source_y, source_z)
+            segments.drawTo(target_x, target_y, target_z)
+
+        links_np = self._target_links_np.attachNewNode(segments.create())
+        links_np.setTransparency(TransparencyAttrib.MAlpha)

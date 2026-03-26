@@ -100,6 +100,7 @@ Current availability:
 - viewer/replay bootstrap only
 - additive to the current 2D maintained path
 - readability pass active: single semi-transparent wedge token replaces the earlier thin line-arrow marker
+- limited visual refinement active: deeper semi-transparent side colors and subordinate straight-beam fire-links with `minimal` / `full` viewer-local display modes
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
 - Step 3 opening review is doc-only: a minimum 3D objective contract draft and bounded neutral-transit first-carrier notes now exist under `analysis/`

@@ -101,6 +101,7 @@ Current availability status:
 - it consumes existing 2D `position_frames` in memory
 - default launch now inherits the maintained 2D stop contract unless `--steps` is explicitly passed
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
+- current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current guardrail rule is `viewer consumes, runtime owns`
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
@@ -130,6 +131,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_launch_semantics_alignment_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_settings_mapping_directory.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_human_test_launch_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_visual_refinement_v1_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_visual_refinement_v1_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_container_boundary_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_anti_fat_guardrail_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_structure_hygiene_note.md`
