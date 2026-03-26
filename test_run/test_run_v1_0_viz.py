@@ -163,13 +163,8 @@ def render_test_run(
     debug_context = debug_context if isinstance(debug_context, Mapping) else {}
     map_export_only = bool(_cfg(debug_context, "map_export_only", False))
     show_attack_target_lines = bool(show_attack_target_lines)
-    settings_vector_display_mode = str(
-        _cfg(viz_settings, "vector_display_mode", unit_direction_mode)
-    ).strip().lower()
     unit_direction_mode = str(unit_direction_mode).strip().lower()
     valid_vector_display_modes = {"effective", "free", "attack", "composite", "radial_debug"}
-    if unit_direction_mode not in valid_vector_display_modes:
-        unit_direction_mode = settings_vector_display_mode
     if unit_direction_mode not in valid_vector_display_modes:
         unit_direction_mode = "effective"
     needs_attack_direction_map = unit_direction_mode in {"attack", "composite"}

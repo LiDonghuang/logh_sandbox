@@ -49,9 +49,6 @@
     "shaft_length": 0.4,
     "shaft_width": 0.8
   },
-  "_comment_vector_display_mode": "vector_display_mode: effective=post-projection displacement; free=pre-projection composite movement; attack=attack-target direction only; composite=effective displacement plus attack-target direction; radial_debug=fixed radial arrows with sign colors (green inward / red outward / yellow near-zero).",
-  "vector_display_mode": "effective",
-
   "_comment_death_linger": "death_linger: ticks=linger duration, ring_radius=red circle radius, ring_color=red circle color.",
   "death_linger": {
     "ticks": 1,

@@ -38,7 +38,10 @@ def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
 def _heading_to_h(heading_x: float, heading_y: float) -> float:
     if heading_x == 0.0 and heading_y == 0.0:
         return 0.0
-    return math.degrees(math.atan2(float(heading_x), float(heading_y)))
+    # The wedge mesh points along +Y at H=0, while positive Panda3D heading rotates
+    # +Y toward -X. Negate here so a resolved (ux, uy) heading maps to the same
+    # visible forward direction as the 2D quiver vector.
+    return -math.degrees(math.atan2(float(heading_x), float(heading_y)))
 
 
 def _hp_bucket(hit_points: float, max_hit_points: float) -> int:

@@ -100,7 +100,7 @@ def _resolve_vector_display_mode(settings: dict[str, Any]) -> str:
     raw_value = settings_api.get_visualization_setting(
         settings,
         "vector_display_mode",
-        settings_api.get_visualization_setting(settings, "unit_direction_mode", "effective"),
+        "effective",
     )
     mode = str(raw_value).strip().lower()
     if mode not in VALID_VECTOR_DISPLAY_MODES:

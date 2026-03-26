@@ -171,7 +171,7 @@ def _prepare_viz_cfg(
         "animation_play_speed": float(get_viz("animation_play_speed", 1.0)),
         "unit_direction_mode": _require_choice(
             "visualization.vector_display_mode",
-            get_viz("vector_display_mode", get_viz("unit_direction_mode", "effective")),
+            get_viz("vector_display_mode", "effective"),
             {"effective", "free", "attack", "composite", "radial_debug"},
         ),
         "show_attack_target_lines": bool(get_viz("show_attack_target_lines", False)),
@@ -289,6 +289,11 @@ def _export_map_batch(
     boundary_hard_enabled = bool(settings_api.get_runtime_setting(settings, "boundary_hard_enabled", True))
     output_root = (base_dir.parent / "analysis" / "exports" / "viz_maps" / datetime.now().strftime("%Y%m%d")).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    vector_display_mode = _require_choice(
+        "visualization.vector_display_mode",
+        settings_api.get_visualization_setting(settings, "vector_display_mode", "effective"),
+        {"effective", "free", "attack", "composite", "radial_debug"},
+    )
 
     dummy_params = PersonalityParameters(
         archetype_id="map_export",
@@ -348,7 +353,7 @@ def _export_map_batch(
                 viz_settings=viz_settings,
                 tick_plots_follow_battlefield_tick=False,
                 display_language="EN",
-                unit_direction_mode="effective",
+                unit_direction_mode=vector_display_mode,
                 show_attack_target_lines=False,
                 observer_telemetry={},
                 bridge_telemetry={},

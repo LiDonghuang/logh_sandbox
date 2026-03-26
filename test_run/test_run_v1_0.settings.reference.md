@@ -13,6 +13,7 @@
 - `test_run_v1_0.settings.json`
   - Thin entry file.
   - Declares layer paths and keeps lightweight run-display toggles (`visualization`).
+  - `visualization.vector_display_mode` is the single source of truth for unit-direction display mode.
 
 - `test_run_v1_0.runtime.settings.json`
   - Runtime values consumed by simulation.
@@ -25,6 +26,7 @@
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.
   - Should not change battle semantics.
+  - Does not own unit-direction mode; that setting remains in layered `visualization`.
 
 - `test_run_v1_0.settings.comments.json`
   - Field-level comments migrated from legacy `_comments`.

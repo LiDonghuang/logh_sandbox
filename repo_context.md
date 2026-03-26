@@ -14,6 +14,7 @@ Authority: Reference only, not canonical semantics authority
 - 2D mainline functionally closed out with note
 - first bounded 3D viewer bootstrap active on `dev_v2.0`
 - Step 1 viewer readability / launch semantics alignment completed in the additive 3D viewer layer
+- Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
@@ -80,15 +81,15 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 ## 3D Viewer Bootstrap Paths
 
 - `viz3d_panda/app.py`
-  - additive Panda3D viewer entrypoint for the `dev_v2.0` bootstrap container; human launch now inherits layered `max_time_steps` semantics by default
+  - additive Panda3D viewer entrypoint for the `dev_v2.0` bootstrap container; owns launch/playback wiring only
 - `viz3d_panda/replay_source.py`
   - consumes existing `test_run` active-surface output, inherits layered settings by default, and normalizes in-memory `position_frames` for viewer use
 - `viz3d_panda/scene_builder.py`
-  - minimal scene/grid/light bootstrap
+  - viewer-local scene/grid/light bootstrap only
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets and frame-to-frame updates
+  - wedge-token unit rendering with viewer-local HP size buckets and frame-to-frame updates only
 - `viz3d_panda/camera_controller.py`
-  - bounded camera orbit/pan/zoom controls
+  - bounded camera orbit/pan/zoom controls only
 - `launch_dev_v2_0_viewer.bat`
   - thin human-facing launcher for the Panda3D viewer bootstrap
 
@@ -99,6 +100,8 @@ Current availability status:
 - it consumes existing 2D `position_frames` in memory
 - default launch now inherits the maintained 2D stop contract unless `--steps` is explicitly passed
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
+- current guardrail rule is `viewer consumes, runtime owns`
+- no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
 ## Settings Paths
@@ -126,6 +129,10 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_launch_semantics_alignment_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_settings_mapping_directory.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_human_test_launch_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_container_boundary_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_anti_fat_guardrail_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_structure_hygiene_note.md`
+- `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.json`

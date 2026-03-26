@@ -80,15 +80,15 @@ Authority: Reference only, not canonical semantics authority
 ### 8. Additive 3D Viewer Bootstrap Layer
 
 - `viz3d_panda/app.py`
-  - Panda3D viewer entrypoint and playback loop; defaults to inherited layered stop semantics unless `--steps` is explicitly passed
+  - Panda3D viewer entrypoint and playback loop; owns launch/playback wiring only
 - `viz3d_panda/replay_source.py`
-  - in-memory replay bundle build from existing `test_run` returned `position_frames` with inheritance-first settings consumption
+  - in-memory replay bundle build from existing `test_run` returned `position_frames`; replay consumption only
 - `viz3d_panda/scene_builder.py`
-  - simple scene/grid/light setup
+  - simple viewer-local scene/grid/light setup
 - `viz3d_panda/unit_renderer.py`
   - wedge-token unit rendering with viewer-local HP size buckets
 - `viz3d_panda/camera_controller.py`
-  - simple orbit/pan/zoom controls
+  - simple viewer-local orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
   - thin human-facing launcher
 - `.vscode/launch.json`
@@ -101,6 +101,8 @@ Current availability:
 - additive to the current 2D maintained path
 - readability pass active: single semi-transparent wedge token replaces the earlier thin line-arrow marker
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
+- anti-fat guardrail active: viewer consumes, runtime owns
+- no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 
 ## Current Structural Tension
@@ -130,3 +132,4 @@ maintained harness output -> additive `viz3d_panda/` replay/view layer
 Do not read observer wording as runtime ontology.
 Do not read test-only selectors as canonical semantics.
 Do not read the Panda3D bootstrap container as a 3D combat-engine baseline.
+Do not read `viz3d_panda/` as a future-proof license to absorb simulation ownership.
