@@ -18,6 +18,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 3 opening review is active at structural-draft-only level for a minimum 3D objective contract and bounded neutral-transit first carrier
 - Step 3 next-mainline planning now exists as an implementation-bounded structural draft; runtime code is still unopened
 - Step 3 first very small implementation is now active on the bounded neutral-transit fixture path; runtime schema and viewer ownership remain unopened
+- current Step 3 first-carrier proof surface is harness-side only; Panda3D viewer still consumes the active battle replay path and is not yet wired to the neutral-transit fixture path
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
@@ -105,6 +106,7 @@ Current availability status:
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current guardrail rule is `viewer consumes, runtime owns`
+- current neutral-transit first-carrier validation lives in `test_run` launcher / fixture telemetry; `viz3d_panda/` has not yet been authorized to consume that fixture path
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
