@@ -103,6 +103,7 @@ Current availability:
 - limited visual refinement active: deeper semi-transparent side colors and subordinate straight-beam fire-links with `minimal` / `full` viewer-local display modes
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
+- viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, and fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization
 - Step 3 opening review is doc-only: a minimum 3D objective contract draft and bounded neutral-transit first-carrier notes now exist under `analysis/`
 - Step 3 next-mainline planning is also doc-only: first bounded fixture-side implementation touchpoints and validation notes now exist under `analysis/`
 - Step 3 first implementation is now bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only

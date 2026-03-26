@@ -107,6 +107,7 @@ Current availability status:
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup
+- current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, and fleet `1/2` centroid tracking with manual angle retention after initialization
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -151,6 +152,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_fixture_readout_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_viewer_consumption_hookup_note.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_tick1_effective_direction_read_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_viewer_input_camera_refinement_note.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`

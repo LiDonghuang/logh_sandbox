@@ -1,7 +1,19 @@
 from __future__ import annotations
 
+import math
+
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import Vec3
+
+from viz3d_panda.replay_source import ViewerFrame
+
+
+RESET_VIEW_KEY_EVENTS = ("`", "~")
+DEFAULT_TOPDOWN_YAW_DEGREES = 0.0
+DEFAULT_TOPDOWN_PITCH_DEGREES = -89.0
+FLEET_VIEW_PITCH_DEGREES = -42.0
+FLEET_VIEW_DISTANCE_PADDING = 56.0
+FLEET_VIEW_DISTANCE_RADIUS_SCALE = 4.5
 
 
 class OrbitCameraController:
@@ -20,6 +32,7 @@ class OrbitCameraController:
         self._mouse_pitch_scale = 100.0
         self._drag_action: str | None = None
         self._last_mouse_pos: tuple[float, float] | None = None
+        self._tracked_fleet_id: str | None = None
         self._keys = {
             "w": False,
             "s": False,
@@ -45,7 +58,8 @@ class OrbitCameraController:
         app.accept("mouse3-up", self._set_drag_state, ["orbit", False])
         app.accept("wheel_up", self.zoom, [-self._zoom_step])
         app.accept("wheel_down", self.zoom, [self._zoom_step])
-        app.accept("c", self.reset)
+        for event_name in RESET_VIEW_KEY_EVENTS:
+            app.accept(event_name, self._toggle_tracking_or_reset)
 
         self.reset()
 
@@ -68,8 +82,9 @@ class OrbitCameraController:
             self._drag_action = None
             self._last_mouse_pos = None
 
-    def _normalize_xy(self, x_value: float, y_value: float) -> tuple[float, float]:
-        length = ((float(x_value) * float(x_value)) + (float(y_value) * float(y_value))) ** 0.5
+    @staticmethod
+    def _normalize_xy(x_value: float, y_value: float) -> tuple[float, float]:
+        length = math.sqrt((float(x_value) * float(x_value)) + (float(y_value) * float(y_value)))
         if length <= 1e-9:
             return (0.0, 0.0)
         return (float(x_value) / length, float(y_value) / length)
@@ -138,12 +153,114 @@ class OrbitCameraController:
     def _apply_camera_distance(self) -> None:
         self._app.camera.setPos(0.0, -self._distance, 0.0)
 
-    def reset(self) -> None:
-        self._distance = self._default_distance
-        self._focus_np.setPos(self._arena_size * 0.5, self._arena_size * 0.5, 0.0)
-        self._yaw_np.setH(-45.0)
-        self._pitch_np.setP(-55.0)
+    def _toggle_tracking_or_reset(self) -> None:
+        if self._tracked_fleet_id is not None:
+            self._tracked_fleet_id = None
+            return
+        self.reset()
+
+    @staticmethod
+    def _heading_to_camera_yaw(heading_x: float, heading_y: float) -> float:
+        normalized_heading = OrbitCameraController._normalize_xy(heading_x, heading_y)
+        if normalized_heading == (0.0, 0.0):
+            return DEFAULT_TOPDOWN_YAW_DEGREES
+        # Match the same Panda3D heading sign convention used by unit rendering so the
+        # camera sits behind the fleet and looks along its forward direction, rather
+        # than presenting that forward axis as a side-on view.
+        return -math.degrees(math.atan2(float(normalized_heading[0]), float(normalized_heading[1])))
+
+    @staticmethod
+    def _summarize_fleet_frame(frame: ViewerFrame, fleet_id: str) -> dict[str, float] | None:
+        fleet_units = [unit for unit in frame.units if unit.fleet_id == str(fleet_id)]
+        if not fleet_units:
+            return None
+
+        centroid_x = sum(float(unit.x) for unit in fleet_units) / float(len(fleet_units))
+        centroid_y = sum(float(unit.y) for unit in fleet_units) / float(len(fleet_units))
+        radius = 0.0
+        heading_sum_x = 0.0
+        heading_sum_y = 0.0
+        for unit in fleet_units:
+            dx = float(unit.x) - centroid_x
+            dy = float(unit.y) - centroid_y
+            radius = max(radius, math.sqrt((dx * dx) + (dy * dy)))
+            heading_sum_x += float(unit.heading_x)
+            heading_sum_y += float(unit.heading_y)
+        heading_x, heading_y = OrbitCameraController._normalize_xy(heading_sum_x, heading_sum_y)
+        if heading_x == 0.0 and heading_y == 0.0:
+            heading_x, heading_y = (0.0, 1.0)
+        return {
+            "centroid_x": centroid_x,
+            "centroid_y": centroid_y,
+            "heading_x": heading_x,
+            "heading_y": heading_y,
+            "radius": radius,
+        }
+
+    def _set_view(
+        self,
+        *,
+        focus_x: float,
+        focus_y: float,
+        yaw_degrees: float,
+        pitch_degrees: float,
+        distance: float,
+    ) -> None:
+        self._distance = float(distance)
+        self._focus_np.setPos(self._clamp_focus(float(focus_x)), self._clamp_focus(float(focus_y)), 0.0)
+        self._yaw_np.setH(float(yaw_degrees))
+        self._pitch_np.setP(float(pitch_degrees))
         self._apply_camera_distance()
+
+    def _set_focus_only(self, *, focus_x: float, focus_y: float) -> None:
+        self._focus_np.setPos(self._clamp_focus(float(focus_x)), self._clamp_focus(float(focus_y)), 0.0)
+
+    def reset(self) -> None:
+        self._tracked_fleet_id = None
+        self._set_view(
+            focus_x=self._arena_size * 0.5,
+            focus_y=self._arena_size * 0.5,
+            yaw_degrees=DEFAULT_TOPDOWN_YAW_DEGREES,
+            pitch_degrees=DEFAULT_TOPDOWN_PITCH_DEGREES,
+            distance=self._default_distance,
+        )
+
+    def _apply_fleet_view(self, frame: ViewerFrame, fleet_id: str) -> dict[str, float] | None:
+        summary = self._summarize_fleet_frame(frame, fleet_id)
+        if summary is None:
+            return None
+        min_distance = max(25.0, self._arena_size * 0.18)
+        max_distance = max(self._default_distance * 1.6, self._arena_size * 2.0)
+        requested_distance = (float(summary["radius"]) * FLEET_VIEW_DISTANCE_RADIUS_SCALE) + FLEET_VIEW_DISTANCE_PADDING
+        requested_distance = max(min_distance, min(max_distance, requested_distance))
+        self._set_view(
+            focus_x=float(summary["centroid_x"]),
+            focus_y=float(summary["centroid_y"]),
+            yaw_degrees=self._heading_to_camera_yaw(float(summary["heading_x"]), float(summary["heading_y"])),
+            pitch_degrees=FLEET_VIEW_PITCH_DEGREES,
+            distance=requested_distance,
+        )
+        return summary
+
+    def start_fleet_tracking(self, frame: ViewerFrame, fleet_id: str) -> bool:
+        normalized_fleet_id = str(fleet_id)
+        if self._apply_fleet_view(frame, normalized_fleet_id) is None:
+            return False
+        self._tracked_fleet_id = normalized_fleet_id
+        return True
+
+    def sync_tracked_frame(self, frame: ViewerFrame) -> bool:
+        tracked_fleet_id = self._tracked_fleet_id
+        if tracked_fleet_id is None:
+            return False
+        summary = self._summarize_fleet_frame(frame, tracked_fleet_id)
+        if summary is None:
+            return False
+        self._set_focus_only(
+            focus_x=float(summary["centroid_x"]),
+            focus_y=float(summary["centroid_y"]),
+        )
+        return True
 
     def zoom(self, delta: float) -> None:
         next_distance = self._distance + float(delta)

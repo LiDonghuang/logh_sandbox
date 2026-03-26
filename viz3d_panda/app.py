@@ -29,6 +29,8 @@ WINDOW_TITLE = "LOGH dev_v2.0 Panda3D Viewer Scaffold"
 PLAYBACK_FPS_LEVELS = (4.0, 8.0, 12.0, 18.0, 24.0)
 DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
+STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
+STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 
 
 def _configure_window(*, width: int, height: int) -> None:
@@ -83,6 +85,9 @@ class FleetViewerApp(ShowBase):
         self._current_frame_index = 0
         self._accumulator = 0.0
         self._playing = True
+        self._held_step_direction = 0
+        self._held_step_delay_remaining = 0.0
+        self._held_step_repeat_accumulator = 0.0
 
         self._scene_root = build_scene(self.render, arena_size=self._replay.arena_size)
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
@@ -98,8 +103,8 @@ class FleetViewerApp(ShowBase):
         )
         self._control_text = OnscreenText(
             text=(
-                "Space play/pause  N/B step  [/ ] speed gear  V fire-links\n"
-                "LDrag pan  RDrag orbit  Wheel zoom  C reset  Esc quit"
+                "Space play/pause  N/B step/hold  [/ ] speed gear  V fire-links\n"
+                "LDrag pan  RDrag orbit  Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit"
             ),
             parent=self.aspect2d,
             pos=(-1.28, -0.95),
@@ -109,11 +114,15 @@ class FleetViewerApp(ShowBase):
         )
 
         self.accept("space", self.toggle_playback)
-        self.accept("n", self.step_forward)
-        self.accept("b", self.step_backward)
+        self.accept("n", self._begin_hold_step, [1])
+        self.accept("n-up", self._end_hold_step, [1])
+        self.accept("b", self._begin_hold_step, [-1])
+        self.accept("b-up", self._end_hold_step, [-1])
         self.accept("v", self.cycle_fire_link_mode)
         self.accept("]", self._adjust_playback_speed, [1])
         self.accept("[", self._adjust_playback_speed, [-1])
+        self.accept("1", self._focus_fleet_camera, ["A"])
+        self.accept("2", self._focus_fleet_camera, ["B"])
         self.accept("home", self.go_to_frame, [0])
         self.accept("end", self.go_to_frame, [len(self._replay.frames) - 1])
         self.accept("escape", self.userExit)
@@ -137,18 +146,43 @@ class FleetViewerApp(ShowBase):
         self._playing = not self._playing
         self._refresh_overlay()
 
-    def step_forward(self) -> None:
+    def _step_by(self, direction: int) -> None:
         self._playing = False
-        self.go_to_frame(min(self._current_frame_index + 1, len(self._replay.frames) - 1))
+        next_index = self._current_frame_index + int(direction)
+        self.go_to_frame(next_index)
+
+    def _begin_hold_step(self, direction: int) -> None:
+        normalized_direction = 1 if int(direction) > 0 else -1
+        if self._held_step_direction == normalized_direction:
+            return
+        self._held_step_direction = normalized_direction
+        self._held_step_delay_remaining = STEP_HOLD_INITIAL_DELAY_SECONDS
+        self._held_step_repeat_accumulator = 0.0
+        self._step_by(normalized_direction)
+
+    def _end_hold_step(self, direction: int) -> None:
+        normalized_direction = 1 if int(direction) > 0 else -1
+        if self._held_step_direction != normalized_direction:
+            return
+        self._held_step_direction = 0
+        self._held_step_delay_remaining = 0.0
+        self._held_step_repeat_accumulator = 0.0
+
+    def step_forward(self) -> None:
+        self._step_by(1)
 
     def step_backward(self) -> None:
-        self._playing = False
-        self.go_to_frame(max(self._current_frame_index - 1, 0))
+        self._step_by(-1)
+
+    def _focus_fleet_camera(self, fleet_id: str) -> None:
+        frame = self._replay.frames[self._current_frame_index]
+        self._camera_controller.start_fleet_tracking(frame, str(fleet_id))
 
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
         self._unit_renderer.sync_frame(frame)
+        self._camera_controller.sync_tracked_frame(frame)
         self._refresh_overlay()
 
     def _refresh_overlay(self) -> None:
@@ -184,6 +218,14 @@ class FleetViewerApp(ShowBase):
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
         self._camera_controller.update(dt)
+        if self._held_step_direction != 0 and len(self._replay.frames) > 1:
+            if self._held_step_delay_remaining > 0.0:
+                self._held_step_delay_remaining = max(0.0, self._held_step_delay_remaining - dt)
+            else:
+                self._held_step_repeat_accumulator += dt
+                while self._held_step_repeat_accumulator >= STEP_HOLD_REPEAT_INTERVAL_SECONDS:
+                    self._held_step_repeat_accumulator -= STEP_HOLD_REPEAT_INTERVAL_SECONDS
+                    self._step_by(self._held_step_direction)
         if self._playing and len(self._replay.frames) > 1:
             self._accumulator += dt
             frame_period = 1.0 / self._playback_fps
