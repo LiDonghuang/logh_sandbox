@@ -17,6 +17,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 next unopened mainline is now the structural-draft-only opening review for `3D Formation Contract v0.1`
+- bounded `neutral_transit_v1` corrections are now active on the maintained fixture path: late objective pull uses a stop-radius-bound linear arrival gain, and early expected-position cohesion uses a fixed deadband tied to `separation_radius`; current validation reads this as a bounded partial improvement still below the human-visible threshold
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
@@ -153,6 +154,10 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_fixture_readout_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_viewer_consumption_hookup_note.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_tick1_effective_direction_read_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_bounded_corrections_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_bounded_corrections_validation_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_bounded_corrections_metric_delta_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_bounded_corrections_governance_feedback_20260326.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_viewer_input_camera_refinement_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_human_test_note.md`

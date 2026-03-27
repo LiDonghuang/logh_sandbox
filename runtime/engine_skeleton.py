@@ -4,6 +4,9 @@ import math
 from runtime.runtime_v0_1 import BattleState, Vec2
 
 
+NEUTRAL_TRANSIT_FIXTURE_RESTORE_DEADBAND_RATIO = 0.28
+
+
 class EngineTickSkeleton:
     def __init__(
         self,
@@ -1037,6 +1040,16 @@ class EngineTickSkeleton:
                 if isinstance(fixture_expected_reference, dict)
                 else {}
             )
+            fixture_restore_deadband = 0.0
+            fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+            if (
+                isinstance(fixture_cfg, dict)
+                and str(fixture_cfg.get("active_mode", "")).strip().lower() == "neutral_transit_v1"
+                and bool(fixture_cfg.get("expected_position_candidate_active", False))
+            ):
+                fixture_restore_deadband = (
+                    float(self.separation_radius) * NEUTRAL_TRANSIT_FIXTURE_RESTORE_DEADBAND_RATIO
+                )
 
             # Movement 3A constants (observer-audited switch path only).
             attract_gain_base = 0.35
@@ -1049,13 +1062,18 @@ class EngineTickSkeleton:
                     continue
                 unit = updated_units[unit_id]
                 expected_position = fixture_expected_positions.get(str(unit_id))
-                if isinstance(expected_position, tuple) and len(expected_position) >= 2:
+                using_fixture_expected_position = isinstance(expected_position, tuple) and len(expected_position) >= 2
+                if using_fixture_expected_position:
                     cohesion_vector_x = float(expected_position[0]) - unit.position.x
                     cohesion_vector_y = float(expected_position[1]) - unit.position.y
                 else:
                     cohesion_vector_x = centroid_x - unit.position.x
                     cohesion_vector_y = centroid_y - unit.position.y
                 cohesion_norm = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
+                if using_fixture_expected_position and cohesion_norm < fixture_restore_deadband:
+                    cohesion_norm = 0.0
+                    cohesion_vector_x = 0.0
+                    cohesion_vector_y = 0.0
                 if cohesion_norm > 0.0:
                     cohesion_dir = (cohesion_vector_x / cohesion_norm, cohesion_vector_y / cohesion_norm)
                 else:

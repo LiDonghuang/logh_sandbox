@@ -80,6 +80,7 @@ SimulationRuntimeConfig = dict
 SimulationObserverConfig = dict
 FIXTURE_MODE_BATTLE = "battle"
 FIXTURE_MODE_NEUTRAL_TRANSIT_V1 = "neutral_transit_v1"
+FIXTURE_LINEAR_ARRIVAL_GAIN_MIN_STOP_RADIUS = 1e-12
 FIXTURE_MODE_LABELS = {
     FIXTURE_MODE_BATTLE,
     FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
@@ -299,10 +300,24 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             intensity = 0.0
         else:
             centroid_x, centroid_y = self._compute_position_centroid(own_units)
-            direction, intensity = self._normalize_direction(
+            normalized_direction, _ = self._normalize_direction(
                 float(objective_point_xy[0]) - centroid_x,
                 float(objective_point_xy[1]) - centroid_y,
             )
+            stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+            if stop_radius > FIXTURE_LINEAR_ARRIVAL_GAIN_MIN_STOP_RADIUS:
+                distance_to_objective = math.sqrt(
+                    ((float(objective_point_xy[0]) - centroid_x) ** 2)
+                    + ((float(objective_point_xy[1]) - centroid_y) ** 2)
+                )
+                arrival_gain = max(0.0, min(1.0, distance_to_objective / stop_radius))
+            else:
+                arrival_gain = 1.0
+            direction = (
+                float(normalized_direction[0]) * arrival_gain,
+                float(normalized_direction[1]) * arrival_gain,
+            )
+            intensity = float(arrival_gain)
         return replace(
             state,
             last_target_direction={fleet_id: direction},
