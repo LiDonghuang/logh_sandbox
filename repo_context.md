@@ -104,6 +104,7 @@ Current availability status:
 - default launch now inherits the maintained 2D stop contract unless `--steps` is explicitly passed
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
+- current viewer-local direction readout modes include `realistic`, which derives heading cue primarily from realized local trajectory tangent rather than upstream intent vectors
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
@@ -153,6 +154,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/step3_3d_objective_viewer_consumption_hookup_note.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_tick1_effective_direction_read_note_20260326.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_viewer_input_camera_refinement_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_human_test_note.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_mapping_legality_split_note.md`

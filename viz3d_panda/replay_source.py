@@ -29,6 +29,20 @@ FIXED_VIEWER_FLEET_COLORS = {
 }
 FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug"}
 VALID_VECTOR_DISPLAY_MODES = {"effective", "free", "attack", "composite", "radial_debug"}
+VIEWER_DIRECTION_MODE_SETTINGS = "settings"
+INTERNAL_DIRECTION_DISPLAY_MODES = VALID_VECTOR_DISPLAY_MODES | {"realistic"}
+VIEWER_DIRECTION_MODE_CHOICES = (
+    VIEWER_DIRECTION_MODE_SETTINGS,
+    "effective",
+    "free",
+    "fire",
+    "attack",
+    "composite",
+    "radial_debug",
+    "realistic",
+)
+REALISTIC_MIN_DISPLACEMENT_FRACTION = 0.0005
+REALISTIC_MIN_DISPLACEMENT_FLOOR = 0.10
 
 
 @dataclass(frozen=True)
@@ -40,6 +54,8 @@ class ViewerUnitState:
     z: float
     heading_x: float
     heading_y: float
+    orientation_x: float
+    orientation_y: float
     velocity_x: float
     velocity_y: float
     hit_points: float
@@ -86,6 +102,8 @@ def _parse_unit_point(raw_point: Any, *, fleet_id: str) -> ViewerUnitState:
         z=0.0,
         heading_x=float(raw_point[3]),
         heading_y=float(raw_point[4]),
+        orientation_x=float(raw_point[3]),
+        orientation_y=float(raw_point[4]),
         velocity_x=velocity_x,
         velocity_y=velocity_y,
         hit_points=hit_points,
@@ -118,6 +136,33 @@ def _resolve_vector_display_mode(settings: dict[str, Any]) -> str:
     if mode not in VALID_VECTOR_DISPLAY_MODES:
         return "effective"
     return mode
+
+
+def _normalize_viewer_direction_mode(requested_mode: str) -> str:
+    normalized = str(requested_mode).strip().lower()
+    if normalized == "fire":
+        return "attack"
+    if normalized == VIEWER_DIRECTION_MODE_SETTINGS:
+        return VIEWER_DIRECTION_MODE_SETTINGS
+    if normalized not in INTERNAL_DIRECTION_DISPLAY_MODES:
+        allowed = ", ".join(VIEWER_DIRECTION_MODE_CHOICES)
+        raise ValueError(f"direction_mode must be one of {{{allowed}}}, got {requested_mode!r}.")
+    return normalized
+
+
+def _public_direction_mode_label(mode: str) -> str:
+    normalized = str(mode).strip().lower()
+    if normalized == "attack":
+        return "fire"
+    return normalized
+
+
+def _resolve_direction_mode(settings: dict[str, Any], requested_mode: str) -> tuple[str, str, str]:
+    settings_mode = _resolve_vector_display_mode(settings)
+    normalized_requested = _normalize_viewer_direction_mode(requested_mode)
+    if normalized_requested == VIEWER_DIRECTION_MODE_SETTINGS:
+        return (settings_mode, _public_direction_mode_label(settings_mode), "settings")
+    return (normalized_requested, _public_direction_mode_label(normalized_requested), "override")
 
 
 def _resolve_viewer_source(settings: dict[str, Any], requested_source: str) -> str:
@@ -165,24 +210,90 @@ def _fleet_centroids(units: tuple[ViewerUnitState, ...]) -> dict[str, tuple[floa
     }
 
 
-def _resolve_frame_display_units(
-    units: tuple[ViewerUnitState, ...],
+def _unit_key(unit: ViewerUnitState) -> str:
+    return f"{unit.fleet_id}:{unit.unit_id}"
+
+
+def _build_frame_position_lookup(frame: ViewerFrame) -> dict[str, tuple[float, float]]:
+    return {
+        _unit_key(unit): (float(unit.x), float(unit.y))
+        for unit in frame.units
+    }
+
+
+def _resolve_realistic_direction(
+    unit: ViewerUnitState,
     *,
-    targets: dict[str, str],
+    previous_position: tuple[float, float] | None,
+    next_position: tuple[float, float] | None,
+    last_valid_directions: dict[str, tuple[float, float]],
+    fallback_direction: tuple[float, float],
+    min_displacement: float,
+) -> tuple[float, float]:
+    unit_key = _unit_key(unit)
+    current_position = (float(unit.x), float(unit.y))
+    candidate_displacements: list[tuple[float, float]] = []
+    if previous_position is not None and next_position is not None:
+        candidate_displacements.append(
+            (
+                float(next_position[0]) - float(previous_position[0]),
+                float(next_position[1]) - float(previous_position[1]),
+            )
+        )
+    if next_position is not None:
+        candidate_displacements.append(
+            (
+                float(next_position[0]) - float(current_position[0]),
+                float(next_position[1]) - float(current_position[1]),
+            )
+        )
+    if previous_position is not None:
+        candidate_displacements.append(
+            (
+                float(current_position[0]) - float(previous_position[0]),
+                float(current_position[1]) - float(previous_position[1]),
+            )
+        )
+
+    for dx_value, dy_value in candidate_displacements:
+        displacement_norm = math.sqrt((float(dx_value) * float(dx_value)) + (float(dy_value) * float(dy_value)))
+        if displacement_norm < float(min_displacement):
+            continue
+        realistic_direction = _normalize_vector(dx_value, dy_value)
+        if realistic_direction != (0.0, 0.0):
+            last_valid_directions[unit_key] = realistic_direction
+            return realistic_direction
+
+    last_valid = last_valid_directions.get(unit_key)
+    if last_valid is not None:
+        return last_valid
+    if fallback_direction != (0.0, 0.0):
+        return fallback_direction
+    return _normalize_vector(unit.orientation_x, unit.orientation_y)
+
+
+def _resolve_frame_display_units(
+    frame: ViewerFrame,
+    *,
     vector_display_mode: str,
-    previous_positions_by_fleet: dict[str, dict[str, tuple[float, float]]],
+    previous_positions: dict[str, tuple[float, float]],
+    next_positions: dict[str, tuple[float, float]],
+    last_realistic_directions: dict[str, tuple[float, float]],
+    realistic_min_displacement: float,
 ) -> tuple[ViewerUnitState, ...]:
+    units = frame.units
+    targets = frame.targets
     attack_direction_map = _build_attack_direction_map(units, targets)
     centroids = _fleet_centroids(units)
     resolved_units: list[ViewerUnitState] = []
-    next_positions_by_fleet: dict[str, dict[str, tuple[float, float]]] = {}
 
     for unit in units:
-        prev_positions = previous_positions_by_fleet.get(unit.fleet_id, {})
-        previous = prev_positions.get(unit.unit_id)
+        unit_key = _unit_key(unit)
+        previous = previous_positions.get(unit_key)
+        next_position = next_positions.get(unit_key)
         if previous is None:
-            effective_x = float(unit.heading_x)
-            effective_y = float(unit.heading_y)
+            effective_x = float(unit.orientation_x)
+            effective_y = float(unit.orientation_y)
         else:
             effective_x = float(unit.x) - float(previous[0])
             effective_y = float(unit.y) - float(previous[1])
@@ -213,6 +324,15 @@ def _resolve_frame_display_units(
                     float(centroid[0]) - float(unit.x),
                     float(centroid[1]) - float(unit.y),
                 )
+        elif vector_display_mode == "realistic":
+            display_direction = _resolve_realistic_direction(
+                unit,
+                previous_position=previous,
+                next_position=next_position,
+                last_valid_directions=last_realistic_directions,
+                fallback_direction=effective_direction,
+                min_displacement=realistic_min_displacement,
+            )
         else:
             display_direction = effective_direction
 
@@ -223,11 +343,41 @@ def _resolve_frame_display_units(
                 heading_y=float(display_direction[1]),
             )
         )
-        next_positions_by_fleet.setdefault(unit.fleet_id, {})[unit.unit_id] = (float(unit.x), float(unit.y))
-
-    previous_positions_by_fleet.clear()
-    previous_positions_by_fleet.update(next_positions_by_fleet)
     return tuple(resolved_units)
+
+
+def _resolve_display_frames(
+    frames: list[ViewerFrame],
+    *,
+    vector_display_mode: str,
+    arena_size: float,
+) -> tuple[ViewerFrame, ...]:
+    if vector_display_mode not in INTERNAL_DIRECTION_DISPLAY_MODES:
+        raise ValueError(f"unsupported internal direction mode {vector_display_mode!r}.")
+    position_lookups = [_build_frame_position_lookup(frame) for frame in frames]
+    last_realistic_directions: dict[str, tuple[float, float]] = {}
+    realistic_min_displacement = max(
+        REALISTIC_MIN_DISPLACEMENT_FLOOR,
+        float(arena_size) * REALISTIC_MIN_DISPLACEMENT_FRACTION,
+    )
+    resolved_frames: list[ViewerFrame] = []
+    for frame_index, frame in enumerate(frames):
+        previous_positions = position_lookups[frame_index - 1] if frame_index > 0 else {}
+        next_positions = position_lookups[frame_index + 1] if (frame_index + 1) < len(position_lookups) else {}
+        resolved_frames.append(
+            replace(
+                frame,
+                units=_resolve_frame_display_units(
+                    frame,
+                    vector_display_mode=vector_display_mode,
+                    previous_positions=previous_positions,
+                    next_positions=next_positions,
+                    last_realistic_directions=last_realistic_directions,
+                    realistic_min_displacement=realistic_min_displacement,
+                ),
+            )
+        )
+    return tuple(resolved_frames)
 
 
 def build_replay_bundle(
@@ -243,13 +393,12 @@ def build_replay_bundle(
     if not position_frames:
         raise ValueError("position_frames is empty; viewer bootstrap requires captured frame data.")
 
-    frames: list[ViewerFrame] = []
+    raw_frames: list[ViewerFrame] = []
     seen_fleet_ids: list[str] = []
-    previous_positions_by_fleet: dict[str, dict[str, tuple[float, float]]] = {}
     for raw_frame in position_frames:
         if not isinstance(raw_frame, dict):
             raise ValueError(f"Each position frame must be a mapping, got {type(raw_frame).__name__}.")
-        tick = int(raw_frame.get("tick", len(frames)))
+        tick = int(raw_frame.get("tick", len(raw_frames)))
         units: list[ViewerUnitState] = []
         for fleet_id, points in raw_frame.items():
             if fleet_id in FRAME_CONTROL_KEYS:
@@ -265,18 +414,19 @@ def build_replay_bundle(
         raw_targets = raw_frame.get("targets", {})
         if raw_targets and not isinstance(raw_targets, dict):
             raise ValueError(f"frame['targets'] must be a dict when present, got {type(raw_targets).__name__}.")
-        frames.append(
+        raw_frames.append(
             ViewerFrame(
                 tick=tick,
-                units=_resolve_frame_display_units(
-                    tuple(units),
-                    targets={str(key): str(value) for key, value in dict(raw_targets).items()},
-                    vector_display_mode=str(vector_display_mode),
-                    previous_positions_by_fleet=previous_positions_by_fleet,
-                ),
+                units=tuple(units),
                 targets={str(key): str(value) for key, value in dict(raw_targets).items()},
             )
         )
+
+    frames = _resolve_display_frames(
+        raw_frames,
+        vector_display_mode=str(vector_display_mode),
+        arena_size=float(arena_size),
+    )
 
     resolved_labels = dict(fleet_labels or {})
     for fleet_id in seen_fleet_ids:
@@ -303,6 +453,7 @@ def load_active_battle_replay(
     *,
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
+    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
 ) -> ReplayBundle:
     if frame_stride < 1:
         raise ValueError(f"frame_stride must be >= 1, got {frame_stride}.")
@@ -311,9 +462,13 @@ def load_active_battle_replay(
 
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
     active_settings = _deep_clone_settings(settings)
-    vector_display_mode = _resolve_vector_display_mode(active_settings)
+    settings_vector_display_mode = _resolve_vector_display_mode(active_settings)
+    active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(
+        active_settings,
+        direction_mode,
+    )
     capture_target_lines = bool(settings_api.get_visualization_setting(active_settings, "show_attack_target_lines", False))
-    if vector_display_mode in {"attack", "composite"}:
+    if settings_vector_display_mode in {"attack", "composite"} or active_direction_mode in {"attack", "composite"}:
         capture_target_lines = True
     run_control = active_settings.setdefault("run_control", {})
     if not isinstance(run_control, dict):
@@ -364,9 +519,11 @@ def load_active_battle_replay(
             "max_steps_effective": int(effective_max_steps),
             "max_steps_source": max_steps_source,
             "frame_stride": int(frame_stride),
-            "vector_display_mode": vector_display_mode,
+            "vector_display_mode": active_direction_label,
+            "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
+            "direction_mode_source": direction_mode_source,
         },
-        vector_display_mode=vector_display_mode,
+        vector_display_mode=active_direction_mode,
     )
 
 
@@ -374,6 +531,7 @@ def load_neutral_transit_fixture_replay(
     *,
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
+    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
 ) -> ReplayBundle:
     if frame_stride < 1:
         raise ValueError(f"frame_stride must be >= 1, got {frame_stride}.")
@@ -382,7 +540,11 @@ def load_neutral_transit_fixture_replay(
 
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
     active_settings = _deep_clone_settings(settings)
-    vector_display_mode = _resolve_vector_display_mode(active_settings)
+    settings_vector_display_mode = _resolve_vector_display_mode(active_settings)
+    active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(
+        active_settings,
+        direction_mode,
+    )
     run_control = active_settings.setdefault("run_control", {})
     if not isinstance(run_control, dict):
         raise ValueError("run_control must be a mapping in layered test_run settings.")
@@ -431,9 +593,11 @@ def load_neutral_transit_fixture_replay(
             "max_steps_effective": int(effective_max_steps),
             "max_steps_source": max_steps_source,
             "frame_stride": int(frame_stride),
-            "vector_display_mode": vector_display_mode,
+            "vector_display_mode": active_direction_label,
+            "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
+            "direction_mode_source": direction_mode_source,
         },
-        vector_display_mode=vector_display_mode,
+        vector_display_mode=active_direction_mode,
     )
 
 
@@ -442,9 +606,18 @@ def load_viewer_replay(
     source: str = VIEWER_SOURCE_AUTO,
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
+    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
 ) -> ReplayBundle:
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
     resolved_source = _resolve_viewer_source(settings, source)
     if resolved_source == VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE:
-        return load_neutral_transit_fixture_replay(max_steps=max_steps, frame_stride=frame_stride)
-    return load_active_battle_replay(max_steps=max_steps, frame_stride=frame_stride)
+        return load_neutral_transit_fixture_replay(
+            max_steps=max_steps,
+            frame_stride=frame_stride,
+            direction_mode=direction_mode,
+        )
+    return load_active_battle_replay(
+        max_steps=max_steps,
+        frame_stride=frame_stride,
+        direction_mode=direction_mode,
+    )

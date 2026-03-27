@@ -16,6 +16,8 @@ except ImportError as exc:  # pragma: no cover - import guard for incorrect env 
 from viz3d_panda.camera_controller import OrbitCameraController
 from viz3d_panda.replay_source import (
     DEFAULT_FRAME_STRIDE,
+    VIEWER_DIRECTION_MODE_CHOICES,
+    VIEWER_DIRECTION_MODE_SETTINGS,
     VIEWER_SOURCE_AUTO,
     VIEWER_SOURCE_CHOICES,
     ReplayBundle,
@@ -192,12 +194,18 @@ class FleetViewerApp(ShowBase):
         max_steps_effective = self._replay.metadata.get("max_steps_effective")
         max_steps_source = self._replay.metadata.get("max_steps_source", "settings")
         vector_display_mode = self._replay.metadata.get("vector_display_mode", "effective")
+        settings_vector_display_mode = self._replay.metadata.get("settings_vector_display_mode", vector_display_mode)
+        direction_mode_source = self._replay.metadata.get("direction_mode_source", "settings")
         fire_link_mode = self._unit_renderer.fire_link_mode
+        if direction_mode_source == "override":
+            direction_text = f"dir_mode={vector_display_mode}  settings_dir={settings_vector_display_mode}"
+        else:
+            direction_text = f"dir_mode={vector_display_mode}"
         status_lines = [
             WINDOW_TITLE,
             f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tick={frame.tick}",
             f"fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}  state={playback_label}",
-            f"sim_limit={max_steps_source}:{max_steps_effective}  dir_mode={vector_display_mode}  fire_links={fire_link_mode}",
+            f"sim_limit={max_steps_source}:{max_steps_effective}  {direction_text}  fire_links={fire_link_mode}",
         ]
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
@@ -257,6 +265,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--frame-stride", type=int, default=DEFAULT_FRAME_STRIDE)
     parser.add_argument(
+        "--direction-mode",
+        choices=VIEWER_DIRECTION_MODE_CHOICES,
+        default=VIEWER_DIRECTION_MODE_SETTINGS,
+        help=(
+            "Viewer-local direction readout mode. 'settings' preserves the current layered "
+            "2D vector_display_mode; 'realistic' uses realized local trajectory tangent."
+        ),
+    )
+    parser.add_argument(
         "--playback-fps",
         type=float,
         default=PLAYBACK_FPS_LEVELS[DEFAULT_PLAYBACK_LEVEL_INDEX],
@@ -280,6 +297,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         source=str(args.source),
         max_steps=args.steps,
         frame_stride=int(args.frame_stride),
+        direction_mode=str(args.direction_mode),
     )
     app = FleetViewerApp(
         replay,
