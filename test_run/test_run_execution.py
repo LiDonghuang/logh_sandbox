@@ -1574,7 +1574,6 @@ def run_simulation(
         engine.TEST_RUN_FIXTURE_CFG["initial_forward_hat_xy"] = fixture_reference_bundle["initial_forward_hat_xy"]
         engine.TEST_RUN_FIXTURE_CFG["expected_slot_offsets_local"] = fixture_reference_bundle["expected_slot_offsets_local"]
         engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_frame_active"] = False
-        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_centroid_xy"] = None
         engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_primary_axis_xy"] = None
         engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_secondary_axis_xy"] = None
         engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_latched_tick"] = None
@@ -1598,7 +1597,6 @@ def run_simulation(
             "objective_reached_tick": None,
             "frozen_terminal_frame_active": False,
             "frozen_terminal_latched_tick": None,
-            "frozen_terminal_centroid_xy": None,
             "frozen_terminal_primary_axis_xy": None,
             "centroid_to_objective_distance": [],
             "formation_rms_radius": [],
@@ -1855,10 +1853,6 @@ def run_simulation(
                         float(frozen_primary_axis_xy[0]),
                     )
                     engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_frame_active"] = True
-                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_centroid_xy"] = (
-                        float(centroid_x),
-                        float(centroid_y),
-                    )
                     engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_primary_axis_xy"] = (
                         float(frozen_primary_axis_xy[0]),
                         float(frozen_primary_axis_xy[1]),
@@ -1870,10 +1864,6 @@ def run_simulation(
                     engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_latched_tick"] = int(state.tick)
                     fixture_metrics["frozen_terminal_frame_active"] = True
                     fixture_metrics["frozen_terminal_latched_tick"] = int(state.tick)
-                    fixture_metrics["frozen_terminal_centroid_xy"] = [
-                        float(centroid_x),
-                        float(centroid_y),
-                    ]
                     fixture_metrics["frozen_terminal_primary_axis_xy"] = [
                         float(frozen_primary_axis_xy[0]),
                         float(frozen_primary_axis_xy[1]),

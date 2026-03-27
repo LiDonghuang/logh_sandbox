@@ -110,8 +110,9 @@ Current availability status:
 - current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read with low-speed playback smoothing retained, while late-stage objective-area visual residual remains open
 - debug-only objective-area `realistic` investigation records now exist for `neutral_transit_v1` around `objective_reached_tick +/- 5`; current read is that effective flips far more than realistic in that window, candidate choice is almost entirely the widest centered source, and smoothing is not the primary cause
 - debug-only late-terminal residual decomposition records now also exist for `neutral_transit_v1`; current read is that once centroid-level arrival is reached, moving expected-position restore becomes the strongest surviving driver, with separation/projection reshaping the residual unit motion
-- a bounded late-terminal first cut now exists locally on the candidate-active `neutral_transit_v1` path: once post-step centroid arrival is first confirmed, the expected-position reference frame is frozen and consumed from subsequent ticks; current validation read is structurally correct but still not closed
-- current engineering read on that first cut is narrower: the remaining late residual now looks more like a frozen-frame / target-center mismatch than a viewer issue, and the next bounded root-cause question should likely separate terminal orientation freeze from terminal centroid freeze
+- the prior bounded late-terminal whole-frame freeze first cut is now superseded locally on the candidate-active `neutral_transit_v1` path by a narrower split cut: terminal reference orientation is latched, but expected-position center continues to follow the live centroid
+- the current best local late-terminal candidate now layers two further bounded cuts on top of that split cut: terminal step magnitude is reduced inside the existing stop-radius window, and only backward axial restore is softened; current local read is that this is the best candidate so far, while a stricter no-net-backward follow-up was locally rejected after it created a new rotational side effect
+- current engineering read is that this late-terminal result may also matter for the unresolved early restoration problem: the useful correction turned out to be component-wise and one-sided, which suggests early restore compatibility may also be more directional than scalar
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
 - current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, and in close two-fleet battle views falls back to a midpoint-based side-by-side layout while still re-solving during paused camera movement
@@ -194,6 +195,17 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_window_dump_20260327.csv`
 - `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_component_summary_20260327.csv`
 - `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_engineering_read_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_orientation_freeze_live_centroid_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_orientation_freeze_live_centroid_validation_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_orientation_freeze_live_centroid_window_dump_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_orientation_freeze_live_centroid_component_summary_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_orientation_freeze_live_centroid_engineering_read_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_validation_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_window_dump_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_component_summary_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_engineering_read_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_step_magnitude_one_sided_restore_governance_feedback_20260327.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_hp_bucketed_inner_cluster_query_20260327.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`

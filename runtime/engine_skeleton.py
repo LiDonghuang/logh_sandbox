@@ -250,19 +250,14 @@ class EngineTickSkeleton:
         if not isinstance(fallback_axis, (list, tuple)) or len(fallback_axis) < 2:
             fallback_axis = (1.0, 0.0)
         frozen_frame_active = bool(fixture_cfg.get("frozen_terminal_frame_active", False))
-        frozen_centroid_xy = fixture_cfg.get("frozen_terminal_centroid_xy")
         frozen_primary_axis_xy = fixture_cfg.get("frozen_terminal_primary_axis_xy")
         frozen_secondary_axis_xy = fixture_cfg.get("frozen_terminal_secondary_axis_xy")
-        use_frozen_frame = (
+        use_frozen_orientation = (
             frozen_frame_active
-            and isinstance(frozen_centroid_xy, (list, tuple))
-            and len(frozen_centroid_xy) >= 2
             and isinstance(frozen_primary_axis_xy, (list, tuple))
             and len(frozen_primary_axis_xy) >= 2
         )
-        if use_frozen_frame:
-            centroid_x = float(frozen_centroid_xy[0])
-            centroid_y = float(frozen_centroid_xy[1])
+        if use_frozen_orientation:
             primary_axis_x, primary_axis_y = self._normalize_direction_with_fallback(
                 float(frozen_primary_axis_xy[0]),
                 float(frozen_primary_axis_xy[1]),
@@ -829,15 +824,19 @@ class EngineTickSkeleton:
         diag_enabled = bool(diag_surface["fsr_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
-        fixture_trace_enabled = (
-            diag_enabled
-            and isinstance(fixture_cfg, dict)
+        fixture_terminal_step_gate_enabled = (
+            isinstance(fixture_cfg, dict)
             and str(fixture_cfg.get("active_mode", "")).strip().lower() == "neutral_transit_v1"
+            and bool(fixture_cfg.get("expected_position_candidate_active", False))
         )
-        fixture_trace_fleet_id = str(fixture_cfg.get("fleet_id", "")).strip() if fixture_trace_enabled else ""
-        fixture_trace_anchor_xy = None
-        fixture_trace_stop_radius = 0.0
-        if fixture_trace_enabled:
+        fixture_terminal_step_gate_fleet_id = (
+            str(fixture_cfg.get("fleet_id", "")).strip()
+            if fixture_terminal_step_gate_enabled
+            else ""
+        )
+        fixture_terminal_step_gate_anchor_xy = None
+        fixture_terminal_step_gate_stop_radius = 0.0
+        if fixture_terminal_step_gate_enabled:
             objective_contract_3d = fixture_cfg.get("objective_contract_3d")
             anchor_point_xyz = (
                 objective_contract_3d.get("anchor_point_xyz")
@@ -845,11 +844,27 @@ class EngineTickSkeleton:
                 else None
             )
             if isinstance(anchor_point_xyz, (list, tuple)) and len(anchor_point_xyz) >= 2:
-                fixture_trace_anchor_xy = (
+                fixture_terminal_step_gate_anchor_xy = (
                     float(anchor_point_xyz[0]),
                     float(anchor_point_xyz[1]),
                 )
-            fixture_trace_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+            fixture_terminal_step_gate_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+        fixture_trace_enabled = diag_enabled and fixture_terminal_step_gate_enabled
+        fixture_trace_fleet_id = (
+            fixture_terminal_step_gate_fleet_id
+            if fixture_trace_enabled
+            else ""
+        )
+        fixture_trace_anchor_xy = (
+            fixture_terminal_step_gate_anchor_xy
+            if fixture_trace_enabled
+            else None
+        )
+        fixture_trace_stop_radius = (
+            fixture_terminal_step_gate_stop_radius
+            if fixture_trace_enabled
+            else 0.0
+        )
         arena_linear_size = max(0.0, float(state.arena_size))
         boundary_band_limit = 0.05 * arena_linear_size
         boundary_band_width = max(0.0, min(r_sep, boundary_band_limit))
@@ -911,13 +926,15 @@ class EngineTickSkeleton:
             fixture_within_stop_radius_pre = False
             fixture_axis_to_objective_x = 0.0
             fixture_axis_to_objective_y = 0.0
+            fixture_step_magnitude_gate_active = False
+            fixture_step_magnitude_gain = 1.0
             if (
-                fixture_trace_enabled
-                and str(fleet_id) == fixture_trace_fleet_id
-                and fixture_trace_anchor_xy is not None
+                fixture_terminal_step_gate_enabled
+                and str(fleet_id) == fixture_terminal_step_gate_fleet_id
+                and fixture_terminal_step_gate_anchor_xy is not None
             ):
-                axis_to_objective_dx = float(fixture_trace_anchor_xy[0]) - float(centroid_x)
-                axis_to_objective_dy = float(fixture_trace_anchor_xy[1]) - float(centroid_y)
+                axis_to_objective_dx = float(fixture_terminal_step_gate_anchor_xy[0]) - float(centroid_x)
+                axis_to_objective_dy = float(fixture_terminal_step_gate_anchor_xy[1]) - float(centroid_y)
                 fixture_centroid_distance_pre = math.sqrt(
                     (axis_to_objective_dx * axis_to_objective_dx)
                     + (axis_to_objective_dy * axis_to_objective_dy)
@@ -926,9 +943,23 @@ class EngineTickSkeleton:
                     fixture_axis_to_objective_x = axis_to_objective_dx / fixture_centroid_distance_pre
                     fixture_axis_to_objective_y = axis_to_objective_dy / fixture_centroid_distance_pre
                 fixture_within_stop_radius_pre = (
-                    fixture_trace_stop_radius > 0.0
-                    and fixture_centroid_distance_pre <= fixture_trace_stop_radius
+                    fixture_terminal_step_gate_stop_radius > 0.0
+                    and fixture_centroid_distance_pre <= fixture_terminal_step_gate_stop_radius
                 )
+                if fixture_within_stop_radius_pre and fixture_terminal_step_gate_stop_radius > 1e-12:
+                    fixture_step_magnitude_gate_active = True
+                    fixture_step_magnitude_gain = max(
+                        0.0,
+                        min(
+                            1.0,
+                            fixture_centroid_distance_pre / fixture_terminal_step_gate_stop_radius,
+                        ),
+                    )
+            if (
+                fixture_trace_enabled
+                and str(fleet_id) == fixture_trace_fleet_id
+                and fixture_trace_anchor_xy is not None
+            ):
                 fixture_trace_units = {}
 
             enemy_sum_x = 0.0
@@ -1119,6 +1150,16 @@ class EngineTickSkeleton:
                 if isinstance(fixture_expected_reference, dict)
                 else {}
             )
+            fixture_expected_primary_axis_xy = (
+                fixture_expected_reference.get("primary_axis_xy")
+                if isinstance(fixture_expected_reference, dict)
+                else None
+            )
+            fixture_expected_secondary_axis_xy = (
+                fixture_expected_reference.get("secondary_axis_xy")
+                if isinstance(fixture_expected_reference, dict)
+                else None
+            )
             fixture_restore_deadband = 0.0
             fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
             if (
@@ -1148,6 +1189,48 @@ class EngineTickSkeleton:
                 else:
                     cohesion_vector_x = centroid_x - unit.position.x
                     cohesion_vector_y = centroid_y - unit.position.y
+                cohesion_axial_raw = 0.0
+                cohesion_axial_gated = 0.0
+                one_sided_axial_restore_gate_active = False
+                if (
+                    using_fixture_expected_position
+                    and fixture_step_magnitude_gate_active
+                    and isinstance(fixture_expected_primary_axis_xy, (list, tuple))
+                    and len(fixture_expected_primary_axis_xy) >= 2
+                ):
+                    restore_axis_x = float(fixture_expected_primary_axis_xy[0])
+                    restore_axis_y = float(fixture_expected_primary_axis_xy[1])
+                    if (
+                        isinstance(fixture_expected_secondary_axis_xy, (list, tuple))
+                        and len(fixture_expected_secondary_axis_xy) >= 2
+                    ):
+                        restore_lateral_x = float(fixture_expected_secondary_axis_xy[0])
+                        restore_lateral_y = float(fixture_expected_secondary_axis_xy[1])
+                    else:
+                        restore_lateral_x = -restore_axis_y
+                        restore_lateral_y = restore_axis_x
+                    cohesion_axial_raw = (
+                        (cohesion_vector_x * restore_axis_x)
+                        + (cohesion_vector_y * restore_axis_y)
+                    )
+                    cohesion_lateral_raw = (
+                        (cohesion_vector_x * restore_lateral_x)
+                        + (cohesion_vector_y * restore_lateral_y)
+                    )
+                    cohesion_axial_gated = cohesion_axial_raw
+                    if cohesion_axial_raw < 0.0:
+                        one_sided_axial_restore_gate_active = True
+                        cohesion_axial_gated = cohesion_axial_raw * fixture_step_magnitude_gain
+                        cohesion_vector_x = (
+                            (cohesion_axial_gated * restore_axis_x)
+                            + (cohesion_lateral_raw * restore_lateral_x)
+                        )
+                        cohesion_vector_y = (
+                            (cohesion_axial_gated * restore_axis_y)
+                            + (cohesion_lateral_raw * restore_lateral_y)
+                        )
+                    else:
+                        cohesion_axial_gated = cohesion_axial_raw
                 cohesion_norm_raw = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
                 cohesion_deadband_triggered = False
                 cohesion_norm = cohesion_norm_raw
@@ -1314,26 +1397,31 @@ class EngineTickSkeleton:
                 pre_projection_total_dx = 0.0
                 pre_projection_total_dy = 0.0
                 pre_projection_total_norm = 0.0
+                step_distance = 0.0
+                step_speed = 0.0
                 if total_norm > movement_eps:
-                    pre_projection_step_scale = (unit.max_speed * state.dt) / total_norm
-                    pre_projection_total_dx = total_direction[0] * unit.max_speed * state.dt
-                    pre_projection_total_dy = total_direction[1] * unit.max_speed * state.dt
+                    step_distance = (unit.max_speed * state.dt) * fixture_step_magnitude_gain
+                    step_speed = unit.max_speed * fixture_step_magnitude_gain
+                if total_norm > movement_eps and step_distance > movement_eps:
+                    pre_projection_step_scale = step_distance / total_norm
+                    pre_projection_total_dx = total_direction[0] * step_distance
+                    pre_projection_total_dy = total_direction[1] * step_distance
                     pre_projection_total_norm = math.sqrt(
                         (pre_projection_total_dx * pre_projection_total_dx)
                         + (pre_projection_total_dy * pre_projection_total_dy)
                     )
                     orientation = Vec2(x=total_direction[0], y=total_direction[1])
                     velocity = Vec2(
-                        x=total_direction[0] * unit.max_speed,
-                        y=total_direction[1] * unit.max_speed,
+                        x=total_direction[0] * step_speed,
+                        y=total_direction[1] * step_speed,
                     )
                 else:
                     orientation = unit.orientation_vector
                     velocity = Vec2(x=0.0, y=0.0)
 
                 new_position = Vec2(
-                    x=unit.position.x + (total_direction[0] * unit.max_speed * state.dt),
-                    y=unit.position.y + (total_direction[1] * unit.max_speed * state.dt),
+                    x=unit.position.x + pre_projection_total_dx,
+                    y=unit.position.y + pre_projection_total_dy,
                 )
                 if fixture_trace_units is not None:
                     target_norm_raw = math.sqrt((target_term_x * target_term_x) + (target_term_y * target_term_y))
@@ -1375,6 +1463,9 @@ class EngineTickSkeleton:
                             else (centroid_y - unit.position.y)
                         ),
                         "cohesion_norm": float(cohesion_norm_raw),
+                        "cohesion_axial_raw": float(cohesion_axial_raw),
+                        "cohesion_axial_gated": float(cohesion_axial_gated),
+                        "one_sided_axial_restore_gate_active": bool(one_sided_axial_restore_gate_active),
                         "cohesion_deadband_triggered": bool(cohesion_deadband_triggered),
                         "cohesion_contrib_dx": float(cohesion_x * pre_projection_step_scale),
                         "cohesion_contrib_dy": float(cohesion_y * pre_projection_step_scale),
@@ -1387,6 +1478,8 @@ class EngineTickSkeleton:
                         "boundary_y": float(boundary_y),
                         "boundary_contrib_dx": float(boundary_term_x * pre_projection_step_scale),
                         "boundary_contrib_dy": float(boundary_term_y * pre_projection_step_scale),
+                        "step_magnitude_gate_active": bool(fixture_step_magnitude_gate_active),
+                        "step_magnitude_gain": float(fixture_step_magnitude_gain),
                         "pre_projection_total_dx": float(pre_projection_total_dx),
                         "pre_projection_total_dy": float(pre_projection_total_dy),
                         "pre_projection_total_norm": float(pre_projection_total_norm),

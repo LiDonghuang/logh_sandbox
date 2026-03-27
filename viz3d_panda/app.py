@@ -104,16 +104,6 @@ def _resolve_playback_level_index(playback_fps: float) -> int:
     )
 
 
-def _format_point(values: object, *, dimensions: int) -> str | None:
-    if not isinstance(values, (list, tuple)) or len(values) != dimensions:
-        return None
-    try:
-        parts = [f"{float(value):.1f}" for value in values]
-    except (TypeError, ValueError):
-        return None
-    return f"({', '.join(parts)})"
-
-
 def _normalize_heading(dx: float, dy: float) -> tuple[float, float]:
     norm = math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
     if norm <= 1e-12:
@@ -188,19 +178,15 @@ class FleetViewerApp(ShowBase):
         self._status_text = OnscreenText(
             text="",
             parent=self.a2dBottomLeft,
-            pos=(0.03, 0.10),
+            pos=(0.03, 0.21),
             scale=0.042,
             align=TextNode.ALeft,
             fg=(0.72, 0.80, 0.89, 1.0),
         )
         self._control_text = OnscreenText(
-            text=(
-                "Space play/pause  N/B step/hold  [/ ] speed gear\n"
-                "V fire-links  M smooth  P portraits  Tab HUD\n"
-                "LDrag pan  RDrag orbit  Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit"
-            ),
+            text="",
             parent=self.a2dBottomRight,
-            pos=(-0.03, 0.16),
+            pos=(-0.03, 0.21),
             scale=0.042,
             align=TextNode.ARight,
             fg=(0.72, 0.80, 0.89, 1.0),
@@ -595,22 +581,41 @@ class FleetViewerApp(ShowBase):
         status_lines = [
             f"{counts_text}  state={playback_label}",
             f"frame={self._current_frame_index + 1}/{len(self._replay.frames)}  fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}",
-            f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}",
         ]
+        fleet_centroids: dict[str, tuple[float, float, int]] = {}
+        for unit in frame.units:
+            sum_x, sum_y, count = fleet_centroids.get(unit.fleet_id, (0.0, 0.0, 0))
+            fleet_centroids[unit.fleet_id] = (
+                float(sum_x) + float(unit.x),
+                float(sum_y) + float(unit.y),
+                int(count) + 1,
+            )
+        centroid_parts = []
+        for fleet_id in sorted(fleet_centroids):
+            sum_x, sum_y, count = fleet_centroids[fleet_id]
+            if count <= 0:
+                continue
+            centroid_parts.append(f"{fleet_id}=({sum_x / count:.1f}, {sum_y / count:.1f})")
+        centroid_text = "  ".join(centroid_parts) if centroid_parts else "centroids=n/a"
+        status_lines.append(centroid_text)
+        status_tail = f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}"
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
             owner = str(fixture_readout.get("source_owner", ""))
             objective_mode = str(fixture_readout.get("objective_mode", ""))
             no_enemy = str(fixture_readout.get("no_enemy_semantics", ""))
-            status_lines.append(f"fixture_contract owner={owner}  mode={objective_mode}  no_enemy={no_enemy}")
-            anchor_xyz = _format_point(fixture_readout.get("anchor_point_xyz"), dimensions=3)
-            if anchor_xyz is not None:
-                projected_xy = _format_point(fixture_readout.get("projected_anchor_point_xy"), dimensions=2)
-                if projected_xy is None:
-                    status_lines.append(f"anchor_xyz={anchor_xyz}")
-                else:
-                    status_lines.append(f"anchor_xyz={anchor_xyz}  projected_xy={projected_xy}")
+            status_tail = (
+                f"{status_tail}  fixture={owner}/{objective_mode}/{no_enemy}"
+            )
+        status_lines.append(status_tail)
         self._status_text.setText("\n".join(status_lines))
+        control_lines = [
+            "Space play/pause  N/B step/hold",
+            "[/ ] speed gear  V fire-links  M smooth",
+            "P portraits  Tab HUD  LDrag pan  RDrag orbit",
+            "Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit",
+        ]
+        self._control_text.setText("\n".join(control_lines))
 
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()

@@ -258,8 +258,18 @@ class OrbitCameraController:
 
     def start_fleet_tracking(self, frame: ViewerFrame, fleet_id: str) -> bool:
         normalized_fleet_id = str(fleet_id)
-        if self._apply_fleet_view(frame, normalized_fleet_id) is None:
-            return False
+        preserve_view = self._drag_action == "orbit"
+        if preserve_view:
+            summary = self._summarize_fleet_frame(frame, normalized_fleet_id)
+            if summary is None:
+                return False
+            self._set_focus_only(
+                focus_x=float(summary["centroid_x"]),
+                focus_y=float(summary["centroid_y"]),
+            )
+        else:
+            if self._apply_fleet_view(frame, normalized_fleet_id) is None:
+                return False
         self._tracked_fleet_id = normalized_fleet_id
         return True
 
