@@ -963,6 +963,41 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             moved_state = replace(moved_state, fleets=next_state.fleets)
         moved_state = self._restore_intent_penetration_bias_units(proxy_state, moved_state)
         moved_state = self._apply_hostile_contact_impedance(next_state, moved_state)
+        fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        if isinstance(fixture_cfg, dict) and str(fixture_cfg.get("active_mode", "")).strip().lower() == FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+            fixture_fleet_id = str(fixture_cfg.get("fleet_id", "")).strip()
+            objective_contract_3d = fixture_cfg.get("objective_contract_3d")
+            stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+            if fixture_fleet_id and isinstance(objective_contract_3d, Mapping) and stop_radius > 0.0:
+                anchor_point_xyz = objective_contract_3d.get("anchor_point_xyz")
+                if isinstance(anchor_point_xyz, (list, tuple)) and len(anchor_point_xyz) >= 2:
+                    _, pre_centroid_x, pre_centroid_y = self._collect_alive_fleet_positions(next_state, fixture_fleet_id)
+                    alive_rows, post_centroid_x, post_centroid_y = self._collect_alive_fleet_positions(moved_state, fixture_fleet_id)
+                    axis_dx = float(anchor_point_xyz[0]) - float(pre_centroid_x)
+                    axis_dy = float(anchor_point_xyz[1]) - float(pre_centroid_y)
+                    remaining_distance = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
+                    if alive_rows and remaining_distance > 1e-12 and remaining_distance <= stop_radius:
+                        axis_x = axis_dx / remaining_distance
+                        axis_y = axis_dy / remaining_distance
+                        realized_forward_advance = (
+                            ((float(post_centroid_x) - float(pre_centroid_x)) * axis_x)
+                            + ((float(post_centroid_y) - float(pre_centroid_y)) * axis_y)
+                        )
+                        if realized_forward_advance > remaining_distance:
+                            overshoot = realized_forward_advance - remaining_distance
+                            corrected_units = dict(moved_state.units)
+                            for unit_id in moved_state.fleets[fixture_fleet_id].unit_ids:
+                                unit = corrected_units.get(unit_id)
+                                if unit is None or float(unit.hit_points) <= 0.0:
+                                    continue
+                                corrected_units[unit_id] = replace(
+                                    unit,
+                                    position=Vec2(
+                                        x=float(unit.position.x) - (overshoot * axis_x),
+                                        y=float(unit.position.y) - (overshoot * axis_y),
+                                    ),
+                                )
+                            moved_state = replace(moved_state, units=corrected_units)
         self.debug_last_continuous_fr_shaping = proxy_debug
         return self.resolve_combat(moved_state)
 
@@ -1239,6 +1274,7 @@ def run_simulation(
             "active_mode": fixture_active_mode,
             "fleet_id": fixture_fleet_id,
             "objective_contract_3d": dict(fixture_objective_contract_3d),
+            "stop_radius": fixture_stop_radius,
         }
     for attr, value in (
         (

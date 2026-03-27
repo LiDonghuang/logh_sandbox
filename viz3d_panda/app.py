@@ -185,6 +185,7 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         self._unit_renderer.sync_frame(frame)
         self._camera_controller.sync_tracked_frame(frame)
+        self._unit_renderer.update_view(self.camera)
         self._refresh_overlay()
 
     def _refresh_overlay(self) -> None:
@@ -226,6 +227,7 @@ class FleetViewerApp(ShowBase):
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
         self._camera_controller.update(dt)
+        self._unit_renderer.update_view(self.camera)
         if self._held_step_direction != 0 and len(self._replay.frames) > 1:
             if self._held_step_delay_remaining > 0.0:
                 self._held_step_delay_remaining = max(0.0, self._held_step_delay_remaining - dt)

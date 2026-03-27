@@ -86,7 +86,7 @@ Authority: Reference only, not canonical semantics authority
 - `viz3d_panda/scene_builder.py`
   - simple viewer-local scene/grid/light setup
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets
+  - wedge-token unit rendering with viewer-local HP size buckets plus minimal objective marker and fleet halo overlays
 - `viz3d_panda/camera_controller.py`
   - simple viewer-local orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
@@ -101,6 +101,8 @@ Current availability:
 - additive to the current 2D maintained path
 - readability pass active: single semi-transparent wedge token replaces the earlier thin line-arrow marker
 - limited visual refinement active: deeper semi-transparent side colors and subordinate straight-beam fire-links with `minimal` / `full` viewer-local display modes
+- unit visual enhancement active: far-range wedge readability now cross-fades into a near-range fixed 10-cuboid internal cluster, still within viewer-local rendering only
+- current close-range cluster is laid out as a trapezoid-friendly non-uniform `2/3/5` row set with margin inside the outer body; the outer token has been pulled back from an overly sharp dart read toward a broader trapezoid-like read
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
 - viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization, and broader zoom/pitch limits
@@ -108,9 +110,10 @@ Current availability:
 - Step 3 objective line is now sufficiently established in bounded scope: draft, bounded first carrier, harness-side validation, and very small viewer-consumption hookup are all complete
 - Step 3 first implementation remains bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
-- current viewer-side neutral-transit support is still readout-only: source selection plus small contract echo overlay, without scene-level objective markers or semantic ownership
+- current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and per-fleet halos, while semantic ownership remains outside the viewer
+- a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
-- the maintained neutral-transit fixture path now includes a revised second bounded correction turn on top of the first: late behavior stays at the existing stop-radius-bound arrival gain in `test_run/test_run_execution.py`, while `runtime/engine_skeleton.py` adds slot-error-aware attenuation on the shared forward term on top of the existing fixed restore deadband; current validation reads the early side as regressed, so the net result remains below the human-visible threshold
+- the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 

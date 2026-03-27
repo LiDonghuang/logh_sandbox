@@ -17,7 +17,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 next unopened mainline is now the structural-draft-only opening review for `3D Formation Contract v0.1`
-- bounded `neutral_transit_v1` corrections are now active on the maintained fixture path in two limited turns: first, stop-radius-bound linear arrival gain plus a fixed restore deadband tied to `separation_radius`; second, after a Governance correction froze late behavior at A1, only slot-error-aware forward attenuation was added on the early side. Current validation reads the early side as regressed and the net result as still below the human-visible threshold
+- bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
@@ -91,7 +91,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 - `viz3d_panda/scene_builder.py`
   - viewer-local scene/grid/light bootstrap only
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets and frame-to-frame updates only
+  - wedge-token unit rendering with viewer-local HP size buckets, minimal objective marker support, strengthened fleet halos, and a distance-driven dual-layer close-range cluster view
 - `viz3d_panda/camera_controller.py`
   - bounded camera orbit/pan/zoom controls only
 - `launch_dev_v2_0_viewer.bat`
@@ -105,9 +105,12 @@ Current availability status:
 - default launch now inherits the maintained 2D stop contract unless `--steps` is explicitly passed
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
+- current unit rendering can now cross-fade from far-range wedge readability into a near-range fixed 10-cuboid metallic-gray cluster without widening runtime or replay semantics
+- current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read
 - current viewer-local direction readout modes include `realistic`, which derives heading cue primarily from realized local trajectory tangent rather than upstream intent vectors
 - current guardrail rule is `viewer consumes, runtime owns`
-- current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup
+- current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
+- a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - no parallel simulation settings surface is owned by `viz3d_panda/`
@@ -165,6 +168,11 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_viewer_input_camera_refinement_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_human_test_note.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_validation_note_20260326.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
+- `analysis/engineering_reports/developments/20260326/dev_v2_0_simplified_warship_proxy_proposal.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_mapping_legality_split_note.md`
