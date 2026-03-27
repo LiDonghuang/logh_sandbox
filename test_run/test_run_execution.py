@@ -968,6 +968,10 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             fixture_fleet_id = str(fixture_cfg.get("fleet_id", "")).strip()
             objective_contract_3d = fixture_cfg.get("objective_contract_3d")
             stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
+            late_clamp_active_for_tick = False
+            late_clamp_overshoot = 0.0
+            late_clamp_dx = 0.0
+            late_clamp_dy = 0.0
             if fixture_fleet_id and isinstance(objective_contract_3d, Mapping) and stop_radius > 0.0:
                 anchor_point_xyz = objective_contract_3d.get("anchor_point_xyz")
                 if isinstance(anchor_point_xyz, (list, tuple)) and len(anchor_point_xyz) >= 2:
@@ -977,6 +981,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     axis_dy = float(anchor_point_xyz[1]) - float(pre_centroid_y)
                     remaining_distance = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
                     if alive_rows and remaining_distance > 1e-12 and remaining_distance <= stop_radius:
+                        late_clamp_active_for_tick = True
                         axis_x = axis_dx / remaining_distance
                         axis_y = axis_dy / remaining_distance
                         realized_forward_advance = (
@@ -985,6 +990,9 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         )
                         if realized_forward_advance > remaining_distance:
                             overshoot = realized_forward_advance - remaining_distance
+                            late_clamp_overshoot = float(overshoot)
+                            late_clamp_dx = float(-(overshoot * axis_x))
+                            late_clamp_dy = float(-(overshoot * axis_y))
                             corrected_units = dict(moved_state.units)
                             for unit_id in moved_state.fleets[fixture_fleet_id].unit_ids:
                                 unit = corrected_units.get(unit_id)
@@ -998,6 +1006,33 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                                     ),
                                 )
                             moved_state = replace(moved_state, units=corrected_units)
+            pending_diag = self._debug_state.get("diag_pending")
+            if isinstance(pending_diag, dict) and int(pending_diag.get("tick", -1)) == int(next_state.tick):
+                fixture_trace = pending_diag.get("fixture_terminal_trace")
+                if isinstance(fixture_trace, dict):
+                    trace_units = fixture_trace.get("units")
+                    if isinstance(trace_units, dict):
+                        for unit_id, row in trace_units.items():
+                            if not isinstance(row, dict):
+                                continue
+                            unit = moved_state.units.get(unit_id)
+                            if unit is None:
+                                continue
+                            x_pre = float(row.get("x_pre", unit.position.x))
+                            y_pre = float(row.get("y_pre", unit.position.y))
+                            x_post = float(unit.position.x)
+                            y_post = float(unit.position.y)
+                            realized_dx = x_post - x_pre
+                            realized_dy = y_post - y_pre
+                            row["x_post"] = x_post
+                            row["y_post"] = y_post
+                            row["realized_dx"] = float(realized_dx)
+                            row["realized_dy"] = float(realized_dy)
+                            row["realized_disp_norm"] = float(math.sqrt((realized_dx * realized_dx) + (realized_dy * realized_dy)))
+                            row["late_clamp_active_for_tick"] = bool(late_clamp_active_for_tick)
+                            row["late_clamp_overshoot"] = float(late_clamp_overshoot)
+                            row["late_clamp_dx"] = float(late_clamp_dx)
+                            row["late_clamp_dy"] = float(late_clamp_dy)
         self.debug_last_continuous_fr_shaping = proxy_debug
         return self.resolve_combat(moved_state)
 
@@ -1565,6 +1600,7 @@ def run_simulation(
             "projection_pairs_count": [],
             "projection_mean_displacement": [],
             "projection_max_displacement": [],
+            "late_terminal_decomposition_trace": [],
         }
     combat_telemetry = {
         "in_contact_count": [],
@@ -1726,6 +1762,23 @@ def run_simulation(
             fixture_runtime_debug = extract_runtime_debug_payload(
                 getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
             )
+            fixture_runtime_diag_tick = getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
+            if isinstance(fixture_runtime_diag_tick, dict):
+                fixture_decomposition_trace = fixture_runtime_diag_tick.get("fixture_terminal_trace")
+                if isinstance(fixture_decomposition_trace, dict):
+                    trace_units = fixture_decomposition_trace.get("units")
+                    if isinstance(trace_units, dict):
+                        fixture_metrics["late_terminal_decomposition_trace"].append(
+                            {
+                                "tick": int(fixture_runtime_diag_tick.get("tick", state.tick)),
+                                "fleet_id": str(fixture_decomposition_trace.get("fleet_id", fixture_fleet_id)),
+                                "units": {
+                                    str(unit_id): dict(row)
+                                    for unit_id, row in trace_units.items()
+                                    if isinstance(row, dict)
+                                },
+                            }
+                        )
             expected_position_payload = engine._build_fixture_expected_position_map(
                 state=state,
                 fleet_id=fixture_fleet_id,

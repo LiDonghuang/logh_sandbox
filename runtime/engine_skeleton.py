@@ -797,6 +797,28 @@ class EngineTickSkeleton:
         attack_range_sq = self.attack_range * self.attack_range
         diag_enabled = bool(diag_surface["fsr_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
+        fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        fixture_trace_enabled = (
+            diag_enabled
+            and isinstance(fixture_cfg, dict)
+            and str(fixture_cfg.get("active_mode", "")).strip().lower() == "neutral_transit_v1"
+        )
+        fixture_trace_fleet_id = str(fixture_cfg.get("fleet_id", "")).strip() if fixture_trace_enabled else ""
+        fixture_trace_anchor_xy = None
+        fixture_trace_stop_radius = 0.0
+        if fixture_trace_enabled:
+            objective_contract_3d = fixture_cfg.get("objective_contract_3d")
+            anchor_point_xyz = (
+                objective_contract_3d.get("anchor_point_xyz")
+                if isinstance(objective_contract_3d, dict)
+                else None
+            )
+            if isinstance(anchor_point_xyz, (list, tuple)) and len(anchor_point_xyz) >= 2:
+                fixture_trace_anchor_xy = (
+                    float(anchor_point_xyz[0]),
+                    float(anchor_point_xyz[1]),
+                )
+            fixture_trace_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
         arena_linear_size = max(0.0, float(state.arena_size))
         boundary_band_limit = 0.05 * arena_linear_size
         boundary_band_width = max(0.0, min(r_sep, boundary_band_limit))
@@ -825,6 +847,7 @@ class EngineTickSkeleton:
         odw_posture_bias_clip_delta_fleet = max(0.0, float(movement_surface["odw_posture_bias_clip_delta"]))
 
         updated_units = dict(state.units)
+        fixture_trace_units_pending = None
         normalized_params_by_fleet = {
             fleet_id: fleet.parameters.normalized()
             for fleet_id, fleet in state.fleets.items()
@@ -851,6 +874,31 @@ class EngineTickSkeleton:
             else:
                 centroid_x = 0.0
                 centroid_y = 0.0
+
+            fixture_trace_units = None
+            fixture_centroid_distance_pre = float("nan")
+            fixture_within_stop_radius_pre = False
+            fixture_axis_to_objective_x = 0.0
+            fixture_axis_to_objective_y = 0.0
+            if (
+                fixture_trace_enabled
+                and str(fleet_id) == fixture_trace_fleet_id
+                and fixture_trace_anchor_xy is not None
+            ):
+                axis_to_objective_dx = float(fixture_trace_anchor_xy[0]) - float(centroid_x)
+                axis_to_objective_dy = float(fixture_trace_anchor_xy[1]) - float(centroid_y)
+                fixture_centroid_distance_pre = math.sqrt(
+                    (axis_to_objective_dx * axis_to_objective_dx)
+                    + (axis_to_objective_dy * axis_to_objective_dy)
+                )
+                if fixture_centroid_distance_pre > 1e-12:
+                    fixture_axis_to_objective_x = axis_to_objective_dx / fixture_centroid_distance_pre
+                    fixture_axis_to_objective_y = axis_to_objective_dy / fixture_centroid_distance_pre
+                fixture_within_stop_radius_pre = (
+                    fixture_trace_stop_radius > 0.0
+                    and fixture_centroid_distance_pre <= fixture_trace_stop_radius
+                )
+                fixture_trace_units = {}
 
             enemy_sum_x = 0.0
             enemy_sum_y = 0.0
@@ -1069,8 +1117,11 @@ class EngineTickSkeleton:
                 else:
                     cohesion_vector_x = centroid_x - unit.position.x
                     cohesion_vector_y = centroid_y - unit.position.y
-                cohesion_norm = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
+                cohesion_norm_raw = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
+                cohesion_deadband_triggered = False
+                cohesion_norm = cohesion_norm_raw
                 if using_fixture_expected_position and cohesion_norm < fixture_restore_deadband:
+                    cohesion_deadband_triggered = True
                     cohesion_norm = 0.0
                     cohesion_vector_x = 0.0
                     cohesion_vector_y = 0.0
@@ -1162,18 +1213,14 @@ class EngineTickSkeleton:
                     attract_y = attract_gain * (
                         (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
                     )
-                maneuver_x = (
-                    (forward_gain * target_direction[0])
-                    + attract_x
-                    + (alpha_sep * separation_dir[0])
-                    + (alpha_sep * boundary_x)
-                )
-                maneuver_y = (
-                    (forward_gain * target_direction[1])
-                    + attract_y
-                    + (alpha_sep * separation_dir[1])
-                    + (alpha_sep * boundary_y)
-                )
+                target_term_x = (forward_gain * target_direction[0]) + attract_x
+                target_term_y = (forward_gain * target_direction[1]) + attract_y
+                separation_term_x = alpha_sep * separation_dir[0]
+                separation_term_y = alpha_sep * separation_dir[1]
+                boundary_term_x = alpha_sep * boundary_x
+                boundary_term_y = alpha_sep * boundary_y
+                maneuver_x = target_term_x + separation_term_x + boundary_term_x
+                maneuver_y = target_term_y + separation_term_y + boundary_term_y
                 if has_target_axis:
                     dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
                     m_parallel_x = dot_mt * t_hat_x
@@ -1211,10 +1258,18 @@ class EngineTickSkeleton:
                         tangent_scale = 0.05
                     maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
                     maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
+                    target_term_x = maneuver_x - separation_term_x - boundary_term_x
+                    target_term_y = maneuver_y - separation_term_y - boundary_term_y
                 if deep_pursuit_mode:
                     extension_gain_effective = extension_gain
                     maneuver_x *= extension_gain_effective
                     maneuver_y *= extension_gain_effective
+                    target_term_x *= extension_gain_effective
+                    target_term_y *= extension_gain_effective
+                    separation_term_x *= extension_gain_effective
+                    separation_term_y *= extension_gain_effective
+                    boundary_term_x *= extension_gain_effective
+                    boundary_term_y *= extension_gain_effective
                 total_x = cohesion_x + maneuver_x
                 total_y = cohesion_y + maneuver_y
                 total_norm = math.sqrt((total_x * total_x) + (total_y * total_y))
@@ -1224,7 +1279,18 @@ class EngineTickSkeleton:
                     total_direction = (0.0, 0.0)
 
                 movement_eps = 1e-12
+                pre_projection_step_scale = 0.0
+                pre_projection_total_dx = 0.0
+                pre_projection_total_dy = 0.0
+                pre_projection_total_norm = 0.0
                 if total_norm > movement_eps:
+                    pre_projection_step_scale = (unit.max_speed * state.dt) / total_norm
+                    pre_projection_total_dx = total_direction[0] * unit.max_speed * state.dt
+                    pre_projection_total_dy = total_direction[1] * unit.max_speed * state.dt
+                    pre_projection_total_norm = math.sqrt(
+                        (pre_projection_total_dx * pre_projection_total_dx)
+                        + (pre_projection_total_dy * pre_projection_total_dy)
+                    )
                     orientation = Vec2(x=total_direction[0], y=total_direction[1])
                     velocity = Vec2(
                         x=total_direction[0] * unit.max_speed,
@@ -1238,12 +1304,78 @@ class EngineTickSkeleton:
                     x=unit.position.x + (total_direction[0] * unit.max_speed * state.dt),
                     y=unit.position.y + (total_direction[1] * unit.max_speed * state.dt),
                 )
+                if fixture_trace_units is not None:
+                    target_norm_raw = math.sqrt((target_term_x * target_term_x) + (target_term_y * target_term_y))
+                    base_target_norm = math.sqrt(
+                        (float(target_direction[0]) * float(target_direction[0]))
+                        + (float(target_direction[1]) * float(target_direction[1]))
+                    )
+                    if base_target_norm > 1e-12:
+                        forward_gain_effective = target_norm_raw / base_target_norm
+                    else:
+                        forward_gain_effective = 0.0
+                    fixture_trace_units[str(unit_id)] = {
+                        "fleet_id": str(fleet_id),
+                        "unit_id": str(unit_id),
+                        "x_pre": float(unit.position.x),
+                        "y_pre": float(unit.position.y),
+                        "centroid_x_pre": float(centroid_x),
+                        "centroid_y_pre": float(centroid_y),
+                        "centroid_to_objective_distance_pre": float(fixture_centroid_distance_pre),
+                        "within_stop_radius_pre": bool(fixture_within_stop_radius_pre),
+                        "axis_to_objective_x": float(fixture_axis_to_objective_x),
+                        "axis_to_objective_y": float(fixture_axis_to_objective_y),
+                        "target_dir_x": float(target_direction[0]),
+                        "target_dir_y": float(target_direction[1]),
+                        "forward_gain_effective": float(forward_gain_effective),
+                        "target_contrib_dx": float(target_term_x * pre_projection_step_scale),
+                        "target_contrib_dy": float(target_term_y * pre_projection_step_scale),
+                        "using_fixture_expected_position": bool(using_fixture_expected_position),
+                        "expected_pos_x": float(expected_position[0]) if using_fixture_expected_position else None,
+                        "expected_pos_y": float(expected_position[1]) if using_fixture_expected_position else None,
+                        "cohesion_vector_x": float(
+                            (float(expected_position[0]) - unit.position.x)
+                            if using_fixture_expected_position
+                            else (centroid_x - unit.position.x)
+                        ),
+                        "cohesion_vector_y": float(
+                            (float(expected_position[1]) - unit.position.y)
+                            if using_fixture_expected_position
+                            else (centroid_y - unit.position.y)
+                        ),
+                        "cohesion_norm": float(cohesion_norm_raw),
+                        "cohesion_deadband_triggered": bool(cohesion_deadband_triggered),
+                        "cohesion_contrib_dx": float(cohesion_x * pre_projection_step_scale),
+                        "cohesion_contrib_dy": float(cohesion_y * pre_projection_step_scale),
+                        "separation_dir_x": float(separation_dir[0]),
+                        "separation_dir_y": float(separation_dir[1]),
+                        "separation_norm": float(sep_norm),
+                        "separation_contrib_dx": float(separation_term_x * pre_projection_step_scale),
+                        "separation_contrib_dy": float(separation_term_y * pre_projection_step_scale),
+                        "boundary_x": float(boundary_x),
+                        "boundary_y": float(boundary_y),
+                        "boundary_contrib_dx": float(boundary_term_x * pre_projection_step_scale),
+                        "boundary_contrib_dy": float(boundary_term_y * pre_projection_step_scale),
+                        "pre_projection_total_dx": float(pre_projection_total_dx),
+                        "pre_projection_total_dy": float(pre_projection_total_dy),
+                        "pre_projection_total_norm": float(pre_projection_total_norm),
+                        "projection_dx": 0.0,
+                        "projection_dy": 0.0,
+                        "projection_disp_norm": 0.0,
+                        "late_clamp_active_for_tick": False,
+                        "late_clamp_overshoot": 0.0,
+                        "late_clamp_dx": 0.0,
+                        "late_clamp_dy": 0.0,
+                    }
                 updated_units[unit_id] = replace(
                     unit,
                     position=new_position,
                     velocity=velocity,
                     orientation_vector=orientation,
                 )
+
+            if fixture_trace_units is not None:
+                fixture_trace_units_pending = fixture_trace_units
 
         if diag4_enabled:
             post_move_positions = {
@@ -1437,6 +1569,12 @@ class EngineTickSkeleton:
             if unit_id in tentative_positions:
                 base_x, base_y = tentative_positions[unit_id]
                 dx_proj, dy_proj = delta_position[unit_id]
+                if fixture_trace_units_pending is not None and str(unit_id) in fixture_trace_units_pending:
+                    fixture_trace_units_pending[str(unit_id)]["projection_dx"] = float(dx_proj)
+                    fixture_trace_units_pending[str(unit_id)]["projection_dy"] = float(dy_proj)
+                    fixture_trace_units_pending[str(unit_id)]["projection_disp_norm"] = float(
+                        math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
+                    )
                 updated_units[unit_id] = replace(unit, position=Vec2(x=base_x + dx_proj, y=base_y + dy_proj))
 
         # Optional hard boundary: clamp units into map domain [0, arena_size].
@@ -1471,7 +1609,7 @@ class EngineTickSkeleton:
             final_positions = {}
 
         if diag_enabled:
-            self._debug_state["diag_pending"] = self._build_movement_diag_pending(
+            pending_diag = self._build_movement_diag_pending(
                 state=state,
                 updated_units=updated_units,
                 tentative_positions=tentative_positions,
@@ -1487,6 +1625,12 @@ class EngineTickSkeleton:
                 final_positions=final_positions,
                 diag4_enabled=diag4_enabled,
             )
+            if fixture_trace_units_pending is not None:
+                pending_diag["fixture_terminal_trace"] = {
+                    "fleet_id": str(fixture_trace_fleet_id),
+                    "units": fixture_trace_units_pending,
+                }
+            self._debug_state["diag_pending"] = pending_diag
         else:
             self._debug_state["diag_pending"] = None
 
