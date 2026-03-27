@@ -107,17 +107,19 @@ Current availability:
 - anti-fat guardrail active: viewer consumes, runtime owns
 - viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization, and broader zoom/pitch limits
 - viewer-local direction readout now includes `realistic`; current local shape reads as a short-window travel-posture mode, not a pure local-tangent microscope, and works together with low-speed playback smoothing
+- a debug-only `objective_area_realistic` investigation record set now exists for `neutral_transit_v1`; in the `objective_reached_tick +/- 5` window, effective flips far more than realistic, the widest centered candidate source dominates, and smoothing is not the primary source of the residual
 - Step 3 objective line is now sufficiently established in bounded scope: draft, bounded first carrier, harness-side validation, and very small viewer-consumption hookup are all complete
 - Step 3 first implementation remains bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
 - current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and per-fleet halos, while semantic ownership remains outside the viewer
-- current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and toggleable with local `P` portraits on/off control
+- current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, toggleable with local `P` portraits on/off control, uses per-fleet grouped layering, falls back to midpoint-based side-by-side layout when two battle fleets project too close on screen, and re-solves during paused camera movement
 - current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
+- the HP-bucketed inner-cluster-count query remains deferred / not active during this investigation turn
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 

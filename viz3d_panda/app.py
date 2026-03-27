@@ -48,10 +48,16 @@ FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.078
 FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.128
 FLEET_AVATAR_BORDER_PAD = 0.009
 FLEET_AVATAR_MATTE_PAD = 0.004
-FLEET_AVATAR_HIGHLIGHT_PAD = 0.048
+FLEET_AVATAR_HIGHLIGHT_PAD = 0.005
 FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.38
 FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
 FLEET_AVATAR_BORDER_ALPHA = 1.0
+FLEET_AVATAR_POSITION_DEADBAND = 0.010
+FLEET_AVATAR_SMOOTHING_BLEND = 0.28
+FLEET_AVATAR_SNAP_DISTANCE = 0.18
+FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_X = 0.34
+FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_Z = 0.24
+FLEET_AVATAR_PAIR_SEPARATION_X = 0.20
 
 
 def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
@@ -177,6 +183,7 @@ class FleetViewerApp(ShowBase):
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
+        self._fleet_avatar_display_positions: dict[str, tuple[float, float]] = {}
         self._fleet_avatar_world_lift = max(8.0, float(self._replay.arena_size) * 0.03)
 
         self._status_text = OnscreenText(
@@ -296,7 +303,7 @@ class FleetViewerApp(ShowBase):
         matte_half_width = avatar_half_width + FLEET_AVATAR_MATTE_PAD
         highlight_half_height = avatar_half_height + FLEET_AVATAR_HIGHLIGHT_PAD
         highlight_half_width = avatar_half_width + FLEET_AVATAR_HIGHLIGHT_PAD
-        for fleet_id, avatar_id in raw_avatars.items():
+        for stack_index, (fleet_id, avatar_id) in enumerate(sorted(raw_avatars.items(), key=lambda item: str(item[0]))):
             avatar_path = _resolve_avatar_image_path(avatar_id)
             if avatar_path is None:
                 continue
@@ -304,13 +311,14 @@ class FleetViewerApp(ShowBase):
             if texture is None:
                 continue
             fleet_color = self._replay.fleet_colors.get(str(fleet_id), "#ffffff")
+            base_bin = 40 + (int(stack_index) * 10)
             highlight = DirectFrame(
                 parent=self.aspect2d,
                 frameSize=(-highlight_half_width, highlight_half_width, -highlight_half_height, highlight_half_height),
                 frameColor=_hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_HIGHLIGHT_ALPHA),
             )
             highlight.setTransparency(TransparencyAttrib.MAlpha)
-            highlight.setBin("fixed", 40)
+            highlight.setBin("fixed", base_bin)
             highlight.setDepthTest(False)
             highlight.setDepthWrite(False)
             highlight.hide()
@@ -320,7 +328,7 @@ class FleetViewerApp(ShowBase):
                 frameColor=FLEET_AVATAR_MATTE_COLOR,
             )
             matte.setTransparency(TransparencyAttrib.MAlpha)
-            matte.setBin("fixed", 42)
+            matte.setBin("fixed", base_bin + 1)
             matte.setDepthTest(False)
             matte.setDepthWrite(False)
             matte.hide()
@@ -349,7 +357,7 @@ class FleetViewerApp(ShowBase):
             }
             for border_bar in border_bars.values():
                 border_bar.setTransparency(TransparencyAttrib.MAlpha)
-                border_bar.setBin("fixed", 45)
+                border_bar.setBin("fixed", base_bin + 3)
                 border_bar.setDepthTest(False)
                 border_bar.setDepthWrite(False)
                 border_bar.hide()
@@ -360,7 +368,7 @@ class FleetViewerApp(ShowBase):
                 scale=(avatar_half_width, 1.0, avatar_half_height),
             )
             node.setTransparency(TransparencyAttrib.MAlpha)
-            node.setBin("fixed", 44)
+            node.setBin("fixed", base_bin + 2)
             node.setDepthTest(False)
             node.setDepthWrite(False)
             node.hide()
@@ -393,6 +401,37 @@ class FleetViewerApp(ShowBase):
             return None
         return (float(projected.x) * float(self.getAspectRatio()), float(projected.y))
 
+    def _resolve_avatar_layout_positions(
+        self,
+        anchors: dict[str, tuple[float, float]],
+    ) -> dict[str, tuple[float, float]]:
+        if len(anchors) != 2:
+            return dict(anchors)
+        fleet_ids = sorted(anchors.keys())
+        left_id = fleet_ids[0]
+        right_id = fleet_ids[1]
+        left_anchor = anchors[left_id]
+        right_anchor = anchors[right_id]
+        delta_x = float(right_anchor[0]) - float(left_anchor[0])
+        delta_z = float(right_anchor[1]) - float(left_anchor[1])
+        if abs(delta_x) >= FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_X or abs(delta_z) >= FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_Z:
+            return {
+                left_id: (float(left_anchor[0]), float(left_anchor[1])),
+                right_id: (float(right_anchor[0]), float(right_anchor[1])),
+            }
+        midpoint_x = (float(left_anchor[0]) + float(right_anchor[0])) * 0.5
+        midpoint_z = (float(left_anchor[1]) + float(right_anchor[1])) * 0.5
+        aspect_ratio = float(self.getAspectRatio())
+        max_x = aspect_ratio - 0.08
+        min_x = -max_x
+        paired_left_x = max(min_x, min(max_x, midpoint_x - (FLEET_AVATAR_PAIR_SEPARATION_X * 0.5)))
+        paired_right_x = max(min_x, min(max_x, midpoint_x + (FLEET_AVATAR_PAIR_SEPARATION_X * 0.5)))
+        paired_z = max(-0.90, min(0.92, midpoint_z))
+        return {
+            left_id: (paired_left_x, paired_z),
+            right_id: (paired_right_x, paired_z),
+        }
+
     def _sync_fleet_avatar_overlays(self) -> None:
         if not self._avatars_enabled:
             for nodes in self._fleet_avatar_nodes.values():
@@ -400,6 +439,7 @@ class FleetViewerApp(ShowBase):
                     node.hide()
             return
         halo_state = self._unit_renderer.fleet_halo_state
+        target_positions: dict[str, tuple[float, float]] = {}
         for fleet_id, nodes in self._fleet_avatar_nodes.items():
             state = halo_state.get(fleet_id)
             if not isinstance(state, dict):
@@ -412,14 +452,55 @@ class FleetViewerApp(ShowBase):
                 fleet_radius=float(state["radius"]),
             )
             if projected_anchor is None:
+                self._fleet_avatar_display_positions.pop(fleet_id, None)
                 for node in nodes.values():
                     node.hide()
                 continue
             aspect_ratio = float(self.getAspectRatio())
             target_x = max(-(aspect_ratio - 0.08), min(aspect_ratio - 0.08, float(projected_anchor[0])))
             target_z = max(-0.90, min(0.92, float(projected_anchor[1])))
+            target_positions[fleet_id] = (target_x, target_z)
+        adjusted_target_positions = self._resolve_avatar_layout_positions(target_positions)
+        display_positions: dict[str, tuple[float, float]] = {}
+        for fleet_id, nodes in self._fleet_avatar_nodes.items():
+            target_position = adjusted_target_positions.get(fleet_id)
+            if target_position is None:
+                self._fleet_avatar_display_positions.pop(fleet_id, None)
+                for node in nodes.values():
+                    node.hide()
+                continue
+            target_x, target_z = target_position
+            previous_position = self._fleet_avatar_display_positions.get(fleet_id)
+            if (not self._playing) or previous_position is None:
+                display_x = float(target_x)
+                display_z = float(target_z)
+            else:
+                delta_x = float(target_x) - float(previous_position[0])
+                delta_z = float(target_z) - float(previous_position[1])
+                distance = math.sqrt((delta_x * delta_x) + (delta_z * delta_z))
+                if distance <= FLEET_AVATAR_POSITION_DEADBAND:
+                    display_x = float(previous_position[0])
+                    display_z = float(previous_position[1])
+                elif distance >= FLEET_AVATAR_SNAP_DISTANCE:
+                    display_x = float(target_x)
+                    display_z = float(target_z)
+                else:
+                    blend = FLEET_AVATAR_SMOOTHING_BLEND
+                    display_x = float(previous_position[0]) + (blend * delta_x)
+                    display_z = float(previous_position[1]) + (blend * delta_z)
+            display_positions[fleet_id] = (display_x, display_z)
+        final_display_positions = self._resolve_avatar_layout_positions(display_positions)
+        for fleet_id, nodes in self._fleet_avatar_nodes.items():
+            final_position = final_display_positions.get(fleet_id)
+            if final_position is None:
+                self._fleet_avatar_display_positions.pop(fleet_id, None)
+                for node in nodes.values():
+                    node.hide()
+                continue
+            display_x, display_z = final_position
+            self._fleet_avatar_display_positions[fleet_id] = (display_x, display_z)
             for node in nodes.values():
-                node.setPos(target_x, 0.0, target_z)
+                node.setPos(display_x, 0.0, display_z)
                 node.show()
 
     def _smoothing_active(self) -> bool:
@@ -547,10 +628,13 @@ class FleetViewerApp(ShowBase):
                     self._render_frame(smoothed_frame)
                 else:
                     self._unit_renderer.update_view(self.camera)
+                    self._sync_fleet_avatar_overlays()
             else:
                 self._unit_renderer.update_view(self.camera)
+                self._sync_fleet_avatar_overlays()
         else:
             self._unit_renderer.update_view(self.camera)
+            self._sync_fleet_avatar_overlays()
         return task.cont
 
 

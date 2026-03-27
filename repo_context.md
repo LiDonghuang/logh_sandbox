@@ -108,9 +108,10 @@ Current availability status:
 - current unit rendering can now cross-fade from far-range wedge readability into a near-range fixed 10-cuboid metallic-gray cluster without widening runtime or replay semantics
 - current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read
 - current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read with low-speed playback smoothing retained, while late-stage objective-area visual residual remains open
+- debug-only objective-area `realistic` investigation records now exist for `neutral_transit_v1` around `objective_reached_tick +/- 5`; current read is that effective flips far more than realistic in that window, candidate choice is almost entirely the widest centered source, and smoothing is not the primary cause
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
-- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and supports a local `P` show/hide toggle
+- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, and in close two-fleet battle views falls back to a midpoint-based side-by-side layout while still re-solving during paused camera movement
 - current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
@@ -176,6 +177,11 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_simplified_warship_proxy_proposal.md`
+- `analysis/engineering_reports/developments/20260327/objective_area_realistic_debug_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/objective_area_realistic_debug_window_dump_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/objective_area_realistic_candidate_trace_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/objective_area_realistic_smoothing_split_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/objective_area_realistic_governance_feedback_20260327.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_hp_bucketed_inner_cluster_query_20260327.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
