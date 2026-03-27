@@ -47,16 +47,16 @@ DUAL_LAYER_NEAR_DISTANCE_FLOOR = 18.0
 DUAL_LAYER_FAR_DISTANCE_FLOOR = 70.0
 CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
 CLUSTER_LAYOUT_OFFSETS = (
-    (-0.09, 0.28, 0.04),
-    (0.09, 0.28, -0.02),
-    (-0.18, -0.02, 0.02),
-    (0.00, -0.06, -0.04),
-    (0.18, -0.02, 0.03),
-    (-0.31, -0.38, -0.01),
-    (-0.15, -0.42, 0.04),
-    (0.00, -0.34, -0.05),
-    (0.15, -0.42, 0.02),
-    (0.31, -0.38, 0.00),
+    (-0.10, 0.36, 0.07),
+    (0.10, 0.34, -0.03),
+    (-0.24, 0.08, -0.02),
+    (0.00, 0.02, 0.09),
+    (0.24, 0.08, -0.05),
+    (-0.40, -0.24, 0.03),
+    (-0.22, -0.34, -0.07),
+    (0.00, -0.30, 0.11),
+    (0.22, -0.34, -0.03),
+    (0.40, -0.24, 0.05),
 )
 OBJECTIVE_MARKER_HEIGHT = 0.14
 OBJECTIVE_MARKER_DOT_RADIUS = 1.45
@@ -330,9 +330,9 @@ class UnitRenderer:
         cluster_np.setDepthWrite(False)
         cuboid_template = _build_cuboid_template(
             f"unit_cluster_ship_{fleet_id}",
-            half_width=0.011,
-            half_length=0.044,
-            half_height=0.011,
+            half_width=0.0165,
+            half_length=0.066,
+            half_height=0.0165,
         )
         cuboid_template.setColor(*CLUSTER_SHIP_COLOR)
         cuboid_template.setTransparency(TransparencyAttrib.MAlpha)

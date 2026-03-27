@@ -1573,6 +1573,11 @@ def run_simulation(
         engine.TEST_RUN_FIXTURE_CFG["expected_position_candidate_active"] = fixture_candidate_a_active
         engine.TEST_RUN_FIXTURE_CFG["initial_forward_hat_xy"] = fixture_reference_bundle["initial_forward_hat_xy"]
         engine.TEST_RUN_FIXTURE_CFG["expected_slot_offsets_local"] = fixture_reference_bundle["expected_slot_offsets_local"]
+        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_frame_active"] = False
+        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_centroid_xy"] = None
+        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_primary_axis_xy"] = None
+        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_secondary_axis_xy"] = None
+        engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_latched_tick"] = None
         observer_telemetry["fixture"] = {
             "active_mode": fixture_active_mode,
             "fleet_id": fixture_fleet_id,
@@ -1591,6 +1596,10 @@ def run_simulation(
             "initial_front_extent": float(fixture_reference_bundle["initial_front_extent"]),
             "expected_position_candidate_active": bool(fixture_candidate_a_active),
             "objective_reached_tick": None,
+            "frozen_terminal_frame_active": False,
+            "frozen_terminal_latched_tick": None,
+            "frozen_terminal_centroid_xy": None,
+            "frozen_terminal_primary_axis_xy": None,
             "centroid_to_objective_distance": [],
             "formation_rms_radius": [],
             "formation_rms_radius_ratio": [],
@@ -1826,6 +1835,49 @@ def run_simulation(
                 and distance_to_objective <= fixture_stop_radius
             ):
                 fixture_metrics["objective_reached_tick"] = int(state.tick)
+                if (
+                    fixture_candidate_a_active
+                    and not bool(engine.TEST_RUN_FIXTURE_CFG.get("frozen_terminal_frame_active", False))
+                    and math.isfinite(centroid_x)
+                    and math.isfinite(centroid_y)
+                ):
+                    fallback_axis = fixture_reference_bundle["initial_forward_hat_xy"]
+                    objective_axis_dx = fixture_objective_point_xy[0] - centroid_x
+                    objective_axis_dy = fixture_objective_point_xy[1] - centroid_y
+                    frozen_primary_axis_xy = engine._normalize_direction_with_fallback(
+                        float(objective_axis_dx),
+                        float(objective_axis_dy),
+                        float(fallback_axis[0]),
+                        float(fallback_axis[1]),
+                    )
+                    frozen_secondary_axis_xy = (
+                        -float(frozen_primary_axis_xy[1]),
+                        float(frozen_primary_axis_xy[0]),
+                    )
+                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_frame_active"] = True
+                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_centroid_xy"] = (
+                        float(centroid_x),
+                        float(centroid_y),
+                    )
+                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_primary_axis_xy"] = (
+                        float(frozen_primary_axis_xy[0]),
+                        float(frozen_primary_axis_xy[1]),
+                    )
+                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_secondary_axis_xy"] = (
+                        float(frozen_secondary_axis_xy[0]),
+                        float(frozen_secondary_axis_xy[1]),
+                    )
+                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_latched_tick"] = int(state.tick)
+                    fixture_metrics["frozen_terminal_frame_active"] = True
+                    fixture_metrics["frozen_terminal_latched_tick"] = int(state.tick)
+                    fixture_metrics["frozen_terminal_centroid_xy"] = [
+                        float(centroid_x),
+                        float(centroid_y),
+                    ]
+                    fixture_metrics["frozen_terminal_primary_axis_xy"] = [
+                        float(frozen_primary_axis_xy[0]),
+                        float(frozen_primary_axis_xy[1]),
+                    ]
                 elimination_tick = int(state.tick)
                 post_elimination_stop_tick = min(999, elimination_tick + post_elimination_extra_ticks)
             _capture_position_frame(state)

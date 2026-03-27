@@ -27,3 +27,29 @@ Current best ordering is:
 - The evidence does **not** support reopening early-side `E2`.
 - The evidence does **not** support treating projection as the sole root; it looks more like a second-layer reshaper acting on motion that restore is still generating.
 - If a later mechanism turn is opened, the narrowest first cut should likely examine how fixture expected-position restore behaves once centroid-level arrival has already occurred.
+
+## Addendum after frozen-frame first cut + human 3D read
+
+After the bounded frozen expected-position reference first cut:
+
+- the implementation is structurally correct and bounded
+- but human 3D observation still reports strong formation-break read and violent unit-direction flipping in `tick 425 .. 435`
+- so the late-terminal problem remains **not closed**
+
+Current engineering suspicion is now narrower than the earlier generic "moving restore frame" read:
+
+- freezing the terminal frame center at first entry likely leaves restore centered on a pre-anchor centroid
+- while target pull still aims at the actual objective anchor
+- separation / projection then reshape that continuing conflict
+
+So the strongest next root-cause question now looks like:
+
+- whether terminal reference orientation and terminal reference centroid should really freeze together
+
+not:
+
+- whether viewer smoothing / realistic should be reopened
+
+and not:
+
+- whether projection alone should be treated as the sole root.

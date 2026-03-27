@@ -249,14 +249,45 @@ class EngineTickSkeleton:
         fallback_axis = fixture_cfg.get("initial_forward_hat_xy", (1.0, 0.0))
         if not isinstance(fallback_axis, (list, tuple)) or len(fallback_axis) < 2:
             fallback_axis = (1.0, 0.0)
-        primary_axis_x, primary_axis_y = self._normalize_direction_with_fallback(
-            float(target_direction[0]),
-            float(target_direction[1]),
-            float(fallback_axis[0]),
-            float(fallback_axis[1]),
+        frozen_frame_active = bool(fixture_cfg.get("frozen_terminal_frame_active", False))
+        frozen_centroid_xy = fixture_cfg.get("frozen_terminal_centroid_xy")
+        frozen_primary_axis_xy = fixture_cfg.get("frozen_terminal_primary_axis_xy")
+        frozen_secondary_axis_xy = fixture_cfg.get("frozen_terminal_secondary_axis_xy")
+        use_frozen_frame = (
+            frozen_frame_active
+            and isinstance(frozen_centroid_xy, (list, tuple))
+            and len(frozen_centroid_xy) >= 2
+            and isinstance(frozen_primary_axis_xy, (list, tuple))
+            and len(frozen_primary_axis_xy) >= 2
         )
-        secondary_axis_x = -primary_axis_y
-        secondary_axis_y = primary_axis_x
+        if use_frozen_frame:
+            centroid_x = float(frozen_centroid_xy[0])
+            centroid_y = float(frozen_centroid_xy[1])
+            primary_axis_x, primary_axis_y = self._normalize_direction_with_fallback(
+                float(frozen_primary_axis_xy[0]),
+                float(frozen_primary_axis_xy[1]),
+                float(fallback_axis[0]),
+                float(fallback_axis[1]),
+            )
+            if isinstance(frozen_secondary_axis_xy, (list, tuple)) and len(frozen_secondary_axis_xy) >= 2:
+                secondary_axis_x, secondary_axis_y = self._normalize_direction_with_fallback(
+                    float(frozen_secondary_axis_xy[0]),
+                    float(frozen_secondary_axis_xy[1]),
+                    -primary_axis_y,
+                    primary_axis_x,
+                )
+            else:
+                secondary_axis_x = -primary_axis_y
+                secondary_axis_y = primary_axis_x
+        else:
+            primary_axis_x, primary_axis_y = self._normalize_direction_with_fallback(
+                float(target_direction[0]),
+                float(target_direction[1]),
+                float(fallback_axis[0]),
+                float(fallback_axis[1]),
+            )
+            secondary_axis_x = -primary_axis_y
+            secondary_axis_y = primary_axis_x
         expected_positions = {}
         for unit_id, offsets in local_offsets.items():
             unit = state.units.get(str(unit_id))

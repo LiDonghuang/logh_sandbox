@@ -106,10 +106,12 @@ Current availability status:
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current unit rendering can now cross-fade from far-range wedge readability into a near-range fixed 10-cuboid metallic-gray cluster without widening runtime or replay semantics
-- current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read
+- current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read, and the inner cuboids are currently slightly larger, more spread toward the frame outline, and visibly staggered in `z`
 - current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read with low-speed playback smoothing retained, while late-stage objective-area visual residual remains open
 - debug-only objective-area `realistic` investigation records now exist for `neutral_transit_v1` around `objective_reached_tick +/- 5`; current read is that effective flips far more than realistic in that window, candidate choice is almost entirely the widest centered source, and smoothing is not the primary cause
 - debug-only late-terminal residual decomposition records now also exist for `neutral_transit_v1`; current read is that once centroid-level arrival is reached, moving expected-position restore becomes the strongest surviving driver, with separation/projection reshaping the residual unit motion
+- a bounded late-terminal first cut now exists locally on the candidate-active `neutral_transit_v1` path: once post-step centroid arrival is first confirmed, the expected-position reference frame is frozen and consumed from subsequent ticks; current validation read is structurally correct but still not closed
+- current engineering read on that first cut is narrower: the remaining late residual now looks more like a frozen-frame / target-center mismatch than a viewer issue, and the next bounded root-cause question should likely separate terminal orientation freeze from terminal centroid freeze
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
 - current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, and in close two-fleet battle views falls back to a midpoint-based side-by-side layout while still re-solving during paused camera movement
@@ -187,6 +189,11 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/late_terminal_residual_decomposition_window_dump_20260327.csv`
 - `analysis/engineering_reports/developments/20260327/late_terminal_residual_component_summary_20260327.csv`
 - `analysis/engineering_reports/developments/20260327/late_terminal_residual_governance_feedback_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_first_cut_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_first_cut_validation_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_window_dump_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_component_summary_20260327.csv`
+- `analysis/engineering_reports/developments/20260327/late_terminal_frozen_expected_position_engineering_read_20260327.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_hp_bucketed_inner_cluster_query_20260327.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
