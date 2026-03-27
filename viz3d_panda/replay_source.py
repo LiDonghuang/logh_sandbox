@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import math
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -14,7 +13,6 @@ from test_run import settings_accessor as settings_api
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEST_RUN_BASE_DIR = PROJECT_ROOT / "test_run"
 DEFAULT_FRAME_STRIDE = 1
-DEFAULT_FLEET_PALETTE = ("#4f8cff", "#ff7b52", "#59d38c", "#f3c84b")
 VIEWER_SOURCE_AUTO = "auto"
 VIEWER_SOURCE_ACTIVE_BATTLE = "active_battle"
 VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE = "neutral_transit_fixture"
@@ -79,21 +77,18 @@ class ReplayBundle:
     metadata: dict[str, Any]
 
 
-def _deep_clone_settings(settings: dict[str, Any]) -> dict[str, Any]:
-    return copy.deepcopy(settings)
-
-
 def _parse_unit_point(raw_point: Any, *, fleet_id: str) -> ViewerUnitState:
-    if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 5:
+    if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 9:
         raise ValueError(
-            "position_frames entries must be tuples of at least "
-            f"(unit_id, x, y, heading_x, heading_y); got {raw_point!r} for fleet {fleet_id!r}"
+            "position_frames entries must be tuples of exactly "
+            "(unit_id, x, y, heading_x, heading_y, velocity_x, velocity_y, hit_points, max_hit_points) "
+            f"or longer; got {raw_point!r} for fleet {fleet_id!r}"
         )
     unit_id = str(raw_point[0])
-    velocity_x = float(raw_point[5]) if len(raw_point) >= 7 else 0.0
-    velocity_y = float(raw_point[6]) if len(raw_point) >= 7 else 0.0
-    hit_points = float(raw_point[7]) if len(raw_point) >= 9 else 100.0
-    max_hit_points = float(raw_point[8]) if len(raw_point) >= 9 else max(1.0, hit_points)
+    velocity_x = float(raw_point[5])
+    velocity_y = float(raw_point[6])
+    hit_points = float(raw_point[7])
+    max_hit_points = float(raw_point[8])
     return ViewerUnitState(
         unit_id=unit_id,
         fleet_id=str(fleet_id),
@@ -111,14 +106,6 @@ def _parse_unit_point(raw_point: Any, *, fleet_id: str) -> ViewerUnitState:
     )
 
 
-def _default_fleet_colors(fleet_ids: list[str]) -> dict[str, str]:
-    palette = list(DEFAULT_FLEET_PALETTE)
-    colors: dict[str, str] = {}
-    for index, fleet_id in enumerate(fleet_ids):
-        colors[fleet_id] = palette[index % len(palette)]
-    return colors
-
-
 def _normalize_vector(dx: float, dy: float) -> tuple[float, float]:
     norm = math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
     if norm <= 1e-12:
@@ -134,7 +121,10 @@ def _resolve_vector_display_mode(settings: dict[str, Any]) -> str:
     )
     mode = str(raw_value).strip().lower()
     if mode not in VALID_VECTOR_DISPLAY_MODES:
-        return "effective"
+        allowed = ", ".join(sorted(VALID_VECTOR_DISPLAY_MODES))
+        raise ValueError(
+            f"visualization.vector_display_mode must be one of {{{allowed}}}, got {raw_value!r}."
+        )
     return mode
 
 
@@ -430,11 +420,17 @@ def build_replay_bundle(
 
     resolved_labels = dict(fleet_labels or {})
     for fleet_id in seen_fleet_ids:
-        resolved_labels.setdefault(fleet_id, str(fleet_id))
+        label = str(resolved_labels.get(fleet_id, "")).strip()
+        if not label:
+            raise ValueError(f"viewer replay requires an explicit fleet label for {fleet_id!r}.")
+        resolved_labels[fleet_id] = label
 
-    resolved_colors = _default_fleet_colors(seen_fleet_ids)
-    if fleet_colors:
-        resolved_colors.update({str(key): str(value) for key, value in fleet_colors.items()})
+    resolved_colors = {str(key): str(value) for key, value in dict(fleet_colors or {}).items()}
+    for fleet_id in seen_fleet_ids:
+        color = str(resolved_colors.get(fleet_id, "")).strip()
+        if not color:
+            raise ValueError(f"viewer replay requires an explicit fleet color for {fleet_id!r}.")
+        resolved_colors[fleet_id] = color
 
     replay_metadata = dict(metadata or {})
     replay_metadata.setdefault("frame_count", len(frames))
@@ -449,8 +445,9 @@ def build_replay_bundle(
     )
 
 
-def load_active_battle_replay(
+def load_viewer_replay(
     *,
+    source: str = VIEWER_SOURCE_AUTO,
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
     direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
@@ -461,16 +458,13 @@ def load_active_battle_replay(
         raise TypeError(f"max_steps must be an int or None, got {type(max_steps).__name__}.")
 
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
-    active_settings = _deep_clone_settings(settings)
-    settings_vector_display_mode = _resolve_vector_display_mode(active_settings)
+    settings_vector_display_mode = _resolve_vector_display_mode(settings)
     active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(
-        active_settings,
+        settings,
         direction_mode,
     )
-    capture_target_lines = bool(settings_api.get_visualization_setting(active_settings, "show_attack_target_lines", False))
-    if settings_vector_display_mode in {"attack", "composite"} or active_direction_mode in {"attack", "composite"}:
-        capture_target_lines = True
-    run_control = active_settings.setdefault("run_control", {})
+    resolved_source = _resolve_viewer_source(settings, source)
+    run_control = settings.setdefault("run_control", {})
     if not isinstance(run_control, dict):
         raise ValueError("run_control must be a mapping in layered test_run settings.")
     effective_max_steps = int(run_control.get("max_time_steps", -1))
@@ -480,11 +474,58 @@ def load_active_battle_replay(
         effective_max_steps = int(max_steps)
         max_steps_source = "override"
 
-    prepared = scenario.prepare_active_scenario(TEST_RUN_BASE_DIR, settings_override=active_settings)
+    if resolved_source == VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE:
+        prepared = scenario.prepare_neutral_transit_fixture(TEST_RUN_BASE_DIR, settings_override=settings)
+        result = test_run_entry.run_active_surface(
+            base_dir=TEST_RUN_BASE_DIR,
+            prepared_override=prepared,
+            settings_override=settings,
+            execution_overrides={
+                "capture_positions": True,
+                "capture_hit_points": True,
+                "frame_stride": int(frame_stride),
+                "include_target_lines": False,
+                "print_tick_summary": False,
+            },
+            summary_override={
+                "animate": False,
+                "export_battle_report": False,
+            },
+            emit_summary=False,
+        )
+        fleet_data = prepared["fleet_data"]
+        metadata = {
+            "summary": dict(result["prepared"]["summary"]),
+            "fixture_readout": dict(result["observer_telemetry"].get("fixture", {})),
+            "max_steps_effective": int(effective_max_steps),
+            "max_steps_source": max_steps_source,
+            "frame_stride": int(frame_stride),
+            "vector_display_mode": active_direction_label,
+            "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
+            "direction_mode_source": direction_mode_source,
+        }
+        return build_replay_bundle(
+            source_kind="test_run_neutral_transit_fixture",
+            arena_size=float(prepared["initial_state"].arena_size),
+            position_frames=result["position_frames"],
+            fleet_labels={
+                "A": scenario.resolve_display_name(fleet_data, "EN") or "A",
+            },
+            fleet_colors={
+                "A": FIXED_VIEWER_FLEET_COLORS["A"],
+            },
+            metadata=metadata,
+            vector_display_mode=active_direction_mode,
+        )
+
+    capture_target_lines = bool(settings_api.get_visualization_setting(settings, "show_attack_target_lines", False))
+    if settings_vector_display_mode in {"attack", "composite"} or active_direction_mode in {"attack", "composite"}:
+        capture_target_lines = True
+    prepared = scenario.prepare_active_scenario(TEST_RUN_BASE_DIR, settings_override=settings)
     result = test_run_entry.run_active_surface(
         base_dir=TEST_RUN_BASE_DIR,
         prepared_override=prepared,
-        settings_override=active_settings,
+        settings_override=settings,
         execution_overrides={
             "capture_positions": True,
             "capture_hit_points": True,
@@ -498,10 +539,17 @@ def load_active_battle_replay(
         },
         emit_summary=False,
     )
-
     fleet_a_data = prepared["fleet_a_data"]
     fleet_b_data = prepared["fleet_b_data"]
-
+    metadata = {
+        "summary": dict(result["prepared"]["summary"]),
+        "max_steps_effective": int(effective_max_steps),
+        "max_steps_source": max_steps_source,
+        "frame_stride": int(frame_stride),
+        "vector_display_mode": active_direction_label,
+        "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
+        "direction_mode_source": direction_mode_source,
+    }
     return build_replay_bundle(
         source_kind="test_run_active_surface",
         arena_size=float(prepared["initial_state"].arena_size),
@@ -514,110 +562,6 @@ def load_active_battle_replay(
             "A": FIXED_VIEWER_FLEET_COLORS["A"],
             "B": FIXED_VIEWER_FLEET_COLORS["B"],
         },
-        metadata={
-            "summary": dict(result["prepared"]["summary"]),
-            "max_steps_effective": int(effective_max_steps),
-            "max_steps_source": max_steps_source,
-            "frame_stride": int(frame_stride),
-            "vector_display_mode": active_direction_label,
-            "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
-            "direction_mode_source": direction_mode_source,
-        },
+        metadata=metadata,
         vector_display_mode=active_direction_mode,
-    )
-
-
-def load_neutral_transit_fixture_replay(
-    *,
-    max_steps: int | None = None,
-    frame_stride: int = DEFAULT_FRAME_STRIDE,
-    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
-) -> ReplayBundle:
-    if frame_stride < 1:
-        raise ValueError(f"frame_stride must be >= 1, got {frame_stride}.")
-    if max_steps is not None and not isinstance(max_steps, int):
-        raise TypeError(f"max_steps must be an int or None, got {type(max_steps).__name__}.")
-
-    settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
-    active_settings = _deep_clone_settings(settings)
-    settings_vector_display_mode = _resolve_vector_display_mode(active_settings)
-    active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(
-        active_settings,
-        direction_mode,
-    )
-    run_control = active_settings.setdefault("run_control", {})
-    if not isinstance(run_control, dict):
-        raise ValueError("run_control must be a mapping in layered test_run settings.")
-    effective_max_steps = int(run_control.get("max_time_steps", -1))
-    max_steps_source = "settings"
-    if max_steps is not None:
-        run_control["max_time_steps"] = int(max_steps)
-        effective_max_steps = int(max_steps)
-        max_steps_source = "override"
-
-    prepared = scenario.prepare_neutral_transit_fixture(TEST_RUN_BASE_DIR, settings_override=active_settings)
-    result = test_run_entry.run_active_surface(
-        base_dir=TEST_RUN_BASE_DIR,
-        prepared_override=prepared,
-        settings_override=active_settings,
-        execution_overrides={
-            "capture_positions": True,
-            "capture_hit_points": True,
-            "frame_stride": int(frame_stride),
-            "include_target_lines": False,
-            "print_tick_summary": False,
-        },
-        summary_override={
-            "animate": False,
-            "export_battle_report": False,
-        },
-        emit_summary=False,
-    )
-
-    fleet_data = prepared["fleet_data"]
-    fixture_readout = dict(result["observer_telemetry"].get("fixture", {}))
-
-    return build_replay_bundle(
-        source_kind="test_run_neutral_transit_fixture",
-        arena_size=float(prepared["initial_state"].arena_size),
-        position_frames=result["position_frames"],
-        fleet_labels={
-            "A": scenario.resolve_display_name(fleet_data, "EN") or "A",
-        },
-        fleet_colors={
-            "A": FIXED_VIEWER_FLEET_COLORS["A"],
-        },
-        metadata={
-            "summary": dict(result["prepared"]["summary"]),
-            "fixture_readout": fixture_readout,
-            "max_steps_effective": int(effective_max_steps),
-            "max_steps_source": max_steps_source,
-            "frame_stride": int(frame_stride),
-            "vector_display_mode": active_direction_label,
-            "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
-            "direction_mode_source": direction_mode_source,
-        },
-        vector_display_mode=active_direction_mode,
-    )
-
-
-def load_viewer_replay(
-    *,
-    source: str = VIEWER_SOURCE_AUTO,
-    max_steps: int | None = None,
-    frame_stride: int = DEFAULT_FRAME_STRIDE,
-    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
-) -> ReplayBundle:
-    settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
-    resolved_source = _resolve_viewer_source(settings, source)
-    if resolved_source == VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE:
-        return load_neutral_transit_fixture_replay(
-            max_steps=max_steps,
-            frame_stride=frame_stride,
-            direction_mode=direction_mode,
-        )
-    return load_active_battle_replay(
-        max_steps=max_steps,
-        frame_stride=frame_stride,
-        direction_mode=direction_mode,
     )

@@ -480,7 +480,6 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
     source_owner = str(fixture_metrics.get("source_owner", ""))
     objective_mode = str(fixture_metrics.get("objective_mode", ""))
     no_enemy_semantics = str(fixture_metrics.get("no_enemy_semantics", ""))
-    objective_point_xy = fixture_metrics.get("objective_point_xy", [0.0, 0.0])
     stop_radius = float(fixture_metrics.get("stop_radius", 0.0))
     objective_reached_tick = fixture_metrics.get("objective_reached_tick")
     distances = [float(value) for value in fixture_metrics.get("centroid_to_objective_distance", [])]
@@ -493,7 +492,7 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
         f"movement={summary['movement_model_effective']} "
         f"arrival_tick={objective_reached_tick} "
         f"final_tick={int(result['final_state'].tick)} "
-        f"objective=({float(objective_point_xy[0]):.2f},{float(objective_point_xy[1]):.2f}) "
+        f"objective=({float(projected_anchor_point_xy[0]):.2f},{float(projected_anchor_point_xy[1]):.2f}) "
         f"stop_radius={stop_radius:.2f}"
     )
     print(

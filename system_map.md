@@ -110,7 +110,7 @@ Current availability:
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
 - current viewer-side neutral-transit support is still readout-only: source selection plus small contract echo overlay, without scene-level objective markers or semantic ownership
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
-- the maintained neutral-transit fixture path now includes two bounded mechanism corrections only: stop-radius-bound linear arrival gain in `test_run/test_run_execution.py` and a fixed restore deadband tied to `separation_radius` in `runtime/engine_skeleton.py`; current validation reads them as telemetry-positive but still below the human-visible threshold
+- the maintained neutral-transit fixture path now includes a revised second bounded correction turn on top of the first: late behavior stays at the existing stop-radius-bound arrival gain in `test_run/test_run_execution.py`, while `runtime/engine_skeleton.py` adds slot-error-aware attenuation on the shared forward term on top of the existing fixed restore deadband; current validation reads the early side as regressed, so the net result remains below the human-visible threshold
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 

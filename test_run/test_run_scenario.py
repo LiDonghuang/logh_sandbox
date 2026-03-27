@@ -1110,7 +1110,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         "fixture": {
             "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
             "fleet_id": "A",
-            "objective_point_xy": (objective_x, objective_y),
             "objective_contract_3d": {
                 "anchor_point_xyz": (objective_x, objective_y, 0.0),
                 "source_owner": "fixture",
