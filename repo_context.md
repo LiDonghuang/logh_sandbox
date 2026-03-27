@@ -113,6 +113,7 @@ Current availability status:
 - current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and supports a local `P` show/hide toggle
 - current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
+- a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - no parallel simulation settings surface is owned by `viz3d_panda/`
@@ -175,6 +176,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_simplified_warship_proxy_proposal.md`
+- `analysis/engineering_reports/developments/20260327/dev_v2_0_hp_bucketed_inner_cluster_query_20260327.md`
 - `analysis/specs/formation/formation_specs_v0_1_3d_draft.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_frame_minimalization_note.md`
 - `analysis/engineering_reports/developments/20260326/step3_3d_formation_mapping_legality_split_note.md`

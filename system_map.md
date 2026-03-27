@@ -114,6 +114,7 @@ Current availability:
 - current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and toggleable with local `P` portraits on/off control
 - current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
+- a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
