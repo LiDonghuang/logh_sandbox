@@ -16,6 +16,7 @@ FLEET_VIEW_DISTANCE_PADDING = 56.0
 FLEET_VIEW_DISTANCE_RADIUS_SCALE = 4.5
 MIN_CAMERA_PITCH_DEGREES = -90.0
 MAX_CAMERA_PITCH_DEGREES = 45.0
+PAN_TRACK_CANCEL_DRAG_THRESHOLD = 0.035
 
 
 class OrbitCameraController:
@@ -34,6 +35,7 @@ class OrbitCameraController:
         self._mouse_pitch_scale = 100.0
         self._drag_action: str | None = None
         self._last_mouse_pos: tuple[float, float] | None = None
+        self._pan_drag_distance_accumulator = 0.0
         self._tracked_fleet_id: str | None = None
         self._keys = {
             "w": False,
@@ -79,10 +81,14 @@ class OrbitCameraController:
         if pressed:
             self._drag_action = str(action)
             self._last_mouse_pos = self._mouse_pos()
+            if str(action) == "pan":
+                self._pan_drag_distance_accumulator = 0.0
             return
         if self._drag_action == action:
             self._drag_action = None
             self._last_mouse_pos = None
+            if str(action) == "pan":
+                self._pan_drag_distance_accumulator = 0.0
 
     @staticmethod
     def _normalize_xy(x_value: float, y_value: float) -> tuple[float, float]:
@@ -134,6 +140,12 @@ class OrbitCameraController:
         pan_scale = self._pan_distance_scale()
 
         if self._drag_action == "pan":
+            self._pan_drag_distance_accumulator += math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
+            if (
+                self._tracked_fleet_id is not None
+                and self._pan_drag_distance_accumulator >= PAN_TRACK_CANCEL_DRAG_THRESHOLD
+            ):
+                self._tracked_fleet_id = None
             self._translate_focus(
                 ((-delta_x * self._mouse_pan_scale * pan_scale) * right_xy[0])
                 + ((-delta_y * self._mouse_pan_scale * pan_scale) * forward_xy[0]),
@@ -231,7 +243,7 @@ class OrbitCameraController:
         summary = self._summarize_fleet_frame(frame, fleet_id)
         if summary is None:
             return None
-        min_distance = max(12.5, self._arena_size * 0.09)
+        min_distance = max(9.0, self._arena_size * 0.065)
         max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         requested_distance = (float(summary["radius"]) * FLEET_VIEW_DISTANCE_RADIUS_SCALE) + FLEET_VIEW_DISTANCE_PADDING
         requested_distance = max(min_distance, min(max_distance, requested_distance))
@@ -265,8 +277,11 @@ class OrbitCameraController:
         return True
 
     def zoom(self, delta: float) -> None:
-        next_distance = self._distance + float(delta)
-        min_distance = max(12.5, self._arena_size * 0.09)
+        distance_scale = 1.0
+        if self._default_distance > 1e-9:
+            distance_scale = max(1.0, min(1.8, float(self._distance) / float(self._default_distance)))
+        next_distance = self._distance + (float(delta) * distance_scale)
+        min_distance = max(9.0, self._arena_size * 0.065)
         max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         self._distance = max(min_distance, min(max_distance, next_distance))
         self._apply_camera_distance()

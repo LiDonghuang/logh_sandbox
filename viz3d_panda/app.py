@@ -48,15 +48,17 @@ FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.078
 FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.128
 FLEET_AVATAR_BORDER_PAD = 0.009
 FLEET_AVATAR_MATTE_PAD = 0.004
-FLEET_AVATAR_HIGHLIGHT_PAD = 0.005
-FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.38
+FLEET_AVATAR_HIGHLIGHT_PAD = 0.018
+FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.48
 FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
 FLEET_AVATAR_BORDER_ALPHA = 1.0
 FLEET_AVATAR_POSITION_DEADBAND = 0.010
 FLEET_AVATAR_SMOOTHING_BLEND = 0.28
 FLEET_AVATAR_SNAP_DISTANCE = 0.18
-FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_X = 0.34
-FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_Z = 0.24
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.34
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.24
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.42
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z = 0.30
 FLEET_AVATAR_PAIR_SEPARATION_X = 0.20
 
 
@@ -77,11 +79,6 @@ def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
         if path.exists():
             return path
     return None
-
-
-def _configure_window(*, width: int, height: int) -> None:
-    loadPrcFileData("", f"window-title {WINDOW_TITLE}")
-    loadPrcFileData("", f"win-size {int(width)} {int(height)}")
 
 
 def _count_units_by_fleet(replay: ReplayBundle, frame_index: int) -> str:
@@ -175,6 +172,7 @@ class FleetViewerApp(ShowBase):
         self._playing = True
         self._smoothing_enabled = True
         self._avatars_enabled = True
+        self._hud_enabled = True
         self._held_step_direction = 0
         self._held_step_delay_remaining = 0.0
         self._held_step_repeat_accumulator = 0.0
@@ -184,25 +182,27 @@ class FleetViewerApp(ShowBase):
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
         self._fleet_avatar_display_positions: dict[str, tuple[float, float]] = {}
+        self._fleet_avatar_pair_layout_active = False
         self._fleet_avatar_world_lift = max(8.0, float(self._replay.arena_size) * 0.03)
 
         self._status_text = OnscreenText(
             text="",
-            parent=self.a2dTopLeft,
-            pos=(0.03, -0.06),
-            scale=0.05,
+            parent=self.a2dBottomLeft,
+            pos=(0.03, 0.10),
+            scale=0.042,
             align=TextNode.ALeft,
-            fg=(0.93, 0.95, 0.98, 1.0),
+            fg=(0.72, 0.80, 0.89, 1.0),
         )
         self._control_text = OnscreenText(
             text=(
-                "Space play/pause  N/B step/hold  [/ ] speed gear  V fire-links  M smooth  P portraits\n"
+                "Space play/pause  N/B step/hold  [/ ] speed gear\n"
+                "V fire-links  M smooth  P portraits  Tab HUD\n"
                 "LDrag pan  RDrag orbit  Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit"
             ),
-            parent=self.aspect2d,
-            pos=(-1.28, -0.95),
+            parent=self.a2dBottomRight,
+            pos=(-0.03, 0.16),
             scale=0.042,
-            align=TextNode.ALeft,
+            align=TextNode.ARight,
             fg=(0.72, 0.80, 0.89, 1.0),
         )
         self._build_avatar_overlays()
@@ -215,6 +215,7 @@ class FleetViewerApp(ShowBase):
         self.accept("v", self.cycle_fire_link_mode)
         self.accept("m", self.toggle_smoothing)
         self.accept("p", self.toggle_avatars)
+        self.accept("tab", self.toggle_hud)
         self.accept("]", self._adjust_playback_speed, [1])
         self.accept("[", self._adjust_playback_speed, [-1])
         self.accept("1", self._focus_fleet_camera, ["A"])
@@ -250,6 +251,16 @@ class FleetViewerApp(ShowBase):
         self._avatars_enabled = not self._avatars_enabled
         self._sync_fleet_avatar_overlays()
         self._refresh_overlay()
+
+    def toggle_hud(self) -> None:
+        self._hud_enabled = not self._hud_enabled
+        if self._hud_enabled:
+            self._status_text.show()
+            self._control_text.show()
+            self._refresh_overlay()
+        else:
+            self._status_text.hide()
+            self._control_text.hide()
 
     def _step_by(self, direction: int) -> None:
         self._playing = False
@@ -406,6 +417,7 @@ class FleetViewerApp(ShowBase):
         anchors: dict[str, tuple[float, float]],
     ) -> dict[str, tuple[float, float]]:
         if len(anchors) != 2:
+            self._fleet_avatar_pair_layout_active = False
             return dict(anchors)
         fleet_ids = sorted(anchors.keys())
         left_id = fleet_ids[0]
@@ -414,11 +426,19 @@ class FleetViewerApp(ShowBase):
         right_anchor = anchors[right_id]
         delta_x = float(right_anchor[0]) - float(left_anchor[0])
         delta_z = float(right_anchor[1]) - float(left_anchor[1])
-        if abs(delta_x) >= FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_X or abs(delta_z) >= FLEET_AVATAR_PAIR_TRIGGER_DISTANCE_Z:
+        if self._fleet_avatar_pair_layout_active:
+            trigger_x = FLEET_AVATAR_PAIR_EXIT_DISTANCE_X
+            trigger_z = FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z
+        else:
+            trigger_x = FLEET_AVATAR_PAIR_ENTER_DISTANCE_X
+            trigger_z = FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z
+        if abs(delta_x) >= trigger_x or abs(delta_z) >= trigger_z:
+            self._fleet_avatar_pair_layout_active = False
             return {
                 left_id: (float(left_anchor[0]), float(left_anchor[1])),
                 right_id: (float(right_anchor[0]), float(right_anchor[1])),
             }
+        self._fleet_avatar_pair_layout_active = True
         midpoint_x = (float(left_anchor[0]) + float(right_anchor[0])) * 0.5
         midpoint_z = (float(left_anchor[1]) + float(right_anchor[1])) * 0.5
         aspect_ratio = float(self.getAspectRatio())
@@ -563,26 +583,19 @@ class FleetViewerApp(ShowBase):
         self._refresh_overlay()
 
     def _refresh_overlay(self) -> None:
+        if not self._hud_enabled:
+            return
         frame = self._replay.frames[self._current_frame_index]
         counts_text = _count_units_by_fleet(self._replay, self._current_frame_index)
         playback_label = "playing" if self._playing else "paused"
-        max_steps_effective = self._replay.metadata.get("max_steps_effective")
-        max_steps_source = self._replay.metadata.get("max_steps_source", "settings")
         vector_display_mode = self._replay.metadata.get("vector_display_mode", "effective")
-        settings_vector_display_mode = self._replay.metadata.get("settings_vector_display_mode", vector_display_mode)
-        direction_mode_source = self._replay.metadata.get("direction_mode_source", "settings")
         fire_link_mode = self._unit_renderer.fire_link_mode
         smoothing_text = "on" if self._smoothing_enabled else "off"
-        avatar_text = "on" if self._avatars_enabled else "off"
-        if direction_mode_source == "override":
-            direction_text = f"dir_mode={vector_display_mode}  settings_dir={settings_vector_display_mode}"
-        else:
-            direction_text = f"dir_mode={vector_display_mode}"
+        direction_text = f"dir_mode={vector_display_mode}"
         status_lines = [
-            WINDOW_TITLE,
-            f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tick={frame.tick}",
-            f"fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}  state={playback_label}",
-            f"sim_limit={max_steps_source}:{max_steps_effective}  {direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}  portraits={avatar_text}",
+            f"{counts_text}  state={playback_label}",
+            f"frame={self._current_frame_index + 1}/{len(self._replay.frames)}  fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}",
+            f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}",
         ]
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
@@ -597,7 +610,6 @@ class FleetViewerApp(ShowBase):
                     status_lines.append(f"anchor_xyz={anchor_xyz}")
                 else:
                     status_lines.append(f"anchor_xyz={anchor_xyz}  projected_xy={projected_xy}")
-        status_lines.append(counts_text)
         self._status_text.setText("\n".join(status_lines))
 
     def _tick(self, task):
@@ -626,15 +638,9 @@ class FleetViewerApp(ShowBase):
                     smoothed_frame = self._build_smoothed_frame(smoothing_alpha)
                     self._camera_controller.sync_tracked_frame(smoothed_frame)
                     self._render_frame(smoothed_frame)
-                else:
-                    self._unit_renderer.update_view(self.camera)
-                    self._sync_fleet_avatar_overlays()
-            else:
-                self._unit_renderer.update_view(self.camera)
-                self._sync_fleet_avatar_overlays()
-        else:
-            self._unit_renderer.update_view(self.camera)
-            self._sync_fleet_avatar_overlays()
+                    return task.cont
+        self._unit_renderer.update_view(self.camera)
+        self._sync_fleet_avatar_overlays()
         return task.cont
 
 
@@ -684,7 +690,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
-    _configure_window(width=args.window_width, height=args.window_height)
+    loadPrcFileData("", f"window-title {WINDOW_TITLE}")
+    loadPrcFileData("", f"win-size {int(args.window_width)} {int(args.window_height)}")
     replay = load_viewer_replay(
         source=str(args.source),
         max_steps=args.steps,
