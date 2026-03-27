@@ -39,7 +39,7 @@ HP_BUCKET_SCALES = {
     1: 0.64,
 }
 TOKEN_ALPHA = 0.80
-TOKEN_NEAR_ALPHA = 0.10
+TOKEN_NEAR_ALPHA = 0.03
 CLUSTER_NEAR_ALPHA = 0.92
 DUAL_LAYER_NEAR_DISTANCE_RATIO = 0.11
 DUAL_LAYER_FAR_DISTANCE_RATIO = 0.28
@@ -252,6 +252,8 @@ class UnitRenderer:
         self._objective_marker_np = self._overlay_np.attachNewNode("viewer_objective_marker")
         self._fleet_halos_np = self._overlay_np.attachNewNode("viewer_fleet_halos")
         self._target_links_np = self._parent.attachNewNode("viewer_fire_links")
+        self._fleet_halo_baselines = self._build_fleet_halo_baselines()
+        self._fleet_halo_state: dict[str, dict[str, float]] = {}
         self._fire_link_mode = self._validate_fire_link_mode(fire_link_mode)
         self._dual_layer_near_distance = max(
             DUAL_LAYER_NEAR_DISTANCE_FLOOR,
@@ -262,6 +264,30 @@ class UnitRenderer:
             float(self._replay.arena_size) * DUAL_LAYER_FAR_DISTANCE_RATIO,
         )
         self._sync_objective_marker()
+
+    def _build_fleet_halo_baselines(self) -> dict[str, tuple[float, float]]:
+        if not self._replay.frames:
+            return {}
+        frame = self._replay.frames[0]
+        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
+        for unit in frame.units:
+            if float(unit.hit_points) <= 0.0:
+                continue
+            fleet_points.setdefault(str(unit.fleet_id), []).append((float(unit.x), float(unit.y), float(unit.hit_points)))
+        baselines: dict[str, tuple[float, float]] = {}
+        for fleet_id, points in fleet_points.items():
+            if not points:
+                continue
+            centroid_x = sum(point[0] for point in points) / float(len(points))
+            centroid_y = sum(point[1] for point in points) / float(len(points))
+            max_radius = max(
+                math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
+                for point in points
+            )
+            total_hp = sum(point[2] for point in points)
+            if max_radius > 1e-9 and total_hp > 1e-9:
+                baselines[fleet_id] = (float(max_radius), float(total_hp))
+        return baselines
 
     def _validate_fire_link_mode(self, fire_link_mode: str) -> str:
         normalized = str(fire_link_mode).strip().lower()
@@ -277,6 +303,10 @@ class UnitRenderer:
     def fire_link_mode(self) -> str:
         return self._fire_link_mode
 
+    @property
+    def fleet_halo_state(self) -> dict[str, dict[str, float]]:
+        return {fleet_id: dict(state) for fleet_id, state in self._fleet_halo_state.items()}
+
     def _get_template(self, fleet_id: str) -> NodePath:
         template = self._templates.get(fleet_id)
         if template is not None:
@@ -289,10 +319,15 @@ class UnitRenderer:
         token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), TOKEN_ALPHA)
         token_np.setTransparency(TransparencyAttrib.MAlpha)
         token_np.setTwoSided(True)
+        token_np.setBin("transparent", 0)
+        token_np.setDepthWrite(False)
         token_np.reparentTo(template)
 
         cluster_np = template.attachNewNode("inner_cluster")
         cluster_np.setTransparency(TransparencyAttrib.MAlpha)
+        cluster_np.setTwoSided(True)
+        cluster_np.setBin("transparent", 10)
+        cluster_np.setDepthWrite(False)
         cuboid_template = _build_cuboid_template(
             f"unit_cluster_ship_{fleet_id}",
             half_width=0.011,
@@ -302,6 +337,7 @@ class UnitRenderer:
         cuboid_template.setColor(*CLUSTER_SHIP_COLOR)
         cuboid_template.setTransparency(TransparencyAttrib.MAlpha)
         cuboid_template.setTwoSided(True)
+        cuboid_template.setDepthWrite(False)
         for ship_index, (offset_x, offset_y, offset_z) in enumerate(CLUSTER_LAYOUT_OFFSETS):
             ship_np = cuboid_template.copyTo(cluster_np)
             ship_np.setName(f"cluster_ship_{ship_index}")
@@ -380,22 +416,40 @@ class UnitRenderer:
     def _sync_fleet_halos(self, frame: ViewerFrame) -> None:
         self._fleet_halos_np.removeNode()
         self._fleet_halos_np = self._overlay_np.attachNewNode("viewer_fleet_halos")
-        fleet_points: dict[str, list[tuple[float, float]]] = {}
+        self._fleet_halo_state = {}
+        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
         for unit in frame.units:
             if float(unit.hit_points) <= 0.0:
                 continue
-            fleet_points.setdefault(str(unit.fleet_id), []).append((float(unit.x), float(unit.y)))
+            fleet_points.setdefault(str(unit.fleet_id), []).append((float(unit.x), float(unit.y), float(unit.hit_points)))
         for fleet_id, points in fleet_points.items():
             if not points:
                 continue
             centroid_x = sum(point[0] for point in points) / float(len(points))
             centroid_y = sum(point[1] for point in points) / float(len(points))
-            max_radius = max(
-                math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
-                for point in points
-            )
-            if max_radius <= 1e-9:
+            current_total_hp = sum(point[2] for point in points)
+            baseline = self._fleet_halo_baselines.get(fleet_id)
+            if baseline is None:
+                baseline_radius = max(
+                    math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
+                    for point in points
+                )
+                baseline_total_hp = current_total_hp
+            else:
+                baseline_radius, baseline_total_hp = baseline
+            if baseline_radius <= 1e-9 or baseline_total_hp <= 1e-9 or current_total_hp <= 1e-9:
                 continue
+            halo_radius = float(baseline_radius) * math.sqrt(float(current_total_hp) / float(baseline_total_hp))
+            if halo_radius <= 1e-9:
+                continue
+            self._fleet_halo_state[fleet_id] = {
+                "centroid_x": float(centroid_x),
+                "centroid_y": float(centroid_y),
+                "radius": float(halo_radius),
+                "alive_total_hp": float(current_total_hp),
+                "baseline_radius": float(baseline_radius),
+                "baseline_total_hp": float(baseline_total_hp),
+            }
             fleet_rgba = _hex_to_rgba(self._replay.fleet_colors[fleet_id])
             pulse_phase = float(frame.tick) * FLEET_HALO_PULSE_RATE
             pulse_ratio = 0.5 + (0.5 * math.sin(pulse_phase))
@@ -406,7 +460,7 @@ class UnitRenderer:
                     name=f"fleet_halo_{fleet_id}_{layer_index}",
                     center_x=centroid_x,
                     center_y=centroid_y,
-                    radius=max_radius * float(radius_scale),
+                    radius=halo_radius * float(radius_scale),
                     z=FLEET_HALO_HEIGHT,
                     rgba=(
                         fleet_rgba[0],

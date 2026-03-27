@@ -25,6 +25,8 @@ FIXED_VIEWER_FLEET_COLORS = {
     "A": "#2a63b8",
     "B": "#b6404a",
 }
+DEFAULT_VIEWER_AVATAR_A = getattr(test_run_entry, "DEFAULT_AVATAR_A", "avatar_reinhard")
+DEFAULT_VIEWER_AVATAR_B = getattr(test_run_entry, "DEFAULT_AVATAR_B", "avatar_yang")
 FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug"}
 VALID_VECTOR_DISPLAY_MODES = {"effective", "free", "attack", "composite", "radial_debug"}
 VIEWER_DIRECTION_MODE_SETTINGS = "settings"
@@ -41,6 +43,7 @@ VIEWER_DIRECTION_MODE_CHOICES = (
 )
 REALISTIC_MIN_DISPLACEMENT_FRACTION = 0.0005
 REALISTIC_MIN_DISPLACEMENT_FLOOR = 0.10
+REALISTIC_WINDOW_RADIUS = 3
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,10 @@ def _normalize_vector(dx: float, dy: float) -> tuple[float, float]:
     if norm <= 1e-12:
         return (0.0, 0.0)
     return (float(dx) / norm, float(dy) / norm)
+
+
+def _vector_norm(dx: float, dy: float) -> float:
+    return math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
 
 
 def _resolve_vector_display_mode(settings: dict[str, Any]) -> str:
@@ -214,49 +221,73 @@ def _build_frame_position_lookup(frame: ViewerFrame) -> dict[str, tuple[float, f
 def _resolve_realistic_direction(
     unit: ViewerUnitState,
     *,
+    previous_window_position: tuple[float, float] | None,
     previous_position: tuple[float, float] | None,
     next_position: tuple[float, float] | None,
+    next_window_position: tuple[float, float] | None,
     last_valid_directions: dict[str, tuple[float, float]],
     fallback_direction: tuple[float, float],
     min_displacement: float,
 ) -> tuple[float, float]:
     unit_key = _unit_key(unit)
     current_position = (float(unit.x), float(unit.y))
-    candidate_displacements: list[tuple[float, float]] = []
+    last_displayed_direction = last_valid_directions.get(unit_key)
+    candidate_windows: list[tuple[float, float]] = []
+    if previous_window_position is not None and next_window_position is not None:
+        candidate_windows.append(
+            (
+                float(next_window_position[0]) - float(previous_window_position[0]),
+                float(next_window_position[1]) - float(previous_window_position[1]),
+            )
+        )
     if previous_position is not None and next_position is not None:
-        candidate_displacements.append(
+        candidate_windows.append(
             (
                 float(next_position[0]) - float(previous_position[0]),
                 float(next_position[1]) - float(previous_position[1]),
             )
         )
-    if next_position is not None:
-        candidate_displacements.append(
+    if previous_window_position is not None:
+        candidate_windows.append(
             (
-                float(next_position[0]) - float(current_position[0]),
-                float(next_position[1]) - float(current_position[1]),
+                float(current_position[0]) - float(previous_window_position[0]),
+                float(current_position[1]) - float(previous_window_position[1]),
+            )
+        )
+    if next_window_position is not None:
+        candidate_windows.append(
+            (
+                float(next_window_position[0]) - float(current_position[0]),
+                float(next_window_position[1]) - float(current_position[1]),
             )
         )
     if previous_position is not None:
-        candidate_displacements.append(
+        candidate_windows.append(
             (
                 float(current_position[0]) - float(previous_position[0]),
                 float(current_position[1]) - float(previous_position[1]),
             )
         )
+    if next_position is not None:
+        candidate_windows.append(
+            (
+                float(next_position[0]) - float(current_position[0]),
+                float(next_position[1]) - float(current_position[1]),
+            )
+        )
 
-    for dx_value, dy_value in candidate_displacements:
-        displacement_norm = math.sqrt((float(dx_value) * float(dx_value)) + (float(dy_value) * float(dy_value)))
+    for candidate_displacement in candidate_windows:
+        displacement_norm = _vector_norm(candidate_displacement[0], candidate_displacement[1])
         if displacement_norm < float(min_displacement):
             continue
-        realistic_direction = _normalize_vector(dx_value, dy_value)
-        if realistic_direction != (0.0, 0.0):
-            last_valid_directions[unit_key] = realistic_direction
-            return realistic_direction
+        candidate_direction = _normalize_vector(candidate_displacement[0], candidate_displacement[1])
+        if candidate_direction == (0.0, 0.0):
+            continue
+        last_valid_directions[unit_key] = candidate_direction
+        return candidate_direction
 
-    last_valid = last_valid_directions.get(unit_key)
-    if last_valid is not None:
-        return last_valid
+    if last_displayed_direction is not None:
+        return last_displayed_direction
     if fallback_direction != (0.0, 0.0):
         return fallback_direction
     return _normalize_vector(unit.orientation_x, unit.orientation_y)
@@ -266,8 +297,10 @@ def _resolve_frame_display_units(
     frame: ViewerFrame,
     *,
     vector_display_mode: str,
+    previous_window_positions: dict[str, tuple[float, float]],
     previous_positions: dict[str, tuple[float, float]],
     next_positions: dict[str, tuple[float, float]],
+    next_window_positions: dict[str, tuple[float, float]],
     last_realistic_directions: dict[str, tuple[float, float]],
     realistic_min_displacement: float,
 ) -> tuple[ViewerUnitState, ...]:
@@ -317,8 +350,10 @@ def _resolve_frame_display_units(
         elif vector_display_mode == "realistic":
             display_direction = _resolve_realistic_direction(
                 unit,
+                previous_window_position=previous_window_positions.get(unit_key),
                 previous_position=previous,
                 next_position=next_position,
+                next_window_position=next_window_positions.get(unit_key),
                 last_valid_directions=last_realistic_directions,
                 fallback_direction=effective_direction,
                 min_displacement=realistic_min_displacement,
@@ -352,16 +387,24 @@ def _resolve_display_frames(
     )
     resolved_frames: list[ViewerFrame] = []
     for frame_index, frame in enumerate(frames):
+        previous_window_positions = position_lookups[frame_index - REALISTIC_WINDOW_RADIUS] if frame_index >= REALISTIC_WINDOW_RADIUS else {}
         previous_positions = position_lookups[frame_index - 1] if frame_index > 0 else {}
         next_positions = position_lookups[frame_index + 1] if (frame_index + 1) < len(position_lookups) else {}
+        next_window_positions = (
+            position_lookups[frame_index + REALISTIC_WINDOW_RADIUS]
+            if (frame_index + REALISTIC_WINDOW_RADIUS) < len(position_lookups)
+            else {}
+        )
         resolved_frames.append(
             replace(
                 frame,
                 units=_resolve_frame_display_units(
                     frame,
                     vector_display_mode=vector_display_mode,
+                    previous_window_positions=previous_window_positions,
                     previous_positions=previous_positions,
                     next_positions=next_positions,
+                    next_window_positions=next_window_positions,
                     last_realistic_directions=last_realistic_directions,
                     realistic_min_displacement=realistic_min_displacement,
                 ),
@@ -497,6 +540,9 @@ def load_viewer_replay(
         metadata = {
             "summary": dict(result["prepared"]["summary"]),
             "fixture_readout": dict(result["observer_telemetry"].get("fixture", {})),
+            "fleet_avatars": {
+                "A": scenario.resolve_avatar_with_fallback(fleet_data, DEFAULT_VIEWER_AVATAR_A),
+            },
             "max_steps_effective": int(effective_max_steps),
             "max_steps_source": max_steps_source,
             "frame_stride": int(frame_stride),
@@ -543,6 +589,10 @@ def load_viewer_replay(
     fleet_b_data = prepared["fleet_b_data"]
     metadata = {
         "summary": dict(result["prepared"]["summary"]),
+        "fleet_avatars": {
+            "A": scenario.resolve_avatar_with_fallback(fleet_a_data, DEFAULT_VIEWER_AVATAR_A),
+            "B": scenario.resolve_avatar_with_fallback(fleet_b_data, DEFAULT_VIEWER_AVATAR_B),
+        },
         "max_steps_effective": int(effective_max_steps),
         "max_steps_source": max_steps_source,
         "frame_stride": int(frame_stride),

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import math
+from pathlib import Path
 from typing import Sequence
 
 try:
+    from direct.gui.DirectFrame import DirectFrame
+    from direct.gui.OnscreenImage import OnscreenImage
     from direct.gui.OnscreenText import OnscreenText
     from direct.showbase.ShowBase import ShowBase
-    from panda3d.core import ClockObject, TextNode, loadPrcFileData
+    from panda3d.core import ClockObject, Filename, Point2, Point3, TextNode, TransparencyAttrib, loadPrcFileData
 except ImportError as exc:  # pragma: no cover - import guard for incorrect env usage
     raise SystemExit(
         "Panda3D is not available in the current interpreter. "
@@ -21,6 +25,8 @@ from viz3d_panda.replay_source import (
     VIEWER_SOURCE_AUTO,
     VIEWER_SOURCE_CHOICES,
     ReplayBundle,
+    ViewerFrame,
+    ViewerUnitState,
     load_viewer_replay,
 )
 from viz3d_panda.scene_builder import build_scene
@@ -28,11 +34,43 @@ from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
 
 WINDOW_TITLE = "LOGH dev_v2.0 Panda3D Viewer Scaffold"
+AVATAR_DIR = Path(__file__).resolve().parents[1] / "visual" / "avatars"
 PLAYBACK_FPS_LEVELS = (4.0, 8.0, 12.0, 18.0, 24.0)
 DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
+LOW_SPEED_SMOOTHING_MAX_FPS = 12.0
+FLEET_AVATAR_HEIGHT = 0.105
+FLEET_AVATAR_ASPECT_RATIO = 4.0 / 5.0
+FLEET_AVATAR_SCREEN_NUDGE = 0.012
+FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.078
+FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.128
+FLEET_AVATAR_BORDER_PAD = 0.009
+FLEET_AVATAR_MATTE_PAD = 0.004
+FLEET_AVATAR_HIGHLIGHT_PAD = 0.048
+FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.38
+FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
+FLEET_AVATAR_BORDER_ALPHA = 1.0
+
+
+def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
+    stem = str(avatar_id).strip() if avatar_id is not None else ""
+    if not stem:
+        return None
+    suffixes = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+    candidate_names: list[str] = []
+    if "." in stem:
+        candidate_names.append(stem)
+    else:
+        if stem.startswith("avatar_"):
+            candidate_names.extend([f"avatar_s_{stem[len('avatar_') :]}{suffix}" for suffix in suffixes])
+        candidate_names.extend([f"{stem}{suffix}" for suffix in suffixes])
+    for name in candidate_names:
+        path = AVATAR_DIR / name
+        if path.exists():
+            return path
+    return None
 
 
 def _configure_window(*, width: int, height: int) -> None:
@@ -73,6 +111,48 @@ def _format_point(values: object, *, dimensions: int) -> str | None:
     return f"({', '.join(parts)})"
 
 
+def _normalize_heading(dx: float, dy: float) -> tuple[float, float]:
+    norm = math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
+    if norm <= 1e-12:
+        return (0.0, 0.0)
+    return (float(dx) / norm, float(dy) / norm)
+
+
+def _interpolate_heading(
+    current_heading: tuple[float, float],
+    next_heading: tuple[float, float],
+    alpha: float,
+) -> tuple[float, float]:
+    if current_heading == (0.0, 0.0):
+        return next_heading
+    if next_heading == (0.0, 0.0):
+        return current_heading
+    dot = (float(current_heading[0]) * float(next_heading[0])) + (float(current_heading[1]) * float(next_heading[1]))
+    if dot <= -0.98:
+        return next_heading if float(alpha) >= 0.5 else current_heading
+    blended = (
+        ((1.0 - float(alpha)) * float(current_heading[0])) + (float(alpha) * float(next_heading[0])),
+        ((1.0 - float(alpha)) * float(current_heading[1])) + (float(alpha) * float(next_heading[1])),
+    )
+    normalized = _normalize_heading(blended[0], blended[1])
+    return normalized if normalized != (0.0, 0.0) else next_heading
+
+
+def _hex_to_rgba(value: str, *, alpha: float) -> tuple[float, float, float, float]:
+    text = str(value).strip()
+    if text.startswith("#"):
+        text = text[1:]
+    if len(text) != 6:
+        return (1.0, 1.0, 1.0, float(alpha))
+    try:
+        red = int(text[0:2], 16) / 255.0
+        green = int(text[2:4], 16) / 255.0
+        blue = int(text[4:6], 16) / 255.0
+    except ValueError:
+        return (1.0, 1.0, 1.0, float(alpha))
+    return (red, green, blue, float(alpha))
+
+
 class FleetViewerApp(ShowBase):
     def __init__(self, replay: ReplayBundle, *, playback_fps: float, fire_link_mode: str) -> None:
         if not replay.frames:
@@ -87,6 +167,8 @@ class FleetViewerApp(ShowBase):
         self._current_frame_index = 0
         self._accumulator = 0.0
         self._playing = True
+        self._smoothing_enabled = True
+        self._avatars_enabled = True
         self._held_step_direction = 0
         self._held_step_delay_remaining = 0.0
         self._held_step_repeat_accumulator = 0.0
@@ -94,6 +176,8 @@ class FleetViewerApp(ShowBase):
         self._scene_root = build_scene(self.render, arena_size=self._replay.arena_size)
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
+        self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
+        self._fleet_avatar_world_lift = max(8.0, float(self._replay.arena_size) * 0.03)
 
         self._status_text = OnscreenText(
             text="",
@@ -105,7 +189,7 @@ class FleetViewerApp(ShowBase):
         )
         self._control_text = OnscreenText(
             text=(
-                "Space play/pause  N/B step/hold  [/ ] speed gear  V fire-links\n"
+                "Space play/pause  N/B step/hold  [/ ] speed gear  V fire-links  M smooth  P portraits\n"
                 "LDrag pan  RDrag orbit  Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit"
             ),
             parent=self.aspect2d,
@@ -114,6 +198,7 @@ class FleetViewerApp(ShowBase):
             align=TextNode.ALeft,
             fg=(0.72, 0.80, 0.89, 1.0),
         )
+        self._build_avatar_overlays()
 
         self.accept("space", self.toggle_playback)
         self.accept("n", self._begin_hold_step, [1])
@@ -121,6 +206,8 @@ class FleetViewerApp(ShowBase):
         self.accept("b", self._begin_hold_step, [-1])
         self.accept("b-up", self._end_hold_step, [-1])
         self.accept("v", self.cycle_fire_link_mode)
+        self.accept("m", self.toggle_smoothing)
+        self.accept("p", self.toggle_avatars)
         self.accept("]", self._adjust_playback_speed, [1])
         self.accept("[", self._adjust_playback_speed, [-1])
         self.accept("1", self._focus_fleet_camera, ["A"])
@@ -136,7 +223,7 @@ class FleetViewerApp(ShowBase):
         next_index = max(0, min(len(PLAYBACK_FPS_LEVELS) - 1, self._playback_level_index + int(delta)))
         self._playback_level_index = next_index
         self._playback_fps = float(PLAYBACK_FPS_LEVELS[self._playback_level_index])
-        self._refresh_overlay()
+        self.go_to_frame(self._current_frame_index)
 
     def cycle_fire_link_mode(self) -> None:
         current_index = FIRE_LINK_MODE_CHOICES.index(self._unit_renderer.fire_link_mode)
@@ -146,6 +233,15 @@ class FleetViewerApp(ShowBase):
 
     def toggle_playback(self) -> None:
         self._playing = not self._playing
+        self.go_to_frame(self._current_frame_index)
+
+    def toggle_smoothing(self) -> None:
+        self._smoothing_enabled = not self._smoothing_enabled
+        self.go_to_frame(self._current_frame_index)
+
+    def toggle_avatars(self) -> None:
+        self._avatars_enabled = not self._avatars_enabled
+        self._sync_fleet_avatar_overlays()
         self._refresh_overlay()
 
     def _step_by(self, direction: int) -> None:
@@ -180,12 +276,209 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         self._camera_controller.start_fleet_tracking(frame, str(fleet_id))
 
+    def _render_frame(self, frame: ViewerFrame) -> None:
+        self._unit_renderer.sync_frame(frame)
+        self._unit_renderer.update_view(self.camera)
+        self._sync_fleet_avatar_overlays()
+
+    def _build_avatar_overlays(self) -> None:
+        raw_avatars = self._replay.metadata.get("fleet_avatars", {})
+        if not isinstance(raw_avatars, dict):
+            return
+        # OnscreenImage scale values are already half-extents in aspect2d space
+        # because the underlying card spans [-1, +1]. Build border geometry around
+        # those true half-extents so all four sides stay outside the portrait.
+        avatar_half_height = FLEET_AVATAR_HEIGHT
+        avatar_half_width = FLEET_AVATAR_HEIGHT * FLEET_AVATAR_ASPECT_RATIO
+        border_half_height = avatar_half_height + FLEET_AVATAR_BORDER_PAD
+        border_half_width = avatar_half_width + FLEET_AVATAR_BORDER_PAD
+        matte_half_height = avatar_half_height + FLEET_AVATAR_MATTE_PAD
+        matte_half_width = avatar_half_width + FLEET_AVATAR_MATTE_PAD
+        highlight_half_height = avatar_half_height + FLEET_AVATAR_HIGHLIGHT_PAD
+        highlight_half_width = avatar_half_width + FLEET_AVATAR_HIGHLIGHT_PAD
+        for fleet_id, avatar_id in raw_avatars.items():
+            avatar_path = _resolve_avatar_image_path(avatar_id)
+            if avatar_path is None:
+                continue
+            texture = self.loader.loadTexture(Filename.fromOsSpecific(str(avatar_path)))
+            if texture is None:
+                continue
+            fleet_color = self._replay.fleet_colors.get(str(fleet_id), "#ffffff")
+            highlight = DirectFrame(
+                parent=self.aspect2d,
+                frameSize=(-highlight_half_width, highlight_half_width, -highlight_half_height, highlight_half_height),
+                frameColor=_hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_HIGHLIGHT_ALPHA),
+            )
+            highlight.setTransparency(TransparencyAttrib.MAlpha)
+            highlight.setBin("fixed", 40)
+            highlight.setDepthTest(False)
+            highlight.setDepthWrite(False)
+            highlight.hide()
+            matte = DirectFrame(
+                parent=self.aspect2d,
+                frameSize=(-matte_half_width, matte_half_width, -matte_half_height, matte_half_height),
+                frameColor=FLEET_AVATAR_MATTE_COLOR,
+            )
+            matte.setTransparency(TransparencyAttrib.MAlpha)
+            matte.setBin("fixed", 42)
+            matte.setDepthTest(False)
+            matte.setDepthWrite(False)
+            matte.hide()
+            border_color = _hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_BORDER_ALPHA)
+            border_bars = {
+                "top": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-border_half_width, border_half_width, matte_half_height, border_half_height),
+                    frameColor=border_color,
+                ),
+                "bottom": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-border_half_width, border_half_width, -border_half_height, -matte_half_height),
+                    frameColor=border_color,
+                ),
+                "left": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-border_half_width, -matte_half_width, -matte_half_height, matte_half_height),
+                    frameColor=border_color,
+                ),
+                "right": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(matte_half_width, border_half_width, -matte_half_height, matte_half_height),
+                    frameColor=border_color,
+                ),
+            }
+            for border_bar in border_bars.values():
+                border_bar.setTransparency(TransparencyAttrib.MAlpha)
+                border_bar.setBin("fixed", 45)
+                border_bar.setDepthTest(False)
+                border_bar.setDepthWrite(False)
+                border_bar.hide()
+            node = OnscreenImage(
+                image=texture,
+                parent=self.aspect2d,
+                pos=(0.0, 0.0, 0.0),
+                scale=(avatar_half_width, 1.0, avatar_half_height),
+            )
+            node.setTransparency(TransparencyAttrib.MAlpha)
+            node.setBin("fixed", 44)
+            node.setDepthTest(False)
+            node.setDepthWrite(False)
+            node.hide()
+            self._fleet_avatar_nodes[str(fleet_id)] = {
+                "highlight": highlight,
+                "matte": matte,
+                "border_top": border_bars["top"],
+                "border_bottom": border_bars["bottom"],
+                "border_left": border_bars["left"],
+                "border_right": border_bars["right"],
+                "image": node,
+            }
+
+    def _project_avatar_anchor(self, *, centroid_x: float, centroid_y: float, fleet_radius: float) -> tuple[float, float] | None:
+        world_lift = max(self._fleet_avatar_world_lift, float(fleet_radius) * 0.28)
+        projected_centroid = self._project_world_to_aspect2d(Point3(float(centroid_x), float(centroid_y), 0.0))
+        projected_lifted = self._project_world_to_aspect2d(Point3(float(centroid_x), float(centroid_y), world_lift))
+        if projected_centroid is None:
+            return None
+        raw_offset = FLEET_AVATAR_SCREEN_NUDGE
+        if projected_lifted is not None:
+            raw_offset += float(projected_lifted[1]) - float(projected_centroid[1])
+        clamped_offset = max(FLEET_AVATAR_MIN_SCREEN_OFFSET, min(FLEET_AVATAR_MAX_SCREEN_OFFSET, raw_offset))
+        return (float(projected_centroid[0]), float(projected_centroid[1]) + clamped_offset)
+
+    def _project_world_to_aspect2d(self, world_point: Point3) -> tuple[float, float] | None:
+        camera_point = self.camera.getRelativePoint(self.render, world_point)
+        projected = Point2()
+        if not self.camLens.project(camera_point, projected):
+            return None
+        return (float(projected.x) * float(self.getAspectRatio()), float(projected.y))
+
+    def _sync_fleet_avatar_overlays(self) -> None:
+        if not self._avatars_enabled:
+            for nodes in self._fleet_avatar_nodes.values():
+                for node in nodes.values():
+                    node.hide()
+            return
+        halo_state = self._unit_renderer.fleet_halo_state
+        for fleet_id, nodes in self._fleet_avatar_nodes.items():
+            state = halo_state.get(fleet_id)
+            if not isinstance(state, dict):
+                for node in nodes.values():
+                    node.hide()
+                continue
+            projected_anchor = self._project_avatar_anchor(
+                centroid_x=float(state["centroid_x"]),
+                centroid_y=float(state["centroid_y"]),
+                fleet_radius=float(state["radius"]),
+            )
+            if projected_anchor is None:
+                for node in nodes.values():
+                    node.hide()
+                continue
+            aspect_ratio = float(self.getAspectRatio())
+            target_x = max(-(aspect_ratio - 0.08), min(aspect_ratio - 0.08, float(projected_anchor[0])))
+            target_z = max(-0.90, min(0.92, float(projected_anchor[1])))
+            for node in nodes.values():
+                node.setPos(target_x, 0.0, target_z)
+                node.show()
+
+    def _smoothing_active(self) -> bool:
+        return bool(self._smoothing_enabled and self._playing and self._playback_fps <= LOW_SPEED_SMOOTHING_MAX_FPS and len(self._replay.frames) > 1)
+
+    def _build_smoothed_frame(self, alpha: float) -> ViewerFrame:
+        current_frame = self._replay.frames[self._current_frame_index]
+        if len(self._replay.frames) <= 1:
+            return current_frame
+        next_index = self._current_frame_index + 1
+        if next_index >= len(self._replay.frames):
+            next_index = 0
+        next_frame = self._replay.frames[next_index]
+        interpolation_alpha = min(1.0, max(0.0, float(alpha)))
+        if interpolation_alpha <= 1e-9:
+            return current_frame
+        next_units = {
+            (str(unit.fleet_id), str(unit.unit_id)): unit
+            for unit in next_frame.units
+        }
+        smoothed_units: list[ViewerUnitState] = []
+        for unit in current_frame.units:
+            next_unit = next_units.get((str(unit.fleet_id), str(unit.unit_id)))
+            if next_unit is None:
+                smoothed_units.append(unit)
+                continue
+            blended_heading = _interpolate_heading(
+                (float(unit.heading_x), float(unit.heading_y)),
+                (float(next_unit.heading_x), float(next_unit.heading_y)),
+                interpolation_alpha,
+            )
+            smoothed_units.append(
+                ViewerUnitState(
+                    unit_id=str(unit.unit_id),
+                    fleet_id=str(unit.fleet_id),
+                    x=((1.0 - interpolation_alpha) * float(unit.x)) + (interpolation_alpha * float(next_unit.x)),
+                    y=((1.0 - interpolation_alpha) * float(unit.y)) + (interpolation_alpha * float(next_unit.y)),
+                    z=((1.0 - interpolation_alpha) * float(unit.z)) + (interpolation_alpha * float(next_unit.z)),
+                    heading_x=float(blended_heading[0]),
+                    heading_y=float(blended_heading[1]),
+                    orientation_x=float(unit.orientation_x),
+                    orientation_y=float(unit.orientation_y),
+                    velocity_x=float(unit.velocity_x),
+                    velocity_y=float(unit.velocity_y),
+                    hit_points=float(unit.hit_points),
+                    max_hit_points=float(unit.max_hit_points),
+                )
+            )
+        return ViewerFrame(
+            tick=int(current_frame.tick),
+            units=tuple(smoothed_units),
+            targets=dict(current_frame.targets),
+        )
+
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
-        self._unit_renderer.sync_frame(frame)
         self._camera_controller.sync_tracked_frame(frame)
-        self._unit_renderer.update_view(self.camera)
+        self._render_frame(frame)
         self._refresh_overlay()
 
     def _refresh_overlay(self) -> None:
@@ -198,6 +491,8 @@ class FleetViewerApp(ShowBase):
         settings_vector_display_mode = self._replay.metadata.get("settings_vector_display_mode", vector_display_mode)
         direction_mode_source = self._replay.metadata.get("direction_mode_source", "settings")
         fire_link_mode = self._unit_renderer.fire_link_mode
+        smoothing_text = "on" if self._smoothing_enabled else "off"
+        avatar_text = "on" if self._avatars_enabled else "off"
         if direction_mode_source == "override":
             direction_text = f"dir_mode={vector_display_mode}  settings_dir={settings_vector_display_mode}"
         else:
@@ -206,7 +501,7 @@ class FleetViewerApp(ShowBase):
             WINDOW_TITLE,
             f"source={self._replay.source_kind}  frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tick={frame.tick}",
             f"fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}  state={playback_label}",
-            f"sim_limit={max_steps_source}:{max_steps_effective}  {direction_text}  fire_links={fire_link_mode}",
+            f"sim_limit={max_steps_source}:{max_steps_effective}  {direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}  portraits={avatar_text}",
         ]
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
@@ -227,7 +522,6 @@ class FleetViewerApp(ShowBase):
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
         self._camera_controller.update(dt)
-        self._unit_renderer.update_view(self.camera)
         if self._held_step_direction != 0 and len(self._replay.frames) > 1:
             if self._held_step_delay_remaining > 0.0:
                 self._held_step_delay_remaining = max(0.0, self._held_step_delay_remaining - dt)
@@ -245,6 +539,18 @@ class FleetViewerApp(ShowBase):
                 if next_index >= len(self._replay.frames):
                     next_index = 0
                 self.go_to_frame(next_index)
+            if self._smoothing_active():
+                smoothing_alpha = self._accumulator / frame_period
+                if smoothing_alpha > 1e-6:
+                    smoothed_frame = self._build_smoothed_frame(smoothing_alpha)
+                    self._camera_controller.sync_tracked_frame(smoothed_frame)
+                    self._render_frame(smoothed_frame)
+                else:
+                    self._unit_renderer.update_view(self.camera)
+            else:
+                self._unit_renderer.update_view(self.camera)
+        else:
+            self._unit_renderer.update_view(self.camera)
         return task.cont
 
 
@@ -272,7 +578,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=VIEWER_DIRECTION_MODE_SETTINGS,
         help=(
             "Viewer-local direction readout mode. 'settings' preserves the current layered "
-            "2D vector_display_mode; 'realistic' uses realized local trajectory tangent."
+            "2D vector_display_mode; 'realistic' uses a human-readable short-window travel posture."
         ),
     )
     parser.add_argument(

@@ -85,13 +85,13 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 ## 3D Viewer Bootstrap Paths
 
 - `viz3d_panda/app.py`
-  - additive Panda3D viewer entrypoint for the `dev_v2.0` bootstrap container; owns launch/playback wiring only
+  - additive Panda3D viewer entrypoint for the `dev_v2.0` bootstrap container; owns launch/playback wiring, low-speed smoothing, and fixed-size screen-space avatar overlay only
 - `viz3d_panda/replay_source.py`
   - consumes existing `test_run` active-surface output, inherits layered settings by default, and normalizes in-memory `position_frames` for viewer use
 - `viz3d_panda/scene_builder.py`
   - viewer-local scene/grid/light bootstrap only
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets, minimal objective marker support, strengthened fleet halos, and a distance-driven dual-layer close-range cluster view
+  - wedge-token unit rendering with viewer-local HP size buckets, minimal objective marker support, HP-scaled fleet halos, and a distance-driven dual-layer close-range cluster view
 - `viz3d_panda/camera_controller.py`
   - bounded camera orbit/pan/zoom controls only
 - `launch_dev_v2_0_viewer.bat`
@@ -107,9 +107,11 @@ Current availability status:
 - current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
 - current unit rendering can now cross-fade from far-range wedge readability into a near-range fixed 10-cuboid metallic-gray cluster without widening runtime or replay semantics
 - current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read
-- current viewer-local direction readout modes include `realistic`, which derives heading cue primarily from realized local trajectory tangent rather than upstream intent vectors
+- current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read with low-speed playback smoothing retained, while late-stage objective-area visual residual remains open
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
+- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and supports a local `P` show/hide toggle
+- current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active

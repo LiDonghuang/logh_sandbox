@@ -80,13 +80,13 @@ Authority: Reference only, not canonical semantics authority
 ### 8. Additive 3D Viewer Bootstrap Layer
 
 - `viz3d_panda/app.py`
-  - Panda3D viewer entrypoint and playback loop; owns launch/playback wiring only
+  - Panda3D viewer entrypoint and playback loop; owns launch/playback wiring, low-speed smoothing, and fixed-size screen-space avatar overlay only
 - `viz3d_panda/replay_source.py`
   - in-memory replay bundle build from existing `test_run` returned `position_frames`; replay consumption only
 - `viz3d_panda/scene_builder.py`
   - simple viewer-local scene/grid/light setup
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets plus minimal objective marker and fleet halo overlays
+  - wedge-token unit rendering with viewer-local HP size buckets plus minimal objective marker, HP-scaled fleet halo overlays, and dual-layer close-range cluster rendering
 - `viz3d_panda/camera_controller.py`
   - simple viewer-local orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
@@ -106,14 +106,17 @@ Current availability:
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
 - viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization, and broader zoom/pitch limits
-- viewer-local direction readout now includes `realistic`, which reads heading primarily from realized local trajectory tangent while leaving existing `composite` / `effective` / `fire`-family modes intact
+- viewer-local direction readout now includes `realistic`; current local shape reads as a short-window travel-posture mode, not a pure local-tangent microscope, and works together with low-speed playback smoothing
 - Step 3 objective line is now sufficiently established in bounded scope: draft, bounded first carrier, harness-side validation, and very small viewer-consumption hookup are all complete
 - Step 3 first implementation remains bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
 - current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and per-fleet halos, while semantic ownership remains outside the viewer
+- current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, keyed by existing scenario avatar ids, and toggleable with local `P` portraits on/off control
+- current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
+- late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
 - no parallel simulation settings or replay-protocol ownership lives here
 - no 3D runtime semantics or baseline protocol owned here
 
