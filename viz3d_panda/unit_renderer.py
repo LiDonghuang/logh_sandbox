@@ -86,7 +86,7 @@ OBJECTIVE_MARKER_DOT_RADIUS = 1.45
 OBJECTIVE_MARKER_RING_ALPHA = 0.38
 OBJECTIVE_MARKER_DOT_ALPHA = 0.95
 OBJECTIVE_MARKER_SEGMENTS = 40
-FLEET_HALO_HEIGHT = 0.12
+FLEET_HALO_HEIGHT = -0.50
 FLEET_HALO_PULSE_PERIOD_SECONDS = 5.0
 FLEET_HALO_PULSE_MIN = 0.85
 FLEET_HALO_PULSE_MAX = 0.97
@@ -438,6 +438,8 @@ class UnitRenderer:
                 thickness=float(thickness),
                 segments_count=FLEET_HALO_SEGMENTS,
             )
+            ring_np.setBin("transparent", -10)
+            ring_np.setDepthWrite(False)
             ring_np.hide()
             halo_nodes.append(ring_np)
         self._fleet_halo_nodes[fleet_id] = halo_nodes

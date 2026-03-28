@@ -585,7 +585,8 @@ class FleetViewerApp(ShowBase):
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
-        self._camera_controller.sync_tracked_frame(frame, smooth=self._playing)
+        if not self._playing:
+            self._camera_controller.sync_tracked_frame(frame, smooth=False)
         self._render_frame(frame, pulse_phase=0.0)
         self._refresh_overlay()
 
@@ -666,7 +667,7 @@ class FleetViewerApp(ShowBase):
                         current_frame,
                         next_frame,
                         alpha=smoothing_alpha,
-                        smooth=True,
+                        smooth=False,
                     )
                     self._unit_renderer.apply_interpolated_transforms(
                         current_frame,
@@ -690,10 +691,14 @@ class FleetViewerApp(ShowBase):
                     return task.cont
             elif self._unit_renderer.fire_link_mode == "enabled":
                 current_frame = self._replay.frames[self._current_frame_index]
+                self._camera_controller.sync_tracked_frame(current_frame, smooth=True)
                 self._unit_renderer.refresh_fire_links(
                     current_frame,
                     pulse_phase=(self._accumulator / frame_period) if frame_period > 1e-9 else 0.0,
                 )
+            else:
+                current_frame = self._replay.frames[self._current_frame_index]
+                self._camera_controller.sync_tracked_frame(current_frame, smooth=True)
         self._unit_renderer.update_view(self.camera)
         self._sync_fleet_avatar_overlays()
         return task.cont
