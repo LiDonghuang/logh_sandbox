@@ -172,3 +172,33 @@ The first bounded legality implementation plan is complete when the future imple
 - leave richer algorithm and consumer decisions for later carriers
 
 That is sufficient for this plan carrier.
+
+## 10. Human-Trackable Validation Option
+
+For substantive runtime-facing modifications, engineering should try to provide at least one human-trackable validation option that can be inspected without stepping through the code.
+
+The option may stay minimal. Good bounded forms include:
+
+- a small variable dump
+- a bounded long-form CSV keyed by `tick + unit_id`
+- a compact delta/error summary
+
+When there are multiple reasonable readout shapes, engineering may suggest the lightest one first and let the human choose whether a richer dump is needed.
+
+For the current legality first-bounded-implementation discussion, the concrete example is:
+
+- `analysis/engineering_reports/developments/20260328/step3_3d_legality_expected_positions_first50_ticks_longform_20260328.csv`
+
+That artifact is saved as a single long-form CSV so the human can filter by:
+
+- tick
+- unit
+- expected world position
+- actual world position
+- actual relative forward/lateral position
+- expected slot-local forward/lateral offset
+- forward/lateral deltas
+
+This validation option is for human/governance tracing only.
+
+It does not change runtime semantics, and it does not by itself authorize broader telemetry or reporting-surface expansion.
