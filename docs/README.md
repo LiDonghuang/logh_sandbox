@@ -13,7 +13,7 @@ These are the highest-authority governance / semantics documents for active work
 Representative active files:
 
 - `canonical/Sandbox_Governance_Canonical_v1.1.md`
-- `canonical/Sandbox_CrossThread_Protocol_v1.2.md`
+- `canonical/Sandbox_CrossThread_Protocol_v1.3.md`
 - `canonical/Engine_v2.0_Skeleton_Canonical.md`
 - `canonical/Engine_v2.0_Skeleton_Freeze_Declaration.md`
 - `canonical/Ten_Parameters_Canonical_Index_v1.1.md`

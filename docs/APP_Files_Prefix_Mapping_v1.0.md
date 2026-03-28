@@ -28,7 +28,7 @@ It may still be retained in the repository, but it is not part of the APP active
 | APP flat mirror filename | VS authoritative source path | Class | Status |
 | --- | --- | --- | --- |
 | `00_Sandbox_Governance_Canonical_v1.1.md` | `canonical/Sandbox_Governance_Canonical_v1.1.md` | 00 | active |
-| `00_Sandbox_CrossThread_Protocol_v1.2.md` | `canonical/Sandbox_CrossThread_Protocol_v1.2.md` | 00 | active |
+| `00_Sandbox_CrossThread_Protocol_v1.3.md` | `canonical/Sandbox_CrossThread_Protocol_v1.3.md` | 00 | active |
 | `00_Baseline_Replacement_Protocol_v1.0.md` | `docs/governance/Baseline_Replacement_Protocol_v1.0.md` | 00 | active |
 | `10_Formation_Geometry_Doctrine_v1.0.md` | `docs/architecture/Formation_Geometry_Doctrine_v1.0.md` | 10 | active |
 | `10_Ten_Parameters_Personality_to_Battlefield_Behavior_Mapping_Canonical_Draft.md` | `canonical/Ten_Parameters_Personality_to_Battlefield_Behavior_Mapping_Canonical_Draft.md` | 10 | active |
