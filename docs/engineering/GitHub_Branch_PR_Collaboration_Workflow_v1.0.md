@@ -30,7 +30,46 @@ The goal is:
 
 ---
 
-## 2. Shared Roles
+## 2. Action Mode Labels
+
+Each formal Governance directive should now carry one explicit action-mode label.
+
+Only the following three labels are valid:
+
+- `[LOCAL ONLY]`
+- `[DIRECT PUSH]`
+- `[BRANCH + PR]`
+
+Their meanings are:
+
+- `[LOCAL ONLY]`
+  - produce local work only
+  - do not commit
+  - do not push
+  - do not open a PR
+
+- `[DIRECT PUSH]`
+  - commit the scoped work
+  - push directly to `dev_v2.0`
+
+- `[BRANCH + PR]`
+  - commit the scoped work
+  - push to the named feature branch
+  - open a PR into `dev_v2.0`
+
+Engineering should not infer remote intent from tone or surrounding context.
+
+If a directive does not include an action-mode label, Engineering should stop and report:
+
+- remote action not specified
+
+One-line rule:
+
+- remote behavior must be explicitly labeled rather than guessed
+
+---
+
+## 3. Shared Roles
 
 The repo is the shared working base for three parties:
 
@@ -51,7 +90,12 @@ The repo is the shared working base for three parties:
 
 ---
 
-## 3. Direct Push vs Branch + PR
+## 4. Direct Push vs Branch + PR
+
+The recommended LOGH default remains:
+
+- small, pure-document, low-risk carriers may use `[DIRECT PUSH]`
+- medium or review-sensitive carriers should prefer `[BRANCH + PR]`
 
 ### Direct push to `dev_v2.0` is appropriate for:
 
@@ -83,7 +127,7 @@ One-line rule:
 
 ---
 
-## 4. Branch Naming
+## 5. Branch Naming
 
 Feature branches should normally start from `dev_v2.0`.
 
@@ -109,7 +153,7 @@ Branch names should stay short, readable, and carrier-specific.
 
 ---
 
-## 5. One PR = One Carrier
+## 6. One PR = One Carrier
 
 Each PR should carry one carrier only.
 
@@ -132,7 +176,7 @@ One-line rule:
 
 ---
 
-## 6. Base Branch
+## 7. Base Branch
 
 Unless Human explicitly directs otherwise, the authoritative working base remains:
 
@@ -147,7 +191,7 @@ Do not target `main` casually.
 
 ---
 
-## 7. PR Titles
+## 8. PR Titles
 
 Recommended title prefixes:
 
@@ -166,7 +210,7 @@ Titles should describe the carrier precisely and avoid implementation overclaim.
 
 ---
 
-## 8. PR Description Template
+## 9. PR Description Template
 
 PR descriptions should usually include:
 
@@ -195,7 +239,7 @@ Example shape:
 
 ---
 
-## 9. Review Focus
+## 10. Review Focus
 
 ### Human review emphasis
 
@@ -219,7 +263,7 @@ Example shape:
 
 ---
 
-## 10. When Not To Open A PR
+## 11. When Not To Open A PR
 
 PR overhead is usually not worth it for:
 
@@ -232,7 +276,7 @@ For those cases, direct push to `dev_v2.0` is often the cleaner workflow when Hu
 
 ---
 
-## 11. When PR Is Strongly Recommended
+## 12. When PR Is Strongly Recommended
 
 PR workflow is strongly recommended for:
 
@@ -250,7 +294,7 @@ One-line rule:
 
 ---
 
-## 12. Merge / Accept Checks
+## 13. Merge / Accept Checks
 
 Before merge or acceptance, review at least:
 
@@ -265,7 +309,7 @@ If no meaningful repo-structure or mechanism availability change occurred, expli
 
 ---
 
-## 13. Recommended LOGH Cadence
+## 14. Recommended LOGH Cadence
 
 ### Small carrier rhythm
 
@@ -288,7 +332,7 @@ This is the current recommended balance for LOGH:
 
 ---
 
-## 14. Working Standard
+## 15. Working Standard
 
 Keep the following read explicit:
 
