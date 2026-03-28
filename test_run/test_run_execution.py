@@ -1607,6 +1607,10 @@ def run_simulation(
             "projection_pairs_count": [],
             "projection_mean_displacement": [],
             "projection_max_displacement": [],
+            "legality_reference_surface_count": [],
+            "legality_feasible_surface_count": [],
+            "legality_middle_stage_active": [],
+            "legality_handoff_ready": [],
             "late_terminal_decomposition_trace": [],
         }
     combat_telemetry = {
@@ -1826,6 +1830,18 @@ def run_simulation(
             )
             fixture_metrics["projection_max_displacement"].append(
                 float(fixture_runtime_debug.get("projection_max_displacement", 0.0))
+            )
+            fixture_metrics["legality_reference_surface_count"].append(
+                int(fixture_runtime_debug.get("legality_reference_surface_count", 0))
+            )
+            fixture_metrics["legality_feasible_surface_count"].append(
+                int(fixture_runtime_debug.get("legality_feasible_surface_count", 0))
+            )
+            fixture_metrics["legality_middle_stage_active"].append(
+                bool(fixture_runtime_debug.get("legality_middle_stage_active", False))
+            )
+            fixture_metrics["legality_handoff_ready"].append(
+                bool(fixture_runtime_debug.get("legality_handoff_ready", False))
             )
             if (
                 fixture_metrics.get("objective_reached_tick") is None

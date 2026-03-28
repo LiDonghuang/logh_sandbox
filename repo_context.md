@@ -17,7 +17,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 formation reference line is now structurally opened and closed in bounded document-only scope across frame / layout / spacing carriers
-- Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records, while implementation remains closed
+- Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records, plus a first bounded runtime/harness implementation attempt on the current branch/PR path
 - bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
@@ -61,6 +61,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 - `runtime/engine_skeleton.py`
   - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
   - current hot-path cleanup includes local spatial-hash use for combat candidate generation, movement pair pruning with preserved pair order, and cohesion connectivity search
+  - current branch/PR candidate now exposes one first bounded legality seam after mapping-produced reference positions are available and before downstream feasible-position consumption
 
 ## Test Harness Paths
 
@@ -70,8 +71,10 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
   - scenario build, archetype resolution, and maintained harness helper surface
 - `test_run/test_run_execution.py`
   - maintained battle execution host and engine-adjacent test harness skeleton host
+  - current branch/PR candidate reuses existing fixture metrics to trace legality intake / middle-stage / handoff counts and flags
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
+  - current branch/PR candidate exposes a minimal legality echo in the existing runtime debug payload extraction path
 - `test_run/test_run_anchor_regression.py`
   - fixed routine 3-run anchor regression on the maintained spine
 - `test_run/settings_accessor.py`
@@ -131,7 +134,7 @@ Current availability status:
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde direct reset, fleet `1/2` centroid tracking with manual angle retention after initialization, a right-drag-safe track lock path, a small gear-aware playback stabilizer on tracked focus motion, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - current formation-reference document line is structurally complete in bounded scope across frame / layout / spacing opening notes
-- current mapping line has repo-side scope-confirmation and minimum-contract working records only; the legality line now has a merged opening-scope confirmation record, while legality minimum-contract, runtime integration, and implementation remain closed
+- current mapping line has repo-side scope-confirmation and minimum-contract working records only; the legality line now has merged opening-scope and minimum-contract/stabilization records plus a first bounded runtime/harness implementation attempt on the current branch/PR path
 - current GitHub collaboration mode now has an active repo-side workflow document under `docs/engineering/` for carrier-by-carrier branch / PR review
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
@@ -243,6 +246,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_data_surface_decision_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_execution_order_decision_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_first_bounded_implementation_plan_20260328.md`
+- `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_implementation_report_20260328.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`

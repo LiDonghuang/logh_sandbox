@@ -61,6 +61,7 @@ class EngineTickSkeleton:
             "fsr_reference": {},
             "diag_pending": None,
             "diag_timeseries": [],
+            "legality_surface": {},
         }
 
     def step(self, state: BattleState) -> BattleState:
@@ -754,6 +755,10 @@ class EngineTickSkeleton:
         attack_range_sq: float,
         final_positions: dict,
         diag4_enabled: bool,
+        legality_reference_surface_count: int,
+        legality_feasible_surface_count: int,
+        legality_middle_stage_active: bool,
+        legality_handoff_ready: bool,
     ) -> dict:
         projection_eps = 1e-9
         projection_displacement_sum = 0.0
@@ -790,6 +795,12 @@ class EngineTickSkeleton:
                 "boundary_band_fraction": boundary_band_fraction,
                 "boundary_soft_strength": boundary_soft_strength,
                 "boundary_force_events_count_tick": boundary_force_events_count_tick,
+            },
+            "legality": {
+                "reference_surface_count": int(legality_reference_surface_count),
+                "feasible_surface_count": int(legality_feasible_surface_count),
+                "middle_stage_active": bool(legality_middle_stage_active),
+                "handoff_ready": bool(legality_handoff_ready),
             },
         }
         boundary_force_total = int(self._debug_state.get("_debug_boundary_force_events_total", 0))
@@ -1160,6 +1171,16 @@ class EngineTickSkeleton:
                 if isinstance(fixture_expected_reference, dict)
                 else None
             )
+            legality_reference_positions = (
+                {
+                    str(unit_id): (float(position[0]), float(position[1]))
+                    for unit_id, position in fixture_expected_positions.items()
+                    if isinstance(position, tuple) and len(position) >= 2
+                }
+                if fixture_expected_positions
+                else {}
+            )
+            legality_middle_stage_active = bool(legality_reference_positions)
             fixture_restore_deadband = 0.0
             fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
             if (
@@ -1731,6 +1752,22 @@ class EngineTickSkeleton:
             }
         else:
             final_positions = {}
+        if legality_middle_stage_active:
+            legality_feasible_positions = {
+                str(unit_id): (float(unit.position.x), float(unit.position.y))
+                for unit_id, unit in updated_units.items()
+                if unit.hit_points > 0.0 and str(unit_id) in legality_reference_positions
+            }
+        else:
+            legality_feasible_positions = {}
+        legality_handoff_ready = bool(legality_feasible_positions)
+        self._debug_state["legality_surface"] = {
+            "tick": int(state.tick),
+            "reference_positions_by_unit": legality_reference_positions,
+            "feasible_positions_by_unit": legality_feasible_positions,
+            "middle_stage_active": bool(legality_middle_stage_active),
+            "handoff_ready": bool(legality_handoff_ready),
+        }
 
         if diag_enabled:
             pending_diag = self._build_movement_diag_pending(
@@ -1748,6 +1785,10 @@ class EngineTickSkeleton:
                 attack_range_sq=attack_range_sq,
                 final_positions=final_positions,
                 diag4_enabled=diag4_enabled,
+                legality_reference_surface_count=len(legality_reference_positions),
+                legality_feasible_surface_count=len(legality_feasible_positions),
+                legality_middle_stage_active=legality_middle_stage_active,
+                legality_handoff_ready=legality_handoff_ready,
             )
             if fixture_trace_units_pending is not None:
                 pending_diag["fixture_terminal_trace"] = {
