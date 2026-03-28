@@ -110,7 +110,7 @@ Current availability status:
 - current inner cluster keeps cuboid size fixed and expresses HP loss by count reduction, not by shrinking the cuboids with the outer token
 - current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read, and the inner cuboids are currently slightly larger, more spread toward the frame outline, and visibly staggered in `z`
 - current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read, and low-speed playback now uses transform-only smoothing rather than building a synthetic smoothed frame
-- current fire-link eye-load reduction uses endpoint smoothing at low speed, viewer-time-driven `sqrt(gear)` pulse motion, and deterministic outer-beam alternation on a slower independent clock
+- current fire-link eye-load reduction uses endpoint smoothing at low speed, viewer-time-driven `sqrt(gear)` pulse motion, deterministic outer-beam alternation on a slower independent clock, and near/mid-only rendering with far-range suppression
 - debug-only objective-area `realistic` investigation records now exist for `neutral_transit_v1` around `objective_reached_tick +/- 5`; current read is that effective flips far more than realistic in that window, candidate choice is almost entirely the widest centered source, and smoothing is not the primary cause
 - debug-only late-terminal residual decomposition records now also exist for `neutral_transit_v1`; current read is that once centroid-level arrival is reached, moving expected-position restore becomes the strongest surviving driver, with separation/projection reshaping the residual unit motion
 - the prior bounded late-terminal whole-frame freeze first cut is now superseded locally on the candidate-active `neutral_transit_v1` path by a narrower split cut: terminal reference orientation is latched, but expected-position center continues to follow the live centroid
@@ -118,11 +118,12 @@ Current availability status:
 - current engineering read is that this late-terminal result may also matter for the unresolved early restoration problem: the useful correction turned out to be component-wise and one-sided, which suggests early restore compatibility may also be more directional than scalar
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
-- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, and in close two-fleet battle views falls back to a midpoint-based side-by-side layout while still re-solving during paused camera movement
+- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, falls back to a midpoint-based side-by-side layout when two battle fleets project too close, re-solves during paused camera movement, and now uses a small gear-aware anti-jitter profile during playback
 - current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell, near/mid/far cluster fading, and cleaner low-speed transform-only smoothing of motion-facing elements
+- current tracked fleet camera now uses a small gear-aware playback stabilizer on focus motion only; pause/step inspection remains exact
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
-- current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
+- current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde direct reset, fleet `1/2` centroid tracking with manual angle retention after initialization, a right-drag-safe track lock path, a small gear-aware playback stabilizer on tracked focus motion, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
@@ -182,6 +183,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_note_20260326.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_validation_note_20260326.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_visual_pass2_note_20260327.md`
+- `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_visual_pass2_governance_addendum_20260327.md`
+- `analysis/engineering_reports/developments/20260327/dev_v2_0_visual_improvement_reflection_20260327.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_simplified_warship_proxy_proposal.md`

@@ -221,6 +221,7 @@ class FleetViewerApp(ShowBase):
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
+        self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
         self._fleet_avatar_display_positions: dict[str, tuple[float, float]] = {}
         self._fleet_avatar_pair_layout_active = False
@@ -270,6 +271,7 @@ class FleetViewerApp(ShowBase):
         self._playback_fps = float(PLAYBACK_FPS_LEVELS[self._playback_level_index])
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._camera_controller.set_playback_level_index(self._playback_level_index)
         self.go_to_frame(self._current_frame_index)
 
     def cycle_fire_link_mode(self) -> None:
@@ -491,6 +493,14 @@ class FleetViewerApp(ShowBase):
             right_id: (paired_right_x, paired_z),
         }
 
+    def _avatar_smoothing_profile(self) -> tuple[float, float, float]:
+        max_index = max(1, len(PLAYBACK_FPS_LEVELS) - 1)
+        gear_alpha = max(0.0, min(1.0, float(self._playback_level_index) / float(max_index)))
+        deadband = FLEET_AVATAR_POSITION_DEADBAND * (1.45 - (0.45 * gear_alpha))
+        snap_distance = FLEET_AVATAR_SNAP_DISTANCE * (0.90 + (0.20 * gear_alpha))
+        blend = FLEET_AVATAR_SMOOTHING_BLEND + (0.12 * gear_alpha)
+        return (float(deadband), float(snap_distance), float(blend))
+
     def _sync_fleet_avatar_overlays(self) -> None:
         if not self._avatars_enabled:
             for nodes in self._fleet_avatar_nodes.values():
@@ -534,17 +544,17 @@ class FleetViewerApp(ShowBase):
                 display_x = float(target_x)
                 display_z = float(target_z)
             else:
+                deadband, snap_distance, blend = self._avatar_smoothing_profile()
                 delta_x = float(target_x) - float(previous_position[0])
                 delta_z = float(target_z) - float(previous_position[1])
                 distance = math.sqrt((delta_x * delta_x) + (delta_z * delta_z))
-                if distance <= FLEET_AVATAR_POSITION_DEADBAND:
+                if distance <= deadband:
                     display_x = float(previous_position[0])
                     display_z = float(previous_position[1])
-                elif distance >= FLEET_AVATAR_SNAP_DISTANCE:
+                elif distance >= snap_distance:
                     display_x = float(target_x)
                     display_z = float(target_z)
                 else:
-                    blend = FLEET_AVATAR_SMOOTHING_BLEND
                     display_x = float(previous_position[0]) + (blend * delta_x)
                     display_z = float(previous_position[1]) + (blend * delta_z)
             display_positions[fleet_id] = (display_x, display_z)
@@ -575,7 +585,7 @@ class FleetViewerApp(ShowBase):
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
-        self._camera_controller.sync_tracked_frame(frame)
+        self._camera_controller.sync_tracked_frame(frame, smooth=self._playing)
         self._render_frame(frame, pulse_phase=0.0)
         self._refresh_overlay()
 
@@ -656,6 +666,7 @@ class FleetViewerApp(ShowBase):
                         current_frame,
                         next_frame,
                         alpha=smoothing_alpha,
+                        smooth=True,
                     )
                     self._unit_renderer.apply_interpolated_transforms(
                         current_frame,

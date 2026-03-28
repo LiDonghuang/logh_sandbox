@@ -17,6 +17,12 @@ FLEET_VIEW_DISTANCE_RADIUS_SCALE = 4.5
 MIN_CAMERA_PITCH_DEGREES = -90.0
 MAX_CAMERA_PITCH_DEGREES = 45.0
 PAN_TRACK_CANCEL_DRAG_THRESHOLD = 0.035
+TRACKED_CAMERA_DEADBAND_FLOOR = 0.12
+TRACKED_CAMERA_DEADBAND_RATIO = 0.00045
+TRACKED_CAMERA_SNAP_FLOOR = 4.0
+TRACKED_CAMERA_SNAP_RATIO = 0.010
+TRACKED_CAMERA_BLEND_GEAR1 = 0.16
+TRACKED_CAMERA_BLEND_GEAR5 = 0.34
 
 
 class OrbitCameraController:
@@ -37,6 +43,8 @@ class OrbitCameraController:
         self._last_mouse_pos: tuple[float, float] | None = None
         self._pan_drag_distance_accumulator = 0.0
         self._tracked_fleet_id: str | None = None
+        self._tracked_focus_display_xy: tuple[float, float] | None = None
+        self._playback_level_index = 0
         self._keys = {
             "w": False,
             "s": False,
@@ -146,6 +154,7 @@ class OrbitCameraController:
                 and self._pan_drag_distance_accumulator >= PAN_TRACK_CANCEL_DRAG_THRESHOLD
             ):
                 self._tracked_fleet_id = None
+                self._tracked_focus_display_xy = None
             self._translate_focus(
                 ((-delta_x * self._mouse_pan_scale * pan_scale) * right_xy[0])
                 + ((-delta_y * self._mouse_pan_scale * pan_scale) * forward_xy[0]),
@@ -223,8 +232,45 @@ class OrbitCameraController:
     def _set_focus_only(self, *, focus_x: float, focus_y: float) -> None:
         self._focus_np.setPos(self._clamp_focus(float(focus_x)), self._clamp_focus(float(focus_y)), 0.0)
 
+    def _tracked_focus_profile(self) -> tuple[float, float, float]:
+        gear_max_index = 4.0
+        gear_alpha = max(0.0, min(1.0, float(self._playback_level_index) / gear_max_index))
+        deadband = max(TRACKED_CAMERA_DEADBAND_FLOOR, self._arena_size * TRACKED_CAMERA_DEADBAND_RATIO)
+        deadband *= 1.35 - (0.45 * gear_alpha)
+        snap_distance = max(TRACKED_CAMERA_SNAP_FLOOR, self._arena_size * TRACKED_CAMERA_SNAP_RATIO)
+        snap_distance *= 0.90 + (0.20 * gear_alpha)
+        blend = TRACKED_CAMERA_BLEND_GEAR1 + ((TRACKED_CAMERA_BLEND_GEAR5 - TRACKED_CAMERA_BLEND_GEAR1) * gear_alpha)
+        return (float(deadband), float(snap_distance), float(blend))
+
+    def _apply_smoothed_tracked_focus(self, *, target_x: float, target_y: float) -> None:
+        previous_focus = self._tracked_focus_display_xy
+        if previous_focus is None:
+            clamped_x = self._clamp_focus(float(target_x))
+            clamped_y = self._clamp_focus(float(target_y))
+            self._tracked_focus_display_xy = (clamped_x, clamped_y)
+            self._set_focus_only(focus_x=clamped_x, focus_y=clamped_y)
+            return
+        deadband, snap_distance, blend = self._tracked_focus_profile()
+        delta_x = float(target_x) - float(previous_focus[0])
+        delta_y = float(target_y) - float(previous_focus[1])
+        distance = math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
+        if distance <= deadband:
+            display_x = float(previous_focus[0])
+            display_y = float(previous_focus[1])
+        elif distance >= snap_distance:
+            display_x = float(target_x)
+            display_y = float(target_y)
+        else:
+            display_x = float(previous_focus[0]) + (blend * delta_x)
+            display_y = float(previous_focus[1]) + (blend * delta_y)
+        clamped_x = self._clamp_focus(display_x)
+        clamped_y = self._clamp_focus(display_y)
+        self._tracked_focus_display_xy = (clamped_x, clamped_y)
+        self._set_focus_only(focus_x=clamped_x, focus_y=clamped_y)
+
     def reset(self) -> None:
         self._tracked_fleet_id = None
+        self._tracked_focus_display_xy = None
         self._set_view(
             focus_x=self._arena_size * 0.5,
             focus_y=self._arena_size * 0.5,
@@ -253,6 +299,7 @@ class OrbitCameraController:
     def start_fleet_tracking(self, frame: ViewerFrame, fleet_id: str) -> bool:
         normalized_fleet_id = str(fleet_id)
         preserve_view = self._drag_action == "orbit"
+        summary: dict[str, float] | None = None
         if preserve_view:
             summary = self._summarize_fleet_frame(frame, normalized_fleet_id)
             if summary is None:
@@ -262,22 +309,39 @@ class OrbitCameraController:
                 focus_y=float(summary["centroid_y"]),
             )
         else:
-            if self._apply_fleet_view(frame, normalized_fleet_id) is None:
+            summary = self._apply_fleet_view(frame, normalized_fleet_id)
+            if summary is None:
                 return False
         self._tracked_fleet_id = normalized_fleet_id
+        if summary is not None:
+            self._tracked_focus_display_xy = (
+                self._clamp_focus(float(summary["centroid_x"])),
+                self._clamp_focus(float(summary["centroid_y"])),
+            )
         return True
 
-    def sync_tracked_frame(self, frame: ViewerFrame) -> bool:
+    def sync_tracked_frame(self, frame: ViewerFrame, *, smooth: bool = True) -> bool:
         tracked_fleet_id = self._tracked_fleet_id
         if tracked_fleet_id is None:
             return False
         summary = self._summarize_fleet_frame(frame, tracked_fleet_id)
         if summary is None:
+            self._tracked_focus_display_xy = None
             return False
-        self._set_focus_only(
-            focus_x=float(summary["centroid_x"]),
-            focus_y=float(summary["centroid_y"]),
-        )
+        if smooth:
+            self._apply_smoothed_tracked_focus(
+                target_x=float(summary["centroid_x"]),
+                target_y=float(summary["centroid_y"]),
+            )
+        else:
+            self._tracked_focus_display_xy = (
+                self._clamp_focus(float(summary["centroid_x"])),
+                self._clamp_focus(float(summary["centroid_y"])),
+            )
+            self._set_focus_only(
+                focus_x=float(summary["centroid_x"]),
+                focus_y=float(summary["centroid_y"]),
+            )
         return True
 
     def sync_tracked_frames(
@@ -286,6 +350,7 @@ class OrbitCameraController:
         next_frame: ViewerFrame,
         *,
         alpha: float,
+        smooth: bool = True,
     ) -> bool:
         tracked_fleet_id = self._tracked_fleet_id
         if tracked_fleet_id is None:
@@ -295,19 +360,42 @@ class OrbitCameraController:
             return False
         next_summary = self._summarize_fleet_frame(next_frame, tracked_fleet_id)
         if next_summary is None:
-            self._set_focus_only(
-                focus_x=float(current_summary["centroid_x"]),
-                focus_y=float(current_summary["centroid_y"]),
-            )
+            if smooth:
+                self._apply_smoothed_tracked_focus(
+                    target_x=float(current_summary["centroid_x"]),
+                    target_y=float(current_summary["centroid_y"]),
+                )
+            else:
+                self._tracked_focus_display_xy = (
+                    self._clamp_focus(float(current_summary["centroid_x"])),
+                    self._clamp_focus(float(current_summary["centroid_y"])),
+                )
+                self._set_focus_only(
+                    focus_x=float(current_summary["centroid_x"]),
+                    focus_y=float(current_summary["centroid_y"]),
+                )
             return True
         blend = max(0.0, min(1.0, float(alpha)))
         focus_x = ((1.0 - blend) * float(current_summary["centroid_x"])) + (blend * float(next_summary["centroid_x"]))
         focus_y = ((1.0 - blend) * float(current_summary["centroid_y"])) + (blend * float(next_summary["centroid_y"]))
-        self._set_focus_only(
-            focus_x=focus_x,
-            focus_y=focus_y,
-        )
+        if smooth:
+            self._apply_smoothed_tracked_focus(
+                target_x=focus_x,
+                target_y=focus_y,
+            )
+        else:
+            self._tracked_focus_display_xy = (
+                self._clamp_focus(float(focus_x)),
+                self._clamp_focus(float(focus_y)),
+            )
+            self._set_focus_only(
+                focus_x=focus_x,
+                focus_y=focus_y,
+            )
         return True
+
+    def set_playback_level_index(self, playback_level_index: int) -> None:
+        self._playback_level_index = max(0, int(playback_level_index))
 
     def zoom(self, delta: float) -> None:
         distance_scale = 1.0
