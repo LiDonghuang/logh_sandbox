@@ -63,7 +63,7 @@ class OrbitCameraController:
         app.accept("wheel_up", self.zoom, [-self._zoom_step])
         app.accept("wheel_down", self.zoom, [self._zoom_step])
         for event_name in RESET_VIEW_KEY_EVENTS:
-            app.accept(event_name, self._toggle_tracking_or_reset)
+            app.accept(event_name, self.reset)
 
         self.reset()
 
@@ -166,12 +166,6 @@ class OrbitCameraController:
 
     def _apply_camera_distance(self) -> None:
         self._app.camera.setPos(0.0, -self._distance, 0.0)
-
-    def _toggle_tracking_or_reset(self) -> None:
-        if self._tracked_fleet_id is not None:
-            self._tracked_fleet_id = None
-            return
-        self.reset()
 
     @staticmethod
     def _heading_to_camera_yaw(heading_x: float, heading_y: float) -> float:
@@ -283,6 +277,35 @@ class OrbitCameraController:
         self._set_focus_only(
             focus_x=float(summary["centroid_x"]),
             focus_y=float(summary["centroid_y"]),
+        )
+        return True
+
+    def sync_tracked_frames(
+        self,
+        current_frame: ViewerFrame,
+        next_frame: ViewerFrame,
+        *,
+        alpha: float,
+    ) -> bool:
+        tracked_fleet_id = self._tracked_fleet_id
+        if tracked_fleet_id is None:
+            return False
+        current_summary = self._summarize_fleet_frame(current_frame, tracked_fleet_id)
+        if current_summary is None:
+            return False
+        next_summary = self._summarize_fleet_frame(next_frame, tracked_fleet_id)
+        if next_summary is None:
+            self._set_focus_only(
+                focus_x=float(current_summary["centroid_x"]),
+                focus_y=float(current_summary["centroid_y"]),
+            )
+            return True
+        blend = max(0.0, min(1.0, float(alpha)))
+        focus_x = ((1.0 - blend) * float(current_summary["centroid_x"])) + (blend * float(next_summary["centroid_x"]))
+        focus_y = ((1.0 - blend) * float(current_summary["centroid_y"])) + (blend * float(next_summary["centroid_y"]))
+        self._set_focus_only(
+            focus_x=focus_x,
+            focus_y=focus_y,
         )
         return True
 

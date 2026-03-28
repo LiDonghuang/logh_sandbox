@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -18,15 +19,18 @@ except ImportError as exc:  # pragma: no cover - import guard for incorrect env 
     ) from exc
 
 from viz3d_panda.camera_controller import OrbitCameraController
+from viz3d_panda import replay_source
 from viz3d_panda.replay_source import (
     DEFAULT_FRAME_STRIDE,
+    TEST_RUN_BASE_DIR,
     VIEWER_DIRECTION_MODE_CHOICES,
     VIEWER_DIRECTION_MODE_SETTINGS,
     VIEWER_SOURCE_AUTO,
+    VIEWER_SOURCE_ACTIVE_BATTLE,
+    VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE,
     VIEWER_SOURCE_CHOICES,
     ReplayBundle,
     ViewerFrame,
-    ViewerUnitState,
     load_viewer_replay,
 )
 from viz3d_panda.scene_builder import build_scene
@@ -35,7 +39,7 @@ from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
 WINDOW_TITLE = "LOGH dev_v2.0 Panda3D Viewer Scaffold"
 AVATAR_DIR = Path(__file__).resolve().parents[1] / "visual" / "avatars"
-PLAYBACK_FPS_LEVELS = (4.0, 8.0, 12.0, 18.0, 24.0)
+PLAYBACK_FPS_LEVELS = (2.0, 4.0, 6.0, 10.0, 20.0)
 DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
@@ -93,6 +97,78 @@ def _count_units_by_fleet(replay: ReplayBundle, frame_index: int) -> str:
     return "  ".join(parts)
 
 
+def _alive_counts(frame: ViewerFrame) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for unit in frame.units:
+        if float(unit.hit_points) <= 0.0:
+            continue
+        counts[unit.fleet_id] = counts.get(unit.fleet_id, 0) + 1
+    return counts
+
+
+def _format_launch_matchup(replay: ReplayBundle) -> str:
+    first_frame = replay.frames[0]
+    counts = _alive_counts(first_frame)
+    parts = []
+    for fleet_id in sorted(counts):
+        label = replay.fleet_labels.get(fleet_id, fleet_id)
+        parts.append(f"{label} ({counts[fleet_id]})")
+    return " vs ".join(parts) if parts else "no fleets"
+
+
+def _format_launch_result(replay: ReplayBundle) -> str:
+    last_frame = replay.frames[-1]
+    alive_counts = _alive_counts(last_frame)
+    last_tick = int(last_frame.tick)
+    if len(alive_counts) == 1:
+        fleet_id = next(iter(alive_counts))
+        label = replay.fleet_labels.get(fleet_id, fleet_id)
+        return f"end tick={last_tick}, {label} ({alive_counts[fleet_id]} alive)"
+    if len(alive_counts) >= 2:
+        ranked = sorted(alive_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))
+        top_fleet_id, top_alive = ranked[0]
+        second_alive = int(ranked[1][1])
+        if int(top_alive) > second_alive:
+            label = replay.fleet_labels.get(top_fleet_id, top_fleet_id)
+            return f"end tick={last_tick}, {label} win ({top_alive} alive)"
+        parts = []
+        for fleet_id, alive in ranked:
+            label = replay.fleet_labels.get(fleet_id, fleet_id)
+            parts.append(f"{label} {alive} alive")
+        return f"end tick={last_tick}, {' / '.join(parts)}"
+    return f"end tick={last_tick}, no surviving units"
+
+
+def _preview_launch_setup(requested_source: str) -> tuple[str, str]:
+    settings = replay_source.settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
+    resolved_source = replay_source._resolve_viewer_source(settings, str(requested_source))
+    if resolved_source == VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE:
+        prepared = replay_source.scenario.prepare_neutral_transit_fixture(TEST_RUN_BASE_DIR, settings_override=settings)
+        fleet_data = prepared["fleet_data"]
+        labels = {
+            "A": replay_source.scenario.resolve_display_name(fleet_data, "EN") or "A",
+        }
+    elif resolved_source == VIEWER_SOURCE_ACTIVE_BATTLE:
+        prepared = replay_source.scenario.prepare_active_scenario(TEST_RUN_BASE_DIR, settings_override=settings)
+        labels = {
+            "A": replay_source.scenario.resolve_display_name(prepared["fleet_a_data"], "EN") or "A",
+            "B": replay_source.scenario.resolve_display_name(prepared["fleet_b_data"], "EN") or "B",
+        }
+    else:
+        raise ValueError(f"unsupported viewer source preview: {resolved_source!r}")
+    state = prepared["initial_state"]
+    counts: dict[str, int] = {}
+    for unit in state.units.values():
+        fleet_id = str(unit.fleet_id)
+        counts[fleet_id] = counts.get(fleet_id, 0) + 1
+    matchup_parts = []
+    for fleet_id in sorted(counts):
+        matchup_parts.append(f"{labels.get(fleet_id, fleet_id)} ({counts[fleet_id]})")
+    matchup_text = " vs ".join(matchup_parts) if matchup_parts else "no fleets"
+    map_text = f"map: {float(state.arena_size):.0f} x {float(state.arena_size):.0f} x 1"
+    return matchup_text, map_text
+
+
 def _resolve_playback_level_index(playback_fps: float) -> int:
     requested = float(playback_fps)
     for index, level in enumerate(PLAYBACK_FPS_LEVELS):
@@ -102,33 +178,6 @@ def _resolve_playback_level_index(playback_fps: float) -> int:
     raise ValueError(
         f"playback-fps must be one of the fixed viewer speed levels: {supported_values}; got {playback_fps}."
     )
-
-
-def _normalize_heading(dx: float, dy: float) -> tuple[float, float]:
-    norm = math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
-    if norm <= 1e-12:
-        return (0.0, 0.0)
-    return (float(dx) / norm, float(dy) / norm)
-
-
-def _interpolate_heading(
-    current_heading: tuple[float, float],
-    next_heading: tuple[float, float],
-    alpha: float,
-) -> tuple[float, float]:
-    if current_heading == (0.0, 0.0):
-        return next_heading
-    if next_heading == (0.0, 0.0):
-        return current_heading
-    dot = (float(current_heading[0]) * float(next_heading[0])) + (float(current_heading[1]) * float(next_heading[1]))
-    if dot <= -0.98:
-        return next_heading if float(alpha) >= 0.5 else current_heading
-    blended = (
-        ((1.0 - float(alpha)) * float(current_heading[0])) + (float(alpha) * float(next_heading[0])),
-        ((1.0 - float(alpha)) * float(current_heading[1])) + (float(alpha) * float(next_heading[1])),
-    )
-    normalized = _normalize_heading(blended[0], blended[1])
-    return normalized if normalized != (0.0, 0.0) else next_heading
 
 
 def _hex_to_rgba(value: str, *, alpha: float) -> tuple[float, float, float, float]:
@@ -169,6 +218,8 @@ class FleetViewerApp(ShowBase):
 
         self._scene_root = build_scene(self.render, arena_size=self._replay.arena_size)
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
+        self._unit_renderer.set_playback_level_index(self._playback_level_index)
+        self._unit_renderer.set_playback_fps(self._playback_fps)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
         self._fleet_avatar_display_positions: dict[str, tuple[float, float]] = {}
@@ -217,6 +268,8 @@ class FleetViewerApp(ShowBase):
         next_index = max(0, min(len(PLAYBACK_FPS_LEVELS) - 1, self._playback_level_index + int(delta)))
         self._playback_level_index = next_index
         self._playback_fps = float(PLAYBACK_FPS_LEVELS[self._playback_level_index])
+        self._unit_renderer.set_playback_level_index(self._playback_level_index)
+        self._unit_renderer.set_playback_fps(self._playback_fps)
         self.go_to_frame(self._current_frame_index)
 
     def cycle_fire_link_mode(self) -> None:
@@ -280,8 +333,8 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         self._camera_controller.start_fleet_tracking(frame, str(fleet_id))
 
-    def _render_frame(self, frame: ViewerFrame) -> None:
-        self._unit_renderer.sync_frame(frame)
+    def _render_frame(self, frame: ViewerFrame, *, pulse_phase: float = 0.0) -> None:
+        self._unit_renderer.sync_frame(frame, pulse_phase=float(pulse_phase))
         self._unit_renderer.update_view(self.camera)
         self._sync_fleet_avatar_overlays()
 
@@ -512,60 +565,18 @@ class FleetViewerApp(ShowBase):
     def _smoothing_active(self) -> bool:
         return bool(self._smoothing_enabled and self._playing and self._playback_fps <= LOW_SPEED_SMOOTHING_MAX_FPS and len(self._replay.frames) > 1)
 
-    def _build_smoothed_frame(self, alpha: float) -> ViewerFrame:
+    def _current_and_next_frames(self) -> tuple[ViewerFrame, ViewerFrame]:
         current_frame = self._replay.frames[self._current_frame_index]
-        if len(self._replay.frames) <= 1:
-            return current_frame
         next_index = self._current_frame_index + 1
         if next_index >= len(self._replay.frames):
             next_index = 0
-        next_frame = self._replay.frames[next_index]
-        interpolation_alpha = min(1.0, max(0.0, float(alpha)))
-        if interpolation_alpha <= 1e-9:
-            return current_frame
-        next_units = {
-            (str(unit.fleet_id), str(unit.unit_id)): unit
-            for unit in next_frame.units
-        }
-        smoothed_units: list[ViewerUnitState] = []
-        for unit in current_frame.units:
-            next_unit = next_units.get((str(unit.fleet_id), str(unit.unit_id)))
-            if next_unit is None:
-                smoothed_units.append(unit)
-                continue
-            blended_heading = _interpolate_heading(
-                (float(unit.heading_x), float(unit.heading_y)),
-                (float(next_unit.heading_x), float(next_unit.heading_y)),
-                interpolation_alpha,
-            )
-            smoothed_units.append(
-                ViewerUnitState(
-                    unit_id=str(unit.unit_id),
-                    fleet_id=str(unit.fleet_id),
-                    x=((1.0 - interpolation_alpha) * float(unit.x)) + (interpolation_alpha * float(next_unit.x)),
-                    y=((1.0 - interpolation_alpha) * float(unit.y)) + (interpolation_alpha * float(next_unit.y)),
-                    z=((1.0 - interpolation_alpha) * float(unit.z)) + (interpolation_alpha * float(next_unit.z)),
-                    heading_x=float(blended_heading[0]),
-                    heading_y=float(blended_heading[1]),
-                    orientation_x=float(unit.orientation_x),
-                    orientation_y=float(unit.orientation_y),
-                    velocity_x=float(unit.velocity_x),
-                    velocity_y=float(unit.velocity_y),
-                    hit_points=float(unit.hit_points),
-                    max_hit_points=float(unit.max_hit_points),
-                )
-            )
-        return ViewerFrame(
-            tick=int(current_frame.tick),
-            units=tuple(smoothed_units),
-            targets=dict(current_frame.targets),
-        )
+        return (current_frame, self._replay.frames[next_index])
 
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
         self._camera_controller.sync_tracked_frame(frame)
-        self._render_frame(frame)
+        self._render_frame(frame, pulse_phase=0.0)
         self._refresh_overlay()
 
     def _refresh_overlay(self) -> None:
@@ -613,7 +624,7 @@ class FleetViewerApp(ShowBase):
             "Space play/pause  N/B step/hold",
             "[/ ] speed gear  V fire-links  M smooth",
             "P portraits  Tab HUD  LDrag pan  RDrag orbit",
-            "Wheel zoom  `/~ reset-or-track-off  1/2 track fleet  Esc quit",
+            "Wheel zoom  `/~ reset  1/2 track fleet  Esc quit",
         ]
         self._control_text.setText("\n".join(control_lines))
 
@@ -640,10 +651,38 @@ class FleetViewerApp(ShowBase):
             if self._smoothing_active():
                 smoothing_alpha = self._accumulator / frame_period
                 if smoothing_alpha > 1e-6:
-                    smoothed_frame = self._build_smoothed_frame(smoothing_alpha)
-                    self._camera_controller.sync_tracked_frame(smoothed_frame)
-                    self._render_frame(smoothed_frame)
+                    current_frame, next_frame = self._current_and_next_frames()
+                    self._camera_controller.sync_tracked_frames(
+                        current_frame,
+                        next_frame,
+                        alpha=smoothing_alpha,
+                    )
+                    self._unit_renderer.apply_interpolated_transforms(
+                        current_frame,
+                        next_frame,
+                        alpha=smoothing_alpha,
+                    )
+                    self._unit_renderer._sync_fleet_halos(
+                        current_frame,
+                        tick_offset=smoothing_alpha,
+                        use_node_positions=True,
+                    )
+                    if self._unit_renderer.fire_link_mode == "enabled":
+                        self._unit_renderer.refresh_fire_links(
+                            current_frame,
+                            pulse_phase=smoothing_alpha,
+                            next_frame=next_frame,
+                            position_alpha=smoothing_alpha,
+                        )
+                    self._unit_renderer.update_view(self.camera)
+                    self._sync_fleet_avatar_overlays()
                     return task.cont
+            elif self._unit_renderer.fire_link_mode == "enabled":
+                current_frame = self._replay.frames[self._current_frame_index]
+                self._unit_renderer.refresh_fire_links(
+                    current_frame,
+                    pulse_phase=(self._accumulator / frame_period) if frame_period > 1e-9 else 0.0,
+                )
         self._unit_renderer.update_view(self.camera)
         self._sync_fleet_avatar_overlays()
         return task.cont
@@ -680,34 +719,47 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--playback-fps",
         type=float,
         default=PLAYBACK_FPS_LEVELS[DEFAULT_PLAYBACK_LEVEL_INDEX],
-        help="Fixed playback speed level. Supported values: 4, 8, 12, 18, 24.",
+        help="Fixed playback speed level. Supported values: 2, 4, 6, 10, 20.",
     )
     parser.add_argument("--window-width", type=int, default=1440)
     parser.add_argument("--window-height", type=int, default=900)
     parser.add_argument(
         "--fire-link-mode",
         choices=FIRE_LINK_MODE_CHOICES,
-        default="minimal",
-        help="Viewer-local fire-link display mode. Default keeps links subordinate to unit tokens.",
+        default="enabled",
+        help="Viewer-local fire-link display mode. Only 'enabled' and 'disabled' are supported.",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
+    loadPrcFileData("", "notify-level-display error")
+    loadPrcFileData("", "notify-level-windisplay error")
     loadPrcFileData("", f"window-title {WINDOW_TITLE}")
     loadPrcFileData("", f"win-size {int(args.window_width)} {int(args.window_height)}")
+    matchup_text, map_text = _preview_launch_setup(str(args.source))
+    print(matchup_text)
+    print(map_text)
+    run_started_at = time.perf_counter()
+    print("[RUN START]")
     replay = load_viewer_replay(
         source=str(args.source),
         max_steps=args.steps,
         frame_stride=int(args.frame_stride),
         direction_mode=str(args.direction_mode),
     )
+    run_elapsed = time.perf_counter() - run_started_at
+    print(_format_launch_result(replay))
+    print(f"[RUN COMPLETE] time={run_elapsed:.1f}s")
+    animation_started_at = time.perf_counter()
     app = FleetViewerApp(
         replay,
         playback_fps=float(args.playback_fps),
         fire_link_mode=str(args.fire_link_mode),
     )
+    animation_elapsed = time.perf_counter() - animation_started_at
+    print(f"[ANIMATION INITIALIZED] time={animation_elapsed:.1f}s")
     app.run()
 
 

@@ -91,7 +91,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 - `viz3d_panda/scene_builder.py`
   - viewer-local scene/grid/light bootstrap only
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets, minimal objective marker support, HP-scaled fleet halos, and a distance-driven dual-layer close-range cluster view
+  - wedge-token unit rendering with viewer-local HP size buckets, minimal objective marker support, lighter two-ring fleet halos, and a distance-driven dual-layer close-range cluster view
 - `viz3d_panda/camera_controller.py`
   - bounded camera orbit/pan/zoom controls only
 - `launch_dev_v2_0_viewer.bat`
@@ -104,10 +104,13 @@ Current availability status:
 - it consumes existing 2D `position_frames` in memory
 - default launch now inherits the maintained 2D stop contract unless `--steps` is explicitly passed
 - current readability pass uses a single semi-transparent wedge token rather than the earlier thin line-arrow marker
-- current visual refinement pass retunes token colors under transparency and keeps fire-links as a lighter straight-beam cue with `minimal` / `full` viewer-local modes
+- current viewer-local visual pass now uses only `enabled` / `disabled` fire-link modes; active fire links are a corrected-center pulse-train multi-beam cue rather than the old `minimal` / `full` straight-beam family
 - current unit rendering can now cross-fade from far-range wedge readability into a near-range fixed 10-cuboid metallic-gray cluster without widening runtime or replay semantics
+- current unit root origin now matches the rendered geometry center in `x / y / z`; no separate viewer-local "visual center" helper is active
+- current inner cluster keeps cuboid size fixed and expresses HP loss by count reduction, not by shrinking the cuboids with the outer token
 - current close-range cluster uses a trapezoid-friendly non-uniform `2/3/5` row layout with margin inside the outer token; the outer token has also been pulled back from an over-sharp dart profile toward a broader trapezoid-like read, and the inner cuboids are currently slightly larger, more spread toward the frame outline, and visibly staggered in `z`
-- current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read with low-speed playback smoothing retained, while late-stage objective-area visual residual remains open
+- current viewer-local direction readout modes include `realistic`; its current local shape is a short-window travel-posture read, and low-speed playback now uses transform-only smoothing rather than building a synthetic smoothed frame
+- current fire-link eye-load reduction uses endpoint smoothing at low speed, viewer-time-driven `sqrt(gear)` pulse motion, and deterministic outer-beam alternation on a slower independent clock
 - debug-only objective-area `realistic` investigation records now exist for `neutral_transit_v1` around `objective_reached_tick +/- 5`; current read is that effective flips far more than realistic in that window, candidate choice is almost entirely the widest centered source, and smoothing is not the primary cause
 - debug-only late-terminal residual decomposition records now also exist for `neutral_transit_v1`; current read is that once centroid-level arrival is reached, moving expected-position restore becomes the strongest surviving driver, with separation/projection reshaping the residual unit motion
 - the prior bounded late-terminal whole-frame freeze first cut is now superseded locally on the candidate-active `neutral_transit_v1` path by a narrower split cut: terminal reference orientation is latched, but expected-position center continues to follow the live centroid
@@ -116,7 +119,7 @@ Current availability status:
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
 - current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, and in close two-fleet battle views falls back to a midpoint-based side-by-side layout while still re-solving during paused camera movement
-- current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell
+- current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell, near/mid/far cluster fading, and cleaner low-speed transform-only smoothing of motion-facing elements
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde reset, fleet `1/2` centroid tracking with manual angle retention after initialization, and broader zoom/pitch comfort limits
@@ -178,6 +181,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_realistic_direction_mode_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_note_20260326.md`
 - `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_validation_note_20260326.md`
+- `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_visual_pass2_note_20260327.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_simplified_warship_proxy_proposal.md`

@@ -86,7 +86,7 @@ Authority: Reference only, not canonical semantics authority
 - `viz3d_panda/scene_builder.py`
   - simple viewer-local scene/grid/light setup
 - `viz3d_panda/unit_renderer.py`
-  - wedge-token unit rendering with viewer-local HP size buckets plus minimal objective marker, HP-scaled fleet halo overlays, and dual-layer close-range cluster rendering
+  - wedge-token unit rendering with viewer-local HP size buckets plus minimal objective marker, lighter two-ring fleet halo overlays, and dual-layer close-range cluster rendering
 - `viz3d_panda/camera_controller.py`
   - simple viewer-local orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
@@ -100,13 +100,16 @@ Current availability:
 - viewer/replay bootstrap only
 - additive to the current 2D maintained path
 - readability pass active: single semi-transparent wedge token replaces the earlier thin line-arrow marker
-- limited visual refinement active: deeper semi-transparent side colors and subordinate straight-beam fire-links with `minimal` / `full` viewer-local display modes
+- current fire-link surface is reduced to `enabled` / `disabled`; enabled now means a corrected-center pulse-train multi-beam cue rather than the old `minimal` / `full` straight-beam family
 - unit visual enhancement active: far-range wedge readability now cross-fades into a near-range fixed 10-cuboid internal cluster, still within viewer-local rendering only
+- unit origin is now corrected at the rendered geometry source, so unit coordinates and rendered geometry center align in `x / y / z` without a separate visual-center helper
+- inner cluster size is now fixed per cuboid while HP bucket changes visible count only
 - current close-range cluster is laid out as a trapezoid-friendly non-uniform `2/3/5` row set with margin inside the outer body; the outer token has been pulled back from an overly sharp dart read toward a broader trapezoid-like read, and the inner cuboids are now slightly larger, more spread toward the frame outline, and more visibly staggered in `z`
 - launch semantics aligned: default viewer runs inherit layered `run_control.max_time_steps`
 - anti-fat guardrail active: viewer consumes, runtime owns
 - viewer-local control refinements now include hold-to-repeat `N/B` stepping, backquote/tilde conditional reset, a near-top-down reset camera, fleet `1/2` centroid tracking that preserves manual angle adjustments after initialization, and broader zoom/pitch limits
-- viewer-local direction readout now includes `realistic`; current local shape reads as a short-window travel-posture mode, not a pure local-tangent microscope, and works together with low-speed playback smoothing
+- viewer-local direction readout now includes `realistic`; current local shape reads as a short-window travel-posture mode, and low-speed playback now uses transform-only smoothing rather than rebuilding a synthetic smoothed frame
+- fire-link presentation now uses low-speed endpoint smoothing, viewer-time-driven `sqrt(gear)` pulse motion, and deterministic outer-beam alternation on an independent slow clock
 - a debug-only `objective_area_realistic` investigation record set now exists for `neutral_transit_v1`; in the `objective_reached_tick +/- 5` window, effective flips far more than realistic, the widest centered candidate source dominates, and smoothing is not the primary source of the residual
 - a debug-only late-terminal residual decomposition record set now exists for `neutral_transit_v1`; current read is that after centroid-level arrival, moving expected-position restore becomes the strongest surviving driver while separation/projection reshape the remaining unit motion
 - the prior whole-frame late-terminal freeze first cut is now superseded locally for the candidate-active `neutral_transit_v1` path by an orientation-freeze / live-centroid split cut: the terminal axis is latched while the expected-position center keeps following the live centroid
@@ -115,9 +118,9 @@ Current availability:
 - Step 3 objective line is now sufficiently established in bounded scope: draft, bounded first carrier, harness-side validation, and very small viewer-consumption hookup are all complete
 - Step 3 first implementation remains bounded to the neutral-transit fixture path: `objective_contract_3d` exists there, is consumed as projected `xy`, and is validated on the harness side only
 - the Panda3D viewer now supports a very small viewer-consumption hookup for the bounded neutral-transit fixture path via `viz3d_panda/replay_source.py` and `viz3d_panda/app.py`
-- current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and per-fleet halos, while semantic ownership remains outside the viewer
+- current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and lighter two-ring per-fleet halos, while semantic ownership remains outside the viewer
 - current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, toggleable with local `P` portraits on/off control, uses per-fleet grouped layering, falls back to midpoint-based side-by-side layout when two battle fleets project too close on screen, and re-solves during paused camera movement
-- current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell
+- current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell, plus near/mid/far cluster fading and transform-only smoothing of motion-facing elements
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`
