@@ -17,7 +17,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 formation reference line is now structurally opened and closed in bounded document-only scope across frame / layout / spacing carriers
-- Step 3 mapping line has now progressed through a scope-confirmation carrier and a minimum-contract structural draft while legality and implementation remain closed
+- Step 3 mapping line has now progressed through a scope-confirmation carrier and a minimum-contract structural draft, and the legality line now has a merged opening-scope confirmation record while legality minimum-contract and implementation remain closed
 - bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
@@ -131,7 +131,7 @@ Current availability status:
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde direct reset, fleet `1/2` centroid tracking with manual angle retention after initialization, a right-drag-safe track lock path, a small gear-aware playback stabilizer on tracked focus motion, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - current formation-reference document line is structurally complete in bounded scope across frame / layout / spacing opening notes
-- current mapping line has repo-side scope-confirmation and minimum-contract working records only; legality opening, runtime integration, and implementation remain closed
+- current mapping line has repo-side scope-confirmation and minimum-contract working records only; the legality line now has a merged opening-scope confirmation record, while legality minimum-contract, runtime integration, and implementation remain closed
 - current GitHub collaboration mode now has an active repo-side workflow document under `docs/engineering/` for carrier-by-carrier branch / PR review
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
@@ -231,6 +231,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/step3_3d_formation_spacing_structural_confirmation_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_mapping_opening_scope_confirmation_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_mapping_minimum_contract_structural_draft_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_opening_scope_confirmation_note_20260328.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
