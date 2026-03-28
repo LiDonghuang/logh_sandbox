@@ -30,6 +30,7 @@ Authority: Reference only, not canonical semantics authority
   - combat candidate generation
   - movement pair pruning with preserved original pair ordering
   - cohesion connectivity / largest connected component search
+- Current branch/PR candidate also exposes one first bounded legality seam inside `integrate_movement`: mapping-produced reference-position intake, legality-owned middle-stage tracing, and feasible-position handoff
 
 ### 3. Maintained Harness Spine
 
@@ -40,8 +41,10 @@ Authority: Reference only, not canonical semantics authority
   - settings resolution, archetype/build helper surface, and initial scenario build
 - `test_run/test_run_execution.py`
   - battle execution host, maintained outputs, and engine-adjacent harness skeleton host
+  - current branch/PR candidate reuses existing fixture metrics for legality surface counts and handoff-stage flags
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
+  - current branch/PR candidate exposes a minimal legality echo through the existing runtime debug payload extraction path
 
 ### 4. Harness Support Layer
 
@@ -127,7 +130,7 @@ Current availability:
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the formation-reference document line is now structurally completed in bounded scope across frame / layout / spacing opening notes
-- the mapping line remains at scope-confirmation plus minimum-contract working records; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records under `analysis/engineering_reports/developments/20260327/`, while implementation remains closed
+- the mapping line remains at scope-confirmation plus minimum-contract working records; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, implementation-prep decision/plan records, and a first bounded runtime/harness implementation attempt report under `analysis/engineering_reports/developments/20260327/` and `analysis/engineering_reports/developments/20260328/`
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
 - late terminal settle root-cause work is now being read primarily as a solver-layer residual rather than a viewer-primary issue

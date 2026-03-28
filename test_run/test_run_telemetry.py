@@ -90,6 +90,9 @@ def extract_runtime_debug_payload(diag_tick: dict) -> dict:
     boundary_soft = diag_tick.get("boundary_soft", {})
     if not isinstance(boundary_soft, dict):
         boundary_soft = {}
+    legality = diag_tick.get("legality", {})
+    if not isinstance(legality, dict):
+        legality = {}
 
     payload = {
         "tick": int(diag_tick.get("tick", 0)),
@@ -100,6 +103,10 @@ def extract_runtime_debug_payload(diag_tick: dict) -> dict:
         "in_contact_count": int(combat.get("in_contact_count", 0)),
         "damage_events_count": int(combat.get("damage_events_count", 0)),
         "boundary_force_events_tick": int(boundary_soft.get("boundary_force_events_count_tick", 0)),
+        "legality_reference_surface_count": int(legality.get("reference_surface_count", 0)),
+        "legality_feasible_surface_count": int(legality.get("feasible_surface_count", 0)),
+        "legality_middle_stage_active": bool(legality.get("middle_stage_active", False)),
+        "legality_handoff_ready": bool(legality.get("handoff_ready", False)),
     }
     return payload
 
