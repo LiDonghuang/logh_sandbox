@@ -237,6 +237,24 @@ Example shape:
 - `Files: one note + optional index sync`
 - `Governance Read: mapping second carrier only`
 
+### Path Reporting Rule
+
+Engineering should use repo-relative paths first when reporting results to Human or Governance.
+
+Preferred reporting shape:
+
+- `analysis/engineering_reports/developments/20260327/xxx.md`
+- `docs/engineering/xxx.md`
+
+Engineering should not use local-machine path style or local clickable-link style as the standard reporting format.
+
+Avoid standard report shapes such as:
+
+- `/E:/logh_sandbox/...`
+- local-machine file hyperlinks
+
+If a local file path must be mentioned for some special reason, the repo-relative path should still be given first as the primary path.
+
 ---
 
 ## 10. Review Focus
