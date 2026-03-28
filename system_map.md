@@ -121,6 +121,7 @@ Current availability:
 - current viewer-side neutral-transit support now includes source selection, small contract echo overlay, a single-fleet objective marker, and lighter two-ring per-fleet halos, while semantic ownership remains outside the viewer
 - current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, toggleable with local `P` portraits on/off control, uses per-fleet grouped layering, falls back to midpoint-based side-by-side layout when two battle fleets project too close on screen, re-solves during paused camera movement, and now uses a small gear-aware anti-jitter profile during playback
 - current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell, plus near/mid/far cluster fading and transform-only smoothing of motion-facing elements
+- a stage governance memo now records the accepted pre-Formation viewer-only state under `analysis/engineering_reports/developments/20260327/`; this is a local-state governance memo, not canonical governance authority
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the next unopened mainline is now opened only as a structural-draft review for `3D Formation Contract v0.1`

@@ -121,6 +121,7 @@ Current availability status:
 - current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, falls back to a midpoint-based side-by-side layout when two battle fleets project too close, re-solves during paused camera movement, and now uses a small gear-aware anti-jitter profile during playback
 - current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell, near/mid/far cluster fading, and cleaner low-speed transform-only smoothing of motion-facing elements
 - current tracked fleet camera now uses a small gear-aware playback stabilizer on focus motion only; pause/step inspection remains exact
+- a stage governance memo now records the accepted pre-Formation viewer-only state under `analysis/engineering_reports/developments/20260327/`; it is a local-state governance record, not canonical governance authority
 - a future simplified warship proxy path is currently proposal-only; no ship-proxy implementation is active in the viewer
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde direct reset, fleet `1/2` centroid tracking with manual angle retention after initialization, a right-drag-safe track lock path, a small gear-aware playback stabilizer on tracked focus motion, and broader zoom/pitch comfort limits
@@ -184,6 +185,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260326/neutral_transit_post_cleanup_late_arrival_and_overlays_validation_note_20260326.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_visual_pass2_note_20260327.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_visual_pass2_governance_addendum_20260327.md`
+- `analysis/engineering_reports/developments/20260327/dev_v2_0_preformation_viewer_state_governance_memo_20260327.md`
 - `analysis/engineering_reports/developments/20260327/dev_v2_0_visual_improvement_reflection_20260327.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_note.md`
 - `analysis/engineering_reports/developments/20260326/dev_v2_0_dual_layer_unit_representation_human_test_note.md`
