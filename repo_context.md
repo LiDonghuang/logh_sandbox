@@ -17,7 +17,7 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 formation reference line is now structurally opened and closed in bounded document-only scope across frame / layout / spacing carriers
-- Step 3 mapping line has now progressed through a scope-confirmation carrier and a minimum-contract structural draft, and the legality line now has a merged opening-scope confirmation record while legality minimum-contract and implementation remain closed
+- Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records, while implementation remains closed
 - bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
@@ -232,6 +232,17 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/step3_3d_mapping_opening_scope_confirmation_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_mapping_minimum_contract_structural_draft_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_opening_scope_confirmation_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_minimum_contract_structural_draft_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_contract_stabilization_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_touchpoint_inventory_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_interface_surface_stabilization_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_consumer_boundary_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_post_handoff_ownership_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_runtime_integration_envelope_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_touchpoint_placement_decision_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_data_surface_decision_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_execution_order_decision_note_20260328.md`
+- `analysis/engineering_reports/developments/20260327/step3_3d_legality_first_bounded_implementation_plan_20260328.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`

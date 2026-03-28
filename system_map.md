@@ -127,7 +127,7 @@ Current availability:
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
 - a viewer-local governance query is now recorded for whether HP may reduce the close-range inner cluster cuboid count while keeping per-cuboid size fixed; query-only, not active
 - the formation-reference document line is now structurally completed in bounded scope across frame / layout / spacing opening notes
-- the mapping line now has a scope-confirmation working note and a minimum-contract structural draft working note; the legality line now has a merged opening-scope confirmation note under `analysis/engineering_reports/developments/20260327/step3_3d_legality_opening_scope_confirmation_note_20260328.md`, while legality minimum-contract and implementation remain closed
+- the mapping line remains at scope-confirmation plus minimum-contract working records; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records under `analysis/engineering_reports/developments/20260327/`, while implementation remains closed
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
 - late terminal settle root-cause work is now being read primarily as a solver-layer residual rather than a viewer-primary issue
