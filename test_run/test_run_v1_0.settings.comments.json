@@ -127,7 +127,8 @@
     }
   },
   "run_control": {
-    "max_time_steps": "Maximum simulation ticks. If <=0, run until first fleet elimination +10 ticks, capped at 999 ticks.",
+    "max_time_steps": "Maximum simulation ticks. If <=0, run until the first resolved stop condition (battle elimination or fixture objective arrival), then keep running for run_control.post_resolution_hold_steps more ticks, capped at 999 ticks.",
+    "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral_transit_v1 objective-arrival hold. Must be >= 0.",
     "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
     "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted."
   },

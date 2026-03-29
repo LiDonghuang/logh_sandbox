@@ -72,6 +72,7 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.viz.settings.json`
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
+- current authoritative post-resolution hold surface is `test_run/test_run_v1_0.runtime.settings.json::run_control.post_resolution_hold_steps`
 
 ### 7. Documentation Layer
 
@@ -135,6 +136,7 @@ Current availability:
 - the mapping line remains at scope-confirmation plus minimum-contract working records; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, implementation-prep decision/plan records, a merged first bounded runtime/harness implementation baseline, baseline-validation records, and an active bounded hardening charter under `analysis/engineering_reports/developments/20260327/`, `analysis/engineering_reports/developments/20260328/`, and `docs/engineering/`
 - a bounded standard-rectangle root-cause probe note now records the current engineering read that the early `aspect_ratio = 1.0 / 4.0` stretching is a runtime movement-vs-restore issue, not malformed reference-layout generation and not a viewer-only artifact
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
+- the maintained `neutral_transit_v1` harness now permits strict `objective_point_xy == initial centroid` for fixture expected-position reference construction by using the initial fleet forward orientation as a harness-only fallback axis; this does not widen runtime semantics
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
 - late terminal settle root-cause work is now being read primarily as a solver-layer residual rather than a viewer-primary issue
 - the HP-bucketed inner-cluster-count query remains deferred / not active during this investigation turn

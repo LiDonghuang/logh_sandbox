@@ -18,6 +18,7 @@
 - `test_run_v1_0.runtime.settings.json`
   - Runtime values consumed by simulation.
   - Includes `run_control`, `battlefield`, `fleet`, `unit`, and `runtime` (without test-only mechanism branches).
+  - `run_control.post_resolution_hold_steps` is the authoritative hold-window setting for both battle winner hold and neutral-transit objective-arrival hold.
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.
@@ -26,6 +27,7 @@
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.
   - Should not change battle semantics.
+  - Does not own post-resolution hold duration; that setting remains in layered `run_control`.
   - Does not own unit-direction mode; that setting remains in layered `visualization`.
 
 - `test_run_v1_0.settings.comments.json`

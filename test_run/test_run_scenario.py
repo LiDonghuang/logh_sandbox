@@ -20,7 +20,7 @@ from test_run import test_run_execution as execution
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DT = 1.0
 DEFAULT_SPAWN_MARGIN_RATIO = 0.05
-ACTIVE_POST_ELIMINATION_EXTRA_TICKS = 10
+DEFAULT_POST_RESOLUTION_HOLD_STEPS = 10
 DEFAULT_PLOT_COLORS = ("#1f77b4", "#ff7f0e")
 TEST_MODE_LABELS = {
     0: "default",
@@ -473,12 +473,19 @@ def _build_run_cfg(
         get_runtime("cohesion_decision_source", "baseline"),
         test_mode,
     )
+    post_resolution_hold_steps = int(get_run("post_resolution_hold_steps", DEFAULT_POST_RESOLUTION_HOLD_STEPS))
+    if post_resolution_hold_steps < 0:
+        raise ValueError(
+            "run_control.post_resolution_hold_steps must be >= 0, "
+            f"got {post_resolution_hold_steps}"
+        )
     return {
         "max_time_steps": (
             int(get_run("max_time_steps", -1))
             if max_time_steps_override is None
             else int(max_time_steps_override)
         ),
+        "post_resolution_hold_steps": post_resolution_hold_steps,
         "test_mode": test_mode,
         "test_mode_name": (
             str(test_mode_name_override)
@@ -953,7 +960,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "include_target_lines": False,
         "print_tick_summary": False,
         "plot_diagnostics_enabled": run_cfg["observer_enabled"],
-        "post_elimination_extra_ticks": ACTIVE_POST_ELIMINATION_EXTRA_TICKS,
+        "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
     }
     simulation_runtime_cfg = {
         "decision_source": run_cfg["runtime_decision_source_effective"],
@@ -1106,7 +1113,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         "include_target_lines": False,
         "print_tick_summary": False,
         "plot_diagnostics_enabled": True,
-        "post_elimination_extra_ticks": ACTIVE_POST_ELIMINATION_EXTRA_TICKS,
+        "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
         "fixture": {
             "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
             "fleet_id": "A",

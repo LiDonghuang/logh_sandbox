@@ -153,6 +153,7 @@ Current availability status:
   - thin entry settings / layer pointer
 - `test_run/test_run_v1_0.runtime.settings.json`
   - runtime values
+  - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and `neutral_transit_v1` objective-arrival continuation
 - `test_run/test_run_v1_0.testonly.settings.json`
   - test-only harness controls
 - `test_run/test_run_v1_0.viz.settings.json`
@@ -257,6 +258,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_implementation_report_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_baseline_validation_pack_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_root_cause_probe_note_20260328.md`
+- `analysis/engineering_reports/developments/20260328/test_run_post_resolution_hold_steps_runtime_surface_note_20260329.md`
+- `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_expected_spacing_governance_request_20260329.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`

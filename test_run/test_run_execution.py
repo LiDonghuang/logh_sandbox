@@ -1445,6 +1445,8 @@ def run_simulation(
     def _build_fixture_expected_reference_bundle(
         position_map: Mapping[str, tuple[float, float]],
         objective_point_xy: tuple[float, float],
+        *,
+        fallback_axis_xy: tuple[float, float] = (1.0, 0.0),
     ) -> dict:
         centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
         if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
@@ -1453,10 +1455,14 @@ def run_simulation(
         primary_dy = float(objective_point_xy[1]) - centroid_y
         primary_norm = math.sqrt((primary_dx * primary_dx) + (primary_dy * primary_dy))
         if primary_norm <= 1e-12:
-            raise ValueError(
-                "neutral_transit_v1 expected-position reference requires objective_point_xy to differ from the initial fleet centroid"
-            )
-        primary_axis_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
+            fallback_dx = float(fallback_axis_xy[0]) if len(fallback_axis_xy) >= 1 else 1.0
+            fallback_dy = float(fallback_axis_xy[1]) if len(fallback_axis_xy) >= 2 else 0.0
+            fallback_norm = math.sqrt((fallback_dx * fallback_dx) + (fallback_dy * fallback_dy))
+            if fallback_norm <= 1e-12:
+                fallback_dx, fallback_dy, fallback_norm = 1.0, 0.0, 1.0
+            primary_axis_xy = (fallback_dx / fallback_norm, fallback_dy / fallback_norm)
+        else:
+            primary_axis_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
         secondary_axis_xy = (-primary_axis_xy[1], primary_axis_xy[0])
         expected_slot_offsets_local = {}
         initial_front_extent = 0.0
@@ -1560,9 +1566,18 @@ def run_simulation(
             for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids
             if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
         }
+        initial_forward_sum_x = 0.0
+        initial_forward_sum_y = 0.0
+        for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids:
+            unit = initial_state.units.get(unit_id)
+            if unit is None or float(unit.hit_points) <= 0.0:
+                continue
+            initial_forward_sum_x += float(unit.orientation_vector.x)
+            initial_forward_sum_y += float(unit.orientation_vector.y)
         fixture_reference_bundle = _build_fixture_expected_reference_bundle(
             initial_positions,
             fixture_objective_point_xy,
+            fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
         )
         initial_centroid_x, initial_centroid_y, initial_rms_radius = _compute_centroid_and_rms_radius(initial_positions)
         initial_distance = math.sqrt(

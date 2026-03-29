@@ -462,10 +462,7 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
             "include_target_lines": capture_target_directions,
             "print_tick_summary": viz_cfg["print_tick_summary"],
             "plot_diagnostics_enabled": viz_cfg["plot_diagnostics_enabled"],
-            "post_elimination_extra_ticks": max(
-                0,
-                int(viz_settings.get("post_elimination_extra_ticks", 10)),
-            ),
+            "post_elimination_extra_ticks": int(prepared["execution_cfg"]["post_elimination_extra_ticks"]),
         },
         summary_override={
             "animate": viz_cfg["animate"],
@@ -709,10 +706,7 @@ def main() -> None:
             "include_target_lines": capture_target_directions,
             "print_tick_summary": viz_cfg["print_tick_summary"],
             "plot_diagnostics_enabled": viz_cfg["plot_diagnostics_enabled"],
-            "post_elimination_extra_ticks": max(
-                0,
-                int(viz_settings.get("post_elimination_extra_ticks", 10)),
-            ),
+            "post_elimination_extra_ticks": int(prepared["execution_cfg"]["post_elimination_extra_ticks"]),
         },
         summary_override={
             "animate": viz_cfg["animate"],

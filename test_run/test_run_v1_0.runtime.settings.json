@@ -1,6 +1,7 @@
 {
   "run_control": {
     "max_time_steps": -1,
+    "post_resolution_hold_steps": 10,
     "random_seed": -1,
     "test_mode": 2
   },

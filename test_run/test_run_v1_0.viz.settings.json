@@ -55,8 +55,6 @@
     "ring_radius": 1.0,
     "ring_color": "#ff0000"
   },
-  "_comment_post_elimination_extra_ticks": "post_elimination_extra_ticks: after a winner is decided in auto-run mode (max_time_steps<=0), keep capturing/animating this many extra ticks before stopping.",
-  "post_elimination_extra_ticks": 10,
 
   "_comment_auto_zoom": "auto_zoom: tick_interval=check cadence; start_delay_ticks=keep initial full 1x view before auto-zoom activates; center_deadband=center snap tolerance; min_factor=max zoom factor (4x); offscreen_trigger_ratio=pan trigger ratio; centroid_trigger_ratio=pan trigger by total centroid offset ratio; follow_out_of_bounds=allow camera center outside [0,arena] when units move out; transition_ms=transition duration; zoomin_trigger_ratio=zoom trigger threshold.",
   "auto_zoom": {
