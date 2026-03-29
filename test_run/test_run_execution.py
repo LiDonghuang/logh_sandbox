@@ -1419,10 +1419,17 @@ def run_simulation(
         raise TypeError("EngineTickSkeleton._movement_surface missing or invalid")
     movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
     movement_surface["model"] = movement_model
-    movement_surface["v3a_experiment"] = (
-        str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
-    )
-    movement_surface["centroid_probe_scale"] = float(movement_cfg.get("centroid_probe_scale_effective", 1.0))
+    if movement_model == "v4a":
+        v4a_restore_strength = float(movement_cfg.get("v4a_restore_strength_effective", 1.0))
+        movement_surface["v3a_experiment"] = (
+            V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE if v4a_restore_strength < 1.0 else V3A_EXPERIMENT_BASE
+        )
+        movement_surface["centroid_probe_scale"] = v4a_restore_strength
+    else:
+        movement_surface["v3a_experiment"] = (
+            str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
+        )
+        movement_surface["centroid_probe_scale"] = float(movement_cfg.get("centroid_probe_scale_effective", 1.0))
     movement_surface["odw_posture_bias_enabled"] = bool(odw_posture_bias_cfg.get("enabled_effective", False))
     movement_surface["odw_posture_bias_k"] = max(0.0, float(odw_posture_bias_cfg.get("k_effective", 0.0)))
     movement_surface["odw_posture_bias_clip_delta"] = max(

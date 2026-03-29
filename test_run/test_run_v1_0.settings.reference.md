@@ -26,10 +26,12 @@
     - `runtime.physical.contact_model.test_only.hostile_contact_impedance`
     - `runtime.movement.v4a.test_only.expected_reference_spacing`
     - `runtime.movement.v4a.test_only.reference_layout_mode`
+    - `runtime.movement.v4a.test_only.restore_strength`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
     - `runtime.movement.v4a.test_only.expected_reference_spacing` carries the expected/reference formation spacing
     - `runtime.movement.v4a.test_only.reference_layout_mode` makes the currently hard-coded reference layout mode explicit
+    - `runtime.movement.v4a.test_only.restore_strength` weakens the current bounded restore response without changing public runtime semantics
 
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.

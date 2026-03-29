@@ -25,7 +25,8 @@
       "v4a": {
         "test_only": {
           "expected_reference_spacing": 2.0,
-          "reference_layout_mode": "rect_centered_rows"
+          "reference_layout_mode": "rect_centered_rows",
+          "restore_strength": 0.25
         }
       },
       "v3a": {

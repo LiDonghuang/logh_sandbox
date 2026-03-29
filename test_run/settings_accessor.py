@@ -21,6 +21,7 @@ RUNTIME_SETTING_PATHS = {
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
+    "v4a_restore_strength": ("movement", "v4a", "test_only", "restore_strength"),
     "movement_v3a_experiment": ("movement", "v3a", "test_only", "experiment"),
     "centroid_probe_scale": ("movement", "v3a", "test_only", "centroid_probe_scale"),
     "pre_tl_target_substrate": ("movement", "v3a", "test_only", "pre_tl_target_substrate"),
