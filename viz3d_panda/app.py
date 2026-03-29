@@ -45,22 +45,22 @@ FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
-FLEET_AVATAR_HEIGHT = 0.105
+FLEET_AVATAR_HEIGHT = 0.0525
 FLEET_AVATAR_ASPECT_RATIO = 4.0 / 5.0
-FLEET_AVATAR_SCREEN_NUDGE = 0.012
-FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.078
-FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.128
-FLEET_AVATAR_BORDER_PAD = 0.009
-FLEET_AVATAR_MATTE_PAD = 0.004
-FLEET_AVATAR_HIGHLIGHT_PAD = 0.018
+FLEET_AVATAR_SCREEN_NUDGE = 0.006
+FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.039
+FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.064
+FLEET_AVATAR_BORDER_PAD = 0.0045
+FLEET_AVATAR_MATTE_PAD = 0.002
+FLEET_AVATAR_HIGHLIGHT_PAD = 0.009
 FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.48
 FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
 FLEET_AVATAR_BORDER_ALPHA = 1.0
-FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.34
-FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.24
-FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.42
-FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z = 0.30
-FLEET_AVATAR_PAIR_SEPARATION_X = 0.20
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.17
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.12
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.21
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z = 0.15
+FLEET_AVATAR_PAIR_SEPARATION_X = 0.10
 
 
 def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
@@ -72,9 +72,11 @@ def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
     if "." in stem:
         candidate_names.append(stem)
     else:
-        if stem.startswith("avatar_"):
-            candidate_names.extend([f"avatar_s_{stem[len('avatar_') :]}{suffix}" for suffix in suffixes])
-        candidate_names.extend([f"{stem}{suffix}" for suffix in suffixes])
+        candidate_stems = [stem]
+        if stem.startswith("avatar_") and not stem.endswith(("_m", "_s")):
+            candidate_stems = [f"{stem}_s"]
+        for candidate_stem in candidate_stems:
+            candidate_names.extend([f"{candidate_stem}{suffix}" for suffix in suffixes])
     for name in candidate_names:
         path = AVATAR_DIR / name
         if path.exists():
