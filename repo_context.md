@@ -17,14 +17,15 @@ Authority: Reference only, not canonical semantics authority
 - Step 2 container boundary / anti-fat guardrail documentation now defines `viz3d_panda/` as a replay/view bootstrap container only
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 formation reference line is now structurally opened and closed in bounded document-only scope across frame / layout / spacing carriers
-- Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, and current implementation-prep decision/plan records, plus a first bounded runtime/harness implementation attempt on the current branch/PR path
+- Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, implementation-prep decision/plan records, a merged first bounded runtime/harness implementation baseline, and an active bounded hardening charter
 - bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
 - GitHub branch + PR collaboration workflow now has an active repo-side engineering workflow document for larger carrier review
-- APP-side governance mirror intentionally reduced to an 11-file active working set
+- Cross-thread collaboration protocol v1.4 is now the active repo-side / APP-sync protocol baseline
+- APP-side governance mirror intentionally reduced to a 12-file active working set
 
 Current emphasis is bounded 3D viewer bootstrap rather than personality expansion or 3D runtime semantics.
 
@@ -37,6 +38,8 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 
 ## Key Governance / Architecture Documents
 
+- `canonical/Sandbox_CrossThread_Protocol_v1.4.md`
+  - active cross-thread operating protocol for governance / engineering collaboration, action modes, evidence discipline, and baseline-hardening escalation rules
 - `docs/README.md`
   - repo-side documentation layer entry: canonical / context / reference / archive separation
 - `docs/APP_Files_Prefix_Mapping_v1.0.md`
@@ -51,6 +54,8 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
   - observer/report analytical stack layers and L0-L3 boundary map
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
   - active engineering workflow for when to direct-push vs use branch + PR carriers
+- `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
+  - active bounded working charter for legality baseline hardening iterations, evidence requirements, and return-to-governance triggers
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
   - top-level phase ordering and current Phase A positioning
 
@@ -61,7 +66,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 - `runtime/engine_skeleton.py`
   - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
   - current hot-path cleanup includes local spatial-hash use for combat candidate generation, movement pair pruning with preserved pair order, and cohesion connectivity search
-  - current branch/PR candidate now exposes one first bounded legality seam after mapping-produced reference positions are available and before downstream feasible-position consumption
+  - current merged baseline now exposes one first bounded legality seam after mapping-produced reference positions are available and before downstream feasible-position consumption
 
 ## Test Harness Paths
 
@@ -71,10 +76,10 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
   - scenario build, archetype resolution, and maintained harness helper surface
 - `test_run/test_run_execution.py`
   - maintained battle execution host and engine-adjacent test harness skeleton host
-  - current branch/PR candidate reuses existing fixture metrics to trace legality intake / middle-stage / handoff counts and flags
+  - current merged baseline reuses existing fixture metrics to trace legality intake / middle-stage / handoff counts and flags
 - `test_run/test_run_telemetry.py`
   - observer / bridge / collapse-shadow collection
-  - current branch/PR candidate exposes a minimal legality echo in the existing runtime debug payload extraction path
+  - current merged baseline exposes a minimal legality echo in the existing runtime debug payload extraction path
 - `test_run/test_run_anchor_regression.py`
   - fixed routine 3-run anchor regression on the maintained spine
 - `test_run/settings_accessor.py`
@@ -134,8 +139,10 @@ Current availability status:
 - current viewer-local input/camera refinements include hold-to-repeat `N/B` stepping, backquote/tilde direct reset, fleet `1/2` centroid tracking with manual angle retention after initialization, a right-drag-safe track lock path, a small gear-aware playback stabilizer on tracked focus motion, and broader zoom/pitch comfort limits
 - current Step 3 formation work is draft-only and document-only; no formation runtime/mapping/legality implementation is active
 - current formation-reference document line is structurally complete in bounded scope across frame / layout / spacing opening notes
-- current mapping line has repo-side scope-confirmation and minimum-contract working records only; the legality line now has merged opening-scope and minimum-contract/stabilization records plus a first bounded runtime/harness implementation attempt on the current branch/PR path
+- current mapping line has repo-side scope-confirmation and minimum-contract working records only; the legality line now has merged opening-scope and minimum-contract/stabilization records plus a merged first bounded runtime/harness implementation baseline and active hardening records
 - current GitHub collaboration mode now has an active repo-side workflow document under `docs/engineering/` for carrier-by-carrier branch / PR review
+- cross-thread protocol v1.4 now makes minimal human-readable evidence an explicit control requirement for substantive runtime modifications
+- the legality line now also has an active bounded hardening working charter under `docs/engineering/`, allowing multiple bounded baseline-hardening iterations until a real governance trigger is reached
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -247,7 +254,9 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_execution_order_decision_note_20260328.md`
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_first_bounded_implementation_plan_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_implementation_report_20260328.md`
+- `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_baseline_validation_pack_20260328.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
+- `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`

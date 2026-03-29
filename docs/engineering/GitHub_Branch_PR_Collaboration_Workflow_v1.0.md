@@ -363,3 +363,19 @@ Keep the following read explicit:
 One-line standard:
 
 - small docs may direct-push; structure and implementation-adjacent carriers should prefer one-PR-per-carrier review into `dev_v2.0`
+
+## 16. Human-Readable Evidence Reminder
+
+For substantive runtime modifications, Engineering should leave at least one minimal human-readable validation artifact.
+
+Preferred default is the lightest useful form:
+
+- short animation sample or frame sample when practical
+- small plot / chart
+- tick-level CSV
+- short targeted trace
+- before / after comparison
+
+Default preference is minimal size.
+
+Do not expand into heavier artifacts unless the human asks for them or the lighter artifact is insufficient.

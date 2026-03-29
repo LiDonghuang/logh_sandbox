@@ -13,7 +13,7 @@ These are the highest-authority governance / semantics documents for active work
 Representative active files:
 
 - `canonical/Sandbox_Governance_Canonical_v1.1.md`
-- `canonical/Sandbox_CrossThread_Protocol_v1.3.md`
+- `canonical/Sandbox_CrossThread_Protocol_v1.4.md`
 - `canonical/Engine_v2.0_Skeleton_Canonical.md`
 - `canonical/Engine_v2.0_Skeleton_Freeze_Declaration.md`
 - `canonical/Ten_Parameters_Canonical_Index_v1.1.md`
@@ -37,6 +37,7 @@ These are active reference or working-layer documents that support execution, go
 - `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md`
 - `docs/animation_contract_v1.md`
 - `docs/APP_Files_Prefix_Mapping_v1.0.md`
+- `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 
 Notes:
 

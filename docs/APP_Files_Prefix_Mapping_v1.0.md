@@ -9,8 +9,8 @@ The repository remains the authoritative source with structured paths.
 
 ## Active APP Mirror Policy
 
-The APP-side active governance working set is intentionally narrowed to 11 markdown files.
-Those 11 files are the only active APP mirror set at present.
+The APP-side active governance working set is intentionally narrowed to 12 markdown files.
+Those 12 files are the only active APP mirror set at present.
 
 Everything else remains repo-side authoritative, reference, or archival material.
 It may still be retained in the repository, but it is not part of the APP active governance working set.
@@ -28,7 +28,7 @@ It may still be retained in the repository, but it is not part of the APP active
 | APP flat mirror filename | VS authoritative source path | Class | Status |
 | --- | --- | --- | --- |
 | `00_Sandbox_Governance_Canonical_v1.1.md` | `canonical/Sandbox_Governance_Canonical_v1.1.md` | 00 | active |
-| `00_Sandbox_CrossThread_Protocol_v1.3.md` | `canonical/Sandbox_CrossThread_Protocol_v1.3.md` | 00 | active |
+| `00_Sandbox_CrossThread_Protocol_v1.4.md` | `canonical/Sandbox_CrossThread_Protocol_v1.4.md` | 00 | active |
 | `00_Baseline_Replacement_Protocol_v1.0.md` | `docs/governance/Baseline_Replacement_Protocol_v1.0.md` | 00 | active |
 | `10_Formation_Geometry_Doctrine_v1.0.md` | `docs/architecture/Formation_Geometry_Doctrine_v1.0.md` | 10 | active |
 | `10_Ten_Parameters_Personality_to_Battlefield_Behavior_Mapping_Canonical_Draft.md` | `canonical/Ten_Parameters_Personality_to_Battlefield_Behavior_Mapping_Canonical_Draft.md` | 10 | active |
@@ -36,6 +36,7 @@ It may still be retained in the repository, but it is not part of the APP active
 | `10_Engine_v2.0_Skeleton_Canonical.md` | `canonical/Engine_v2.0_Skeleton_Canonical.md` | 10 | active |
 | `10_Engine_v2.0_Skeleton_Freeze_Declaration.md` | `canonical/Engine_v2.0_Skeleton_Freeze_Declaration.md` | 10 | active |
 | `40_Phase_Transition_Governance_Playbook_v1_0.md` | `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md` | 40 | active; governance operations / playbook layer; non-canonical |
+| `40_Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md` | `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md` | 40 | active; phase working charter; bounded hardening mode only |
 | `50_repo_context.md` | `repo_context.md` | 50 | active; working context / orientation; non-canonical; not semantic authority |
 | `50_system_map.md` | `system_map.md` | 50 | active; working context / orientation; non-canonical; not semantic authority |
 
@@ -68,7 +69,7 @@ Examples include:
 
 ## Separation Rule (APP vs VS)
 
-APP-side mirror includes only the 11-file active governance working set listed above.
+APP-side mirror includes only the 12-file active governance working set listed above.
 
 APP-side mirror does not include:
 
