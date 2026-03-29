@@ -144,6 +144,7 @@ Current availability status:
 - cross-thread protocol v1.4 now makes minimal human-readable evidence an explicit control requirement for substantive runtime modifications
 - the legality line now also has an active bounded hardening working charter under `docs/engineering/`, allowing multiple bounded baseline-hardening iterations until a real governance trigger is reached
 - current bounded standard-rectangle root-cause read is now recorded locally under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the early `aspect_ratio = 1.0 / 4.0` stretching is a runtime movement-vs-restore issue rather than malformed reference layout generation or a viewer-only artifact
+- a follow-up spacing-decoupling probe note now also exists under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the overloaded low-level spacing radius is a major amplifier in the same early standard-rectangle stretch issue, but that result is still diagnostic-only and pre-implementation
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -258,6 +259,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_implementation_report_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_baseline_validation_pack_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_root_cause_probe_note_20260328.md`
+- `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_spacing_decoupling_probe_note_20260329.md`
 - `analysis/engineering_reports/developments/20260328/test_run_post_resolution_hold_steps_runtime_surface_note_20260329.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_expected_spacing_governance_request_20260329.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
