@@ -145,6 +145,7 @@ Current availability status:
 - the legality line now also has an active bounded hardening working charter under `docs/engineering/`, allowing multiple bounded baseline-hardening iterations until a real governance trigger is reached
 - current bounded standard-rectangle root-cause read is now recorded locally under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the early `aspect_ratio = 1.0 / 4.0` stretching is a runtime movement-vs-restore issue rather than malformed reference layout generation or a viewer-only artifact
 - a follow-up spacing-decoupling probe note now also exists under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the overloaded low-level spacing radius is a major amplifier in the same early standard-rectangle stretch issue, but that result is still diagnostic-only and pre-implementation
+- a new two-layer spacing opening package now starts under `analysis/engineering_reports/developments/20260329/`; current engineering read is that the concept line is open structurally, a second bounded comparison path still supports the spacing-decoupling result, and governance is now also being asked whether `v4a` should be reviewed as a possible shared neutral+battle default candidate while keeping `v3a` retained
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -262,6 +263,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_spacing_decoupling_probe_note_20260329.md`
 - `analysis/engineering_reports/developments/20260328/test_run_post_resolution_hold_steps_runtime_surface_note_20260329.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_expected_spacing_governance_request_20260329.md`
+- `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_opening_scope_note_20260329.md`
+- `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_followup_and_v4a_default_request_20260329.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
