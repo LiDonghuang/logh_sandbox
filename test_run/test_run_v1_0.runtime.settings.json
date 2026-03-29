@@ -1,7 +1,7 @@
 {
   "run_control": {
     "max_time_steps": -1,
-    "post_resolution_hold_steps": 10,
+    "post_resolution_hold_steps": 20,
     "random_seed": -1,
     "test_mode": 2
   },
@@ -10,8 +10,8 @@
     "background_map_seed": -1
   },
   "fleet": {
-    "fleet_a_archetype_id": "reinhard",
-    "fleet_b_archetype_id": "yang",
+    "fleet_a_archetype_id": "grillparzer",
+    "fleet_b_archetype_id": "knappstein",
     "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,
     "initial_fleet_a_aspect_ratio": 4.0,
@@ -55,7 +55,7 @@
         "hard_enabled": false
       },
       "movement_low_level": {
-        "min_unit_spacing": 2.0,
+        "min_unit_spacing": 1.0,
         "alpha_sep": 0.6
       },
       "fire_control": {

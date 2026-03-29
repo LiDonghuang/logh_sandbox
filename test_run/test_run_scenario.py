@@ -22,6 +22,10 @@ DEFAULT_DT = 1.0
 DEFAULT_SPAWN_MARGIN_RATIO = 0.05
 DEFAULT_POST_RESOLUTION_HOLD_STEPS = 10
 DEFAULT_PLOT_COLORS = ("#1f77b4", "#ff7f0e")
+REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS = "rect_centered_rows"
+REFERENCE_LAYOUT_MODE_LABELS = {
+    REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
+}
 TEST_MODE_LABELS = {
     0: "default",
     1: "observe",
@@ -382,7 +386,16 @@ def _direction_from_angle_deg(angle_deg: float) -> tuple[float, float]:
     return (math.cos(theta), math.sin(theta))
 
 
-def _resolve_initial_formation_layout(unit_count: int, aspect_ratio: float) -> list[int]:
+def _resolve_initial_formation_layout(unit_count: int, aspect_ratio: float, layout_mode: str) -> list[int]:
+    resolved_layout_mode = _require_choice(
+        "reference_layout_mode",
+        layout_mode,
+        REFERENCE_LAYOUT_MODE_LABELS,
+    )
+    if resolved_layout_mode != REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS:
+        raise ValueError(
+            f"unsupported reference_layout_mode={resolved_layout_mode!r}"
+        )
     grid_columns = max(1, int((unit_count * aspect_ratio) ** 0.5))
     grid_rows = (unit_count + grid_columns - 1) // grid_columns
     while grid_columns / max(1, grid_rows) < aspect_ratio and grid_columns < unit_count:
@@ -593,6 +606,57 @@ def _build_boundary_cfg(get_runtime) -> dict:
     }
 
 
+def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_effective: str) -> dict:
+    physical_min_spacing = float(get_runtime("min_unit_spacing", 1.0))
+    if physical_min_spacing <= 0.0:
+        raise ValueError(
+            "runtime.physical.movement_low_level.min_unit_spacing must be > 0, "
+            f"got {physical_min_spacing}"
+        )
+    expected_reference_spacing = float(physical_min_spacing)
+    reference_layout_mode = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS
+    if movement_model_effective != "v4a":
+        return {
+            "expected_reference_spacing": expected_reference_spacing,
+            "physical_min_spacing": physical_min_spacing,
+            "reference_layout_mode": reference_layout_mode,
+        }
+    runtime_section = settings.get("runtime", {})
+    if not isinstance(runtime_section, dict):
+        runtime_section = {}
+    v4a_testonly_cfg = settings_api.get_nested_mapping_value(
+        runtime_section,
+        ("movement", "v4a", "test_only"),
+        {},
+    )
+    if not isinstance(v4a_testonly_cfg, dict):
+        v4a_testonly_cfg = {}
+    if "expected_reference_spacing" not in v4a_testonly_cfg:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.expected_reference_spacing must be provided when movement_model=v4a"
+        )
+    expected_reference_spacing = float(v4a_testonly_cfg["expected_reference_spacing"])
+    if expected_reference_spacing <= 0.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.expected_reference_spacing must be > 0, "
+            f"got {expected_reference_spacing}"
+        )
+    if "reference_layout_mode" not in v4a_testonly_cfg:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.reference_layout_mode must be provided when movement_model=v4a"
+        )
+    reference_layout_mode = _require_choice(
+        "runtime.movement.v4a.test_only.reference_layout_mode",
+        v4a_testonly_cfg["reference_layout_mode"],
+        REFERENCE_LAYOUT_MODE_LABELS,
+    )
+    return {
+        "expected_reference_spacing": expected_reference_spacing,
+        "physical_min_spacing": physical_min_spacing,
+        "reference_layout_mode": reference_layout_mode,
+    }
+
+
 def _spawn_formation_units(
     *,
     units: dict[str, UnitState],
@@ -604,12 +668,13 @@ def _spawn_formation_units(
     dir_xy: tuple[float, float],
     perp_xy: tuple[float, float],
     unit_spacing: float,
+    layout_mode: str,
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
 ) -> list[str]:
     unit_ids = []
-    row_counts = _resolve_initial_formation_layout(unit_count, aspect_ratio_local)
+    row_counts = _resolve_initial_formation_layout(unit_count, aspect_ratio_local, layout_mode)
     half_depth = (len(row_counts) - 1) / 2.0
     unit_index = 0
     for row, row_count in enumerate(row_counts):
@@ -652,6 +717,7 @@ def build_initial_state(
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
+    layout_mode: str = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
     fleet_a_origin_x: float | None = None,
     fleet_a_origin_y: float | None = None,
     fleet_b_origin_x: float | None = None,
@@ -696,6 +762,7 @@ def build_initial_state(
         dir_xy=dir_a,
         perp_xy=perp_a,
         unit_spacing=unit_spacing,
+        layout_mode=layout_mode,
         unit_speed=unit_speed,
         unit_max_hit_points=unit_max_hit_points,
         arena_size=arena_size,
@@ -710,6 +777,7 @@ def build_initial_state(
         dir_xy=dir_b,
         perp_xy=perp_b,
         unit_spacing=unit_spacing,
+        layout_mode=layout_mode,
         unit_speed=unit_speed,
         unit_max_hit_points=unit_max_hit_points,
         arena_size=arena_size,
@@ -738,6 +806,7 @@ def build_single_fleet_initial_state(
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
+    layout_mode: str = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
     fleet_origin_x: float | None = None,
     fleet_origin_y: float | None = None,
     fleet_facing_angle_deg: float | None = None,
@@ -767,6 +836,7 @@ def build_single_fleet_initial_state(
         dir_xy=dir_a,
         perp_xy=perp_a,
         unit_spacing=unit_spacing,
+        layout_mode=layout_mode,
         unit_speed=unit_speed,
         unit_max_hit_points=unit_max_hit_points,
         arena_size=arena_size,
@@ -830,6 +900,19 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     fleet_b_params = to_personality_parameters(fleet_b_data)
 
     battlefield_cfg = common_context["battlefield_cfg"]
+    run_cfg = _build_run_cfg(get_run, get_runtime)
+    movement_cfg = _build_movement_cfg(
+        get_runtime,
+        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+        test_mode=run_cfg["test_mode"],
+    )
+    boundary_cfg = _build_boundary_cfg(get_runtime)
+    v4a_reference_cfg = _resolve_v4a_reference_cfg(
+        settings,
+        get_runtime,
+        movement_model_effective=movement_cfg["model_effective"],
+    )
+    battle_restore_bridge_active = movement_cfg["model_effective"] == "v4a"
     spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
         settings,
@@ -864,14 +947,20 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "A": float(get_fleet("initial_fleet_a_facing_angle_deg", 45.0)),
             "B": float(get_fleet("initial_fleet_b_facing_angle_deg", 225.0)),
         },
-        "unit_spacing": float(get_runtime("min_unit_spacing", 1.0)),
+        "unit_spacing": float(v4a_reference_cfg["expected_reference_spacing"]),
+        "reference_layout_mode": str(v4a_reference_cfg["reference_layout_mode"]),
     }
     if min(fleet_cfg["sizes"].values()) < 1:
         raise ValueError(f"initial fleet sizes must be >= 1, got {fleet_cfg['sizes']}")
-    if min(fleet_cfg["aspect_ratios"].values()) <= 0.0 or fleet_cfg["unit_spacing"] <= 0.0:
+    if (
+        min(fleet_cfg["aspect_ratios"].values()) <= 0.0
+        or fleet_cfg["unit_spacing"] <= 0.0
+        or float(v4a_reference_cfg["physical_min_spacing"]) <= 0.0
+    ):
         raise ValueError(
-            "initial geometry aspect ratios and min_unit_spacing must be > 0, "
-            f"got {fleet_cfg['aspect_ratios']}, spacing={fleet_cfg['unit_spacing']}"
+            "initial geometry aspect ratios, expected reference spacing, and runtime min_unit_spacing must be > 0, "
+            f"got {fleet_cfg['aspect_ratios']}, expected_reference_spacing={fleet_cfg['unit_spacing']}, "
+            f"min_unit_spacing={v4a_reference_cfg['physical_min_spacing']}"
         )
 
     unit_cfg = _build_unit_cfg(get_unit, get_runtime)
@@ -883,6 +972,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         fleet_a_aspect_ratio=fleet_cfg["aspect_ratios"]["A"],
         fleet_b_aspect_ratio=fleet_cfg["aspect_ratios"]["B"],
         unit_spacing=fleet_cfg["unit_spacing"],
+        layout_mode=fleet_cfg["reference_layout_mode"],
         unit_speed=unit_cfg["speed"],
         unit_max_hit_points=unit_cfg["max_hit_points"],
         arena_size=battlefield_cfg["arena_size"],
@@ -945,22 +1035,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         },
     }
 
-    run_cfg = _build_run_cfg(get_run, get_runtime)
-    movement_cfg = _build_movement_cfg(
-        get_runtime,
-        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
-        test_mode=run_cfg["test_mode"],
-    )
-    boundary_cfg = _build_boundary_cfg(get_runtime)
-    battle_restore_candidate_active = movement_cfg["model_effective"] == "v4a"
-    spawn_reference_spacing = float(fleet_cfg["unit_spacing"])
-    runtime_low_level_floor_effective = float(spawn_reference_spacing)
-    if battle_restore_candidate_active:
-        runtime_low_level_floor_effective = min(
-            float(spawn_reference_spacing),
-            float(execution.BATTLE_RESTORE_CANDIDATE_LOW_LEVEL_FLOOR_DEFAULT),
-        )
-
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
         "capture_positions": False,
@@ -974,14 +1048,9 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "decision_source": run_cfg["runtime_decision_source_effective"],
         "movement_model": movement_cfg["model_effective"],
         "movement": movement_cfg,
-        "battle_restore_candidate": {
-            "active": bool(battle_restore_candidate_active),
-            "spawn_reference_spacing": float(spawn_reference_spacing),
-            "runtime_low_level_floor": float(runtime_low_level_floor_effective),
-        },
         "contact": {
             **contact_cfg,
-            "separation_radius": float(runtime_low_level_floor_effective),
+            "separation_radius": float(v4a_reference_cfg["physical_min_spacing"]),
         },
         "boundary": boundary_cfg,
     }
@@ -1009,9 +1078,10 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
-            "battle_restore_candidate_active": bool(battle_restore_candidate_active),
-            "spawn_reference_spacing": float(spawn_reference_spacing),
-            "runtime_low_level_floor_effective": float(runtime_low_level_floor_effective),
+            "battle_restore_bridge_active": bool(battle_restore_bridge_active),
+            "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
+            "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
+            "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
@@ -1090,27 +1160,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     if stop_radius < 0.0:
         raise ValueError(f"fixture.neutral_transit_v1.stop_radius must be >= 0, got {stop_radius}")
 
-    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
-    unit_spacing = float(get_runtime("min_unit_spacing", 1.0))
-    if fleet_aspect_ratio <= 0.0 or unit_spacing <= 0.0:
-        raise ValueError(
-            "fixture.neutral_transit_v1.aspect_ratio and runtime min_unit_spacing must be > 0, "
-            f"got aspect_ratio={fleet_aspect_ratio}, spacing={unit_spacing}"
-        )
-
-    initial_state = build_single_fleet_initial_state(
-        fleet_params=fleet_params,
-        fleet_size=fleet_size,
-        fleet_aspect_ratio=fleet_aspect_ratio,
-        unit_spacing=unit_spacing,
-        unit_speed=unit_cfg["speed"],
-        unit_max_hit_points=unit_cfg["max_hit_points"],
-        arena_size=battlefield_cfg["arena_size"],
-        fleet_origin_x=origin_x,
-        fleet_origin_y=origin_y,
-        fleet_facing_angle_deg=facing_angle_deg,
-    )
-
     run_cfg = _build_run_cfg(
         get_run,
         get_runtime,
@@ -1120,6 +1169,33 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         get_runtime,
         runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
         test_mode=run_cfg["test_mode"],
+    )
+    v4a_reference_cfg = _resolve_v4a_reference_cfg(
+        settings,
+        get_runtime,
+        movement_model_effective=movement_cfg["model_effective"],
+    )
+
+    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
+    unit_spacing = float(v4a_reference_cfg["expected_reference_spacing"])
+    if fleet_aspect_ratio <= 0.0 or unit_spacing <= 0.0:
+        raise ValueError(
+            "fixture.neutral_transit_v1.aspect_ratio and expected reference spacing must be > 0, "
+            f"got aspect_ratio={fleet_aspect_ratio}, spacing={unit_spacing}"
+        )
+
+    initial_state = build_single_fleet_initial_state(
+        fleet_params=fleet_params,
+        fleet_size=fleet_size,
+        fleet_aspect_ratio=fleet_aspect_ratio,
+        unit_spacing=unit_spacing,
+        layout_mode=str(v4a_reference_cfg["reference_layout_mode"]),
+        unit_speed=unit_cfg["speed"],
+        unit_max_hit_points=unit_cfg["max_hit_points"],
+        arena_size=battlefield_cfg["arena_size"],
+        fleet_origin_x=origin_x,
+        fleet_origin_y=origin_y,
+        fleet_facing_angle_deg=facing_angle_deg,
     )
 
     execution_cfg = {
@@ -1165,7 +1241,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             },
             "ch_enabled": False,
             "fsr_enabled": False,
-            "separation_radius": unit_spacing,
+            "separation_radius": float(v4a_reference_cfg["physical_min_spacing"]),
         },
         "boundary": _build_boundary_cfg(get_runtime),
     }
@@ -1204,6 +1280,9 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
+            "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
+            "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
+            "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],

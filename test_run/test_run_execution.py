@@ -88,7 +88,6 @@ FIXTURE_MODE_LABELS = {
 OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE = "fixture"
 OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR = "point_anchor"
 OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS = "enemy_term_zero"
-BATTLE_RESTORE_CANDIDATE_LOW_LEVEL_FLOOR_DEFAULT = 1.0
 
 
 def _clamp01(value: float) -> float:
@@ -480,21 +479,16 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         return replace(state, units=merged_units)
 
     def integrate_movement(self, state: BattleState) -> BattleState:
-        candidate_cfg = getattr(self, "TEST_RUN_BATTLE_RESTORE_CANDIDATE_CFG", None)
+        bundles_by_fleet = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
         movement_surface = getattr(self, "_movement_surface", {})
         movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
         if (
-            not isinstance(candidate_cfg, Mapping)
-            or not bool(candidate_cfg.get("active", False))
+            not isinstance(bundles_by_fleet, Mapping)
             or movement_model != "v4a"
             or len(state.fleets) <= 0
         ):
             return super().integrate_movement(state)
         if len(state.fleets) > 1 and not bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
-            return super().integrate_movement(state)
-
-        bundles_by_fleet = candidate_cfg.get("bundles_by_fleet", {})
-        if not isinstance(bundles_by_fleet, Mapping):
             return super().integrate_movement(state)
         lead_fleet_id = str(next(iter(state.fleets.keys()), "")).strip()
         bundle = bundles_by_fleet.get(lead_fleet_id)
@@ -1350,12 +1344,7 @@ def run_simulation(
             "test_run maintained path only supports runtime_cfg['movement_model'] in {'v3a', 'v4a'}, "
             f"got {runtime_cfg['movement_model']!r}"
         )
-    battle_restore_candidate_cfg = runtime_cfg.get("battle_restore_candidate", {})
-    if not isinstance(battle_restore_candidate_cfg, Mapping):
-        battle_restore_candidate_cfg = {}
-    battle_restore_candidate_active = bool(battle_restore_candidate_cfg.get("active", False))
-    if fixture_active or movement_model != "v4a":
-        battle_restore_candidate_active = False
+    battle_restore_bridge_active = (not fixture_active) and movement_model == "v4a"
 
     engine = engine_cls(
         attack_range=float(contact_cfg["attack_range"]),
@@ -1588,7 +1577,7 @@ def run_simulation(
         return float(front_extent) / float(initial_front_extent)
 
     battle_restore_bundles_by_fleet: dict[str, dict[str, Any]] = {}
-    if battle_restore_candidate_active:
+    if battle_restore_bridge_active:
         for fleet_id, fleet in initial_state.fleets.items():
             fleet_positions = {
                 str(unit_id): (
@@ -1645,16 +1634,8 @@ def run_simulation(
                 float(objective_point_xy[1]),
             )
             battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
-    engine.TEST_RUN_BATTLE_RESTORE_CANDIDATE_CFG = {
-        "active": bool(battle_restore_candidate_active) and bool(battle_restore_bundles_by_fleet),
-        "spawn_reference_spacing": float(
-            battle_restore_candidate_cfg.get("spawn_reference_spacing", contact_cfg["separation_radius"])
-        ),
-        "runtime_low_level_floor": float(
-            battle_restore_candidate_cfg.get("runtime_low_level_floor", contact_cfg["separation_radius"])
-        ),
-        "bundles_by_fleet": battle_restore_bundles_by_fleet,
-    }
+    if battle_restore_bundles_by_fleet:
+        engine.TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET = battle_restore_bundles_by_fleet
 
     trajectory = _per_fleet_series()
     alive_trajectory = _per_fleet_series()

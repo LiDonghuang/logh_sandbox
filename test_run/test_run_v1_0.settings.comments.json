@@ -50,6 +50,12 @@
       "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
     },
     "movement": {
+      "v4a": {
+        "test_only": {
+          "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
+          "reference_layout_mode": "Reference formation layout mode for the v4a line. Current supported value is rect_centered_rows."
+        }
+      },
       "v3a": {
         "test_only": {
           "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
@@ -77,7 +83,7 @@
         "hard_enabled": "Enable hard boundary clamp only when enabled=true. true=hard clamp ON; false=soft-only boundary mode."
       },
       "movement_low_level": {
-        "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0.",
+        "min_unit_spacing": "Physical-layer minimum spacing used by local separation / projection / related low-level runtime behavior. This is distinct from any v4a test-only expected/reference formation spacing candidate.",
         "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
       },
       "fire_control": {

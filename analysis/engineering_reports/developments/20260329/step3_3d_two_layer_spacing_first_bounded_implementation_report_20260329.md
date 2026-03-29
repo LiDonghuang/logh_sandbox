@@ -2,19 +2,19 @@
 
 Engine Version: `dev_v2.0`  
 Modified Layer: maintained battle-path candidate bridge in `test_run/` only  
-Affected Parameters: none on public surfaces  
-New Variables Introduced: internal `battle_restore_candidate` runtime_cfg surface only (`active`, `spawn_reference_spacing`, `runtime_low_level_floor`, per-fleet expected-slot bundles)  
-Cross-Dimension Coupling: introduces one bounded battle-path bridge from expected-slot restore into the maintained battle path while keeping spawn/reference spacing and low-level floor conceptually split inside the candidate line  
+Affected Parameters: no public surfaces; test-only `v4a` reference settings only (`expected_reference_spacing`, `reference_layout_mode`)  
+New Variables Introduced: per-fleet expected-slot bundles inside the maintained harness only  
+Cross-Dimension Coupling: introduces one bounded battle-path bridge from expected-slot restore into the maintained battle path while keeping expected/reference spacing and physical minimum spacing conceptually split inside the candidate line  
 Mapping Impact: none  
 Governance Impact: first bounded implementation candidate now exists for the two-layer spacing line plus maintained battle-path restoration bridge; remains candidate-only and non-default  
 Backward Compatible: yes for maintained repo defaults; `v3a` remains retained and no default switch is made
 
 Summary
 - This turn implements the first bounded two-layer spacing candidate without modifying the frozen runtime core.
-- The candidate keeps spawn/reference spacing at the scenario-build side while lowering the runtime low-level floor on a narrow internal `battle_restore_candidate` path.
+- The candidate keeps physical minimum spacing on the runtime low-level side while moving expected/reference spacing and reference layout mode onto narrow test-only `v4a` settings.
 - The maintained battle path now sees a bounded expected-slot restoration bridge for `v4a`, instead of only carrying the `v4a` label while leaving the restore line fixture-only.
 - Validation shows the bridge materially changes battle-path geometry and strongly suppresses the early rectangle stretch seen on the coupled baseline.
-- Validation also shows a new risk: the first candidate becomes almost rigid over the sampled battle window, which is stronger than desired for an emergent geometry read.
+- Human battle observation now sharpens the read: pre-contact marching stability is consistent with current scope, but later contact exposes an old hostile-penetration / interleaving problem much more clearly.
 - The correct review read is therefore: effective candidate, not yet accepted architecture, and not a silent baseline replacement.
 
 ## Files Changed
@@ -31,8 +31,8 @@ Summary
 The candidate stays entirely inside the maintained harness layer:
 
 1. `test_run/test_run_scenario.py`
-   - keeps spawn/reference spacing on the scenario side
-   - lowers only the runtime low-level floor on an internal `battle_restore_candidate` surface when the effective model is `v4a`
+   - takes expected/reference spacing and reference layout mode from narrow test-only `v4a` settings
+   - leaves physical minimum spacing on the existing runtime low-level `min_unit_spacing` surface
 2. `test_run/test_run_execution.py`
    - builds per-fleet expected-slot reference bundles from the initial maintained battle state
    - injects those bundles into a temporary fixture-shaped config only during `integrate_movement(...)`
@@ -58,8 +58,8 @@ Validation used one bounded maintained battle-path comparison:
 - bounded run window:
   - `max_time_steps = 120`
 - same branch code, two modes:
-  - baseline: coupled `2.0 / 2.0`, candidate inactive
-  - candidate: split `2.0 / 1.0`, battle restore bridge active
+- baseline: coupled expected/reference `2.0` and physical `2.0`, candidate inactive
+- candidate: expected/reference `2.0` with physical `1.0`, battle restore bridge active
 
 Human-readable artifact:
 
@@ -115,21 +115,23 @@ At `tick = 120`:
 - the maintained battle path now actually expresses the expected-slot restoration line rather than only carrying the `v4a` selector label
 - the spacing split remains materially important outside the earlier fixture-only frame
 - early rectangle stretching is dramatically reduced on the bounded battle path
+- pre-contact marching formation now stays stable in the maintained battle path, which matches current design scope rather than reading as over-constraint by itself
 - front-extent blowout and rank-split forward-slot error both collapse from large drift to near-zero levels
 - projection/correction breadth is also strongly reduced on the same candidate path
 
 ## What Worsened
 
-- the first candidate reads as too rigid across the sampled `120`-tick battle window
-- the candidate keeps the shape so close to the reference frame that the emergent-geometry read may now be over-constrained
-- this means the candidate proves the bridge and the spacing split matter, but also shows that the first implementation cut is too strong to be treated as a final architecture answer
+- the candidate now makes the old hostile penetration problem much easier to see during contact
+- in human 3D observation around the later contact window, opposing fleets can interleave in a sawtooth pattern and even pass through each other
+- this means the candidate proves the bridge and the spacing split matter, but it also reveals that the overloaded `min_unit_spacing` had been masking part of the contact-side penetration problem
 
 ## What Remains Unclear
 
-- whether the maintained battle path needs a weaker restore bridge than the current first candidate
+- whether the maintained battle path needs any weaker restore pressure at all before personality-side formation variation is opened
 - whether the low-level floor split is the correct long-term structural answer by itself, or only the necessary first half of the answer
+- what the smallest bounded hostile anti-penetration follow-up should be once Governance reviews this candidate
 - where the eventual ownership boundary should sit if this line advances beyond candidate level
-- whether future bounded hardening should weaken restore pressure, narrow activation conditions, or both
+- whether future bounded hardening should focus first on contact-side hostile separation rather than further formation-side restore tuning
 
 ## Merge-Worthy Assessment
 
@@ -142,7 +144,7 @@ Reason:
 
 - the candidate successfully proves that battle can see the restoration line
 - it also proves that the spacing split matters outside fixture-only context
-- but the resulting battle behavior is still too close to rigid geometry to be accepted as a maintained baseline by momentum
+- but the resulting battle behavior still exposes unresolved hostile penetration at contact, so it should not be accepted as a maintained baseline by momentum
 
 The correct review reading is:
 

@@ -1,6 +1,6 @@
 {
   "fixture": {
-    "active_mode": "neutral_transit_v1",
+    "active_mode": "battle",
     "neutral_transit_v1": {
       "objective_point_xy": [
         350.0,
@@ -22,6 +22,12 @@
       "movement_model": "v4a"
     },
     "movement": {
+      "v4a": {
+        "test_only": {
+          "expected_reference_spacing": 2.0,
+          "reference_layout_mode": "rect_centered_rows"
+        }
+      },
       "v3a": {
         "test_only": {
           "experiment": "exp_precontact_centroid_probe",
