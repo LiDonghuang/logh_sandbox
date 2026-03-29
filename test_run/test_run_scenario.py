@@ -952,6 +952,14 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         test_mode=run_cfg["test_mode"],
     )
     boundary_cfg = _build_boundary_cfg(get_runtime)
+    battle_restore_candidate_active = movement_cfg["model_effective"] == "v4a"
+    spawn_reference_spacing = float(fleet_cfg["unit_spacing"])
+    runtime_low_level_floor_effective = float(spawn_reference_spacing)
+    if battle_restore_candidate_active:
+        runtime_low_level_floor_effective = min(
+            float(spawn_reference_spacing),
+            float(execution.BATTLE_RESTORE_CANDIDATE_LOW_LEVEL_FLOOR_DEFAULT),
+        )
 
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
@@ -966,9 +974,14 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "decision_source": run_cfg["runtime_decision_source_effective"],
         "movement_model": movement_cfg["model_effective"],
         "movement": movement_cfg,
+        "battle_restore_candidate": {
+            "active": bool(battle_restore_candidate_active),
+            "spawn_reference_spacing": float(spawn_reference_spacing),
+            "runtime_low_level_floor": float(runtime_low_level_floor_effective),
+        },
         "contact": {
             **contact_cfg,
-            "separation_radius": fleet_cfg["unit_spacing"],
+            "separation_radius": float(runtime_low_level_floor_effective),
         },
         "boundary": boundary_cfg,
     }
@@ -996,6 +1009,9 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
+            "battle_restore_candidate_active": bool(battle_restore_candidate_active),
+            "spawn_reference_spacing": float(spawn_reference_spacing),
+            "runtime_low_level_floor_effective": float(runtime_low_level_floor_effective),
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],

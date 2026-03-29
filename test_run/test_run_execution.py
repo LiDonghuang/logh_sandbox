@@ -88,6 +88,7 @@ FIXTURE_MODE_LABELS = {
 OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE = "fixture"
 OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR = "point_anchor"
 OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS = "enemy_term_zero"
+BATTLE_RESTORE_CANDIDATE_LOW_LEVEL_FLOOR_DEFAULT = 1.0
 
 
 def _clamp01(value: float) -> float:
@@ -477,6 +478,57 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             self.debug_last_cohesion_v3 = first_debug_snapshot["debug_last_cohesion_v3"]
             self.debug_last_cohesion_v3_components = first_debug_snapshot["debug_last_cohesion_v3_components"]
         return replace(state, units=merged_units)
+
+    def integrate_movement(self, state: BattleState) -> BattleState:
+        candidate_cfg = getattr(self, "TEST_RUN_BATTLE_RESTORE_CANDIDATE_CFG", None)
+        movement_surface = getattr(self, "_movement_surface", {})
+        movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
+        if (
+            not isinstance(candidate_cfg, Mapping)
+            or not bool(candidate_cfg.get("active", False))
+            or movement_model != "v4a"
+            or len(state.fleets) <= 0
+        ):
+            return super().integrate_movement(state)
+        if len(state.fleets) > 1 and not bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
+            return super().integrate_movement(state)
+
+        bundles_by_fleet = candidate_cfg.get("bundles_by_fleet", {})
+        if not isinstance(bundles_by_fleet, Mapping):
+            return super().integrate_movement(state)
+        lead_fleet_id = str(next(iter(state.fleets.keys()), "")).strip()
+        bundle = bundles_by_fleet.get(lead_fleet_id)
+        if not isinstance(bundle, Mapping):
+            return super().integrate_movement(state)
+        expected_slot_offsets_local = bundle.get("expected_slot_offsets_local")
+        if not isinstance(expected_slot_offsets_local, Mapping):
+            return super().integrate_movement(state)
+
+        previous_fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        had_previous_fixture_cfg = isinstance(previous_fixture_cfg, dict)
+        temp_fixture_cfg = dict(previous_fixture_cfg) if had_previous_fixture_cfg else {}
+        temp_fixture_cfg.update(
+            {
+                "active_mode": FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+                "fleet_id": lead_fleet_id,
+                "expected_position_candidate_active": True,
+                "initial_forward_hat_xy": tuple(bundle.get("initial_forward_hat_xy", (1.0, 0.0))),
+                "expected_slot_offsets_local": dict(expected_slot_offsets_local),
+                "frozen_terminal_frame_active": False,
+                "frozen_terminal_primary_axis_xy": None,
+                "frozen_terminal_secondary_axis_xy": None,
+                "objective_contract_3d": None,
+                "stop_radius": 0.0,
+            }
+        )
+        self.TEST_RUN_FIXTURE_CFG = temp_fixture_cfg
+        try:
+            return super().integrate_movement(state)
+        finally:
+            if had_previous_fixture_cfg:
+                self.TEST_RUN_FIXTURE_CFG = previous_fixture_cfg
+            elif hasattr(self, "TEST_RUN_FIXTURE_CFG"):
+                delattr(self, "TEST_RUN_FIXTURE_CFG")
 
     @staticmethod
     def _stable_pair_direction(unit_i: str, unit_j: str) -> tuple[float, float]:
@@ -1298,6 +1350,12 @@ def run_simulation(
             "test_run maintained path only supports runtime_cfg['movement_model'] in {'v3a', 'v4a'}, "
             f"got {runtime_cfg['movement_model']!r}"
         )
+    battle_restore_candidate_cfg = runtime_cfg.get("battle_restore_candidate", {})
+    if not isinstance(battle_restore_candidate_cfg, Mapping):
+        battle_restore_candidate_cfg = {}
+    battle_restore_candidate_active = bool(battle_restore_candidate_cfg.get("active", False))
+    if fixture_active or movement_model != "v4a":
+        battle_restore_candidate_active = False
 
     engine = engine_cls(
         attack_range=float(contact_cfg["attack_range"]),
@@ -1528,6 +1586,75 @@ def run_simulation(
         if initial_front_extent <= 1e-12:
             return float("nan")
         return float(front_extent) / float(initial_front_extent)
+
+    battle_restore_bundles_by_fleet: dict[str, dict[str, Any]] = {}
+    if battle_restore_candidate_active:
+        for fleet_id, fleet in initial_state.fleets.items():
+            fleet_positions = {
+                str(unit_id): (
+                    float(initial_state.units[unit_id].position.x),
+                    float(initial_state.units[unit_id].position.y),
+                )
+                for unit_id in fleet.unit_ids
+                if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
+            }
+            if not fleet_positions:
+                continue
+            enemy_positions = {
+                str(unit_id): (
+                    float(initial_state.units[unit_id].position.x),
+                    float(initial_state.units[unit_id].position.y),
+                )
+                for other_fleet_id, other_fleet in initial_state.fleets.items()
+                if other_fleet_id != fleet_id
+                for unit_id in other_fleet.unit_ids
+                if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
+            }
+            initial_forward_sum_x = 0.0
+            initial_forward_sum_y = 0.0
+            for unit_id in fleet.unit_ids:
+                unit = initial_state.units.get(unit_id)
+                if unit is None or float(unit.hit_points) <= 0.0:
+                    continue
+                initial_forward_sum_x += float(unit.orientation_vector.x)
+                initial_forward_sum_y += float(unit.orientation_vector.y)
+            fleet_centroid_x, fleet_centroid_y, _ = _compute_centroid_and_rms_radius(fleet_positions)
+            enemy_centroid_x, enemy_centroid_y, _ = _compute_centroid_and_rms_radius(enemy_positions)
+            if math.isfinite(enemy_centroid_x) and math.isfinite(enemy_centroid_y):
+                objective_point_xy = (float(enemy_centroid_x), float(enemy_centroid_y))
+            else:
+                fallback_axis_norm = math.sqrt(
+                    (initial_forward_sum_x * initial_forward_sum_x) + (initial_forward_sum_y * initial_forward_sum_y)
+                )
+                if fallback_axis_norm <= 1e-12:
+                    fallback_axis_x, fallback_axis_y = 1.0, 0.0
+                else:
+                    fallback_axis_x = initial_forward_sum_x / fallback_axis_norm
+                    fallback_axis_y = initial_forward_sum_y / fallback_axis_norm
+                objective_point_xy = (
+                    float(fleet_centroid_x) + float(fallback_axis_x),
+                    float(fleet_centroid_y) + float(fallback_axis_y),
+                )
+            bundle = _build_fixture_expected_reference_bundle(
+                fleet_positions,
+                objective_point_xy,
+                fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
+            )
+            bundle["objective_point_xy"] = (
+                float(objective_point_xy[0]),
+                float(objective_point_xy[1]),
+            )
+            battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
+    engine.TEST_RUN_BATTLE_RESTORE_CANDIDATE_CFG = {
+        "active": bool(battle_restore_candidate_active) and bool(battle_restore_bundles_by_fleet),
+        "spawn_reference_spacing": float(
+            battle_restore_candidate_cfg.get("spawn_reference_spacing", contact_cfg["separation_radius"])
+        ),
+        "runtime_low_level_floor": float(
+            battle_restore_candidate_cfg.get("runtime_low_level_floor", contact_cfg["separation_radius"])
+        ),
+        "bundles_by_fleet": battle_restore_bundles_by_fleet,
+    }
 
     trajectory = _per_fleet_series()
     alive_trajectory = _per_fleet_series()

@@ -148,6 +148,7 @@ Current availability status:
 - a new two-layer spacing opening package now starts under `analysis/engineering_reports/developments/20260329/`; current engineering read is that the concept line is open structurally, a second bounded comparison path still supports the spacing-decoupling result, and governance is now also being asked whether `v4a` should be reviewed as a possible shared neutral+battle default candidate while keeping `v3a` retained
 - the `20260329` package now also includes implementation-prep discussion for two-layer spacing and a bounded shared default-review discussion note for `v4a`; current engineering read is still discussion-only, with no spacing implementation and no default switch authorized
 - the `20260329` package now also includes a battle-path-relevant next evidence pack; current engineering read is that the `expected/reference spacing = 2.0` vs `runtime low-level floor = 1.0` split remains materially important outside the earlier fixture-only frame, but still does not by itself authorize silent implementation
+- the active `eng/two-layer-spacing-first-bounded-impl` PR branch now adds a first bounded two-layer spacing implementation candidate entirely in `test_run/`; current branch-only read is that maintained battle can now see the restore line, but the first cut is still too rigid to read as a merge-by-momentum baseline
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
