@@ -61,7 +61,6 @@ class EngineTickSkeleton:
             "fsr_reference": {},
             "diag_pending": None,
             "diag_timeseries": [],
-            "legality_surface": {},
         }
 
     def step(self, state: BattleState) -> BattleState:
@@ -1761,13 +1760,6 @@ class EngineTickSkeleton:
         else:
             legality_feasible_positions = {}
         legality_handoff_ready = bool(legality_feasible_positions)
-        self._debug_state["legality_surface"] = {
-            "tick": int(state.tick),
-            "reference_positions_by_unit": legality_reference_positions,
-            "feasible_positions_by_unit": legality_feasible_positions,
-            "middle_stage_active": bool(legality_middle_stage_active),
-            "handoff_ready": bool(legality_handoff_ready),
-        }
 
         if diag_enabled:
             pending_diag = self._build_movement_diag_pending(
