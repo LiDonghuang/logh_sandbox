@@ -44,7 +44,7 @@ DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
-LOW_SPEED_SMOOTHING_MAX_FPS = 12.0
+LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
 FLEET_AVATAR_HEIGHT = 0.105
 FLEET_AVATAR_ASPECT_RATIO = 4.0 / 5.0
 FLEET_AVATAR_SCREEN_NUDGE = 0.012
@@ -56,9 +56,6 @@ FLEET_AVATAR_HIGHLIGHT_PAD = 0.018
 FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.48
 FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
 FLEET_AVATAR_BORDER_ALPHA = 1.0
-FLEET_AVATAR_POSITION_DEADBAND = 0.010
-FLEET_AVATAR_SMOOTHING_BLEND = 0.28
-FLEET_AVATAR_SNAP_DISTANCE = 0.18
 FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.34
 FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.24
 FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.42
@@ -223,7 +220,6 @@ class FleetViewerApp(ShowBase):
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
-        self._fleet_avatar_display_positions: dict[str, tuple[float, float]] = {}
         self._fleet_avatar_pair_layout_active = False
         self._fleet_avatar_world_lift = max(8.0, float(self._replay.arena_size) * 0.03)
 
@@ -364,16 +360,35 @@ class FleetViewerApp(ShowBase):
                 continue
             fleet_color = self._replay.fleet_colors.get(str(fleet_id), "#ffffff")
             base_bin = 40 + (int(stack_index) * 10)
-            highlight = DirectFrame(
-                parent=self.aspect2d,
-                frameSize=(-highlight_half_width, highlight_half_width, -highlight_half_height, highlight_half_height),
-                frameColor=_hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_HIGHLIGHT_ALPHA),
-            )
-            highlight.setTransparency(TransparencyAttrib.MAlpha)
-            highlight.setBin("fixed", base_bin)
-            highlight.setDepthTest(False)
-            highlight.setDepthWrite(False)
-            highlight.hide()
+            highlight_color = _hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_HIGHLIGHT_ALPHA)
+            highlight_bars = {
+                "top": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-highlight_half_width, highlight_half_width, border_half_height, highlight_half_height),
+                    frameColor=highlight_color,
+                ),
+                "bottom": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-highlight_half_width, highlight_half_width, -highlight_half_height, -border_half_height),
+                    frameColor=highlight_color,
+                ),
+                "left": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(-highlight_half_width, -border_half_width, -border_half_height, border_half_height),
+                    frameColor=highlight_color,
+                ),
+                "right": DirectFrame(
+                    parent=self.aspect2d,
+                    frameSize=(border_half_width, highlight_half_width, -border_half_height, border_half_height),
+                    frameColor=highlight_color,
+                ),
+            }
+            for highlight_bar in highlight_bars.values():
+                highlight_bar.setTransparency(TransparencyAttrib.MAlpha)
+                highlight_bar.setBin("fixed", base_bin)
+                highlight_bar.setDepthTest(False)
+                highlight_bar.setDepthWrite(False)
+                highlight_bar.hide()
             matte = DirectFrame(
                 parent=self.aspect2d,
                 frameSize=(-matte_half_width, matte_half_width, -matte_half_height, matte_half_height),
@@ -425,7 +440,10 @@ class FleetViewerApp(ShowBase):
             node.setDepthWrite(False)
             node.hide()
             self._fleet_avatar_nodes[str(fleet_id)] = {
-                "highlight": highlight,
+                "highlight_top": highlight_bars["top"],
+                "highlight_bottom": highlight_bars["bottom"],
+                "highlight_left": highlight_bars["left"],
+                "highlight_right": highlight_bars["right"],
                 "matte": matte,
                 "border_top": border_bars["top"],
                 "border_bottom": border_bars["bottom"],
@@ -493,14 +511,6 @@ class FleetViewerApp(ShowBase):
             right_id: (paired_right_x, paired_z),
         }
 
-    def _avatar_smoothing_profile(self) -> tuple[float, float, float]:
-        max_index = max(1, len(PLAYBACK_FPS_LEVELS) - 1)
-        gear_alpha = max(0.0, min(1.0, float(self._playback_level_index) / float(max_index)))
-        deadband = FLEET_AVATAR_POSITION_DEADBAND * (1.45 - (0.45 * gear_alpha))
-        snap_distance = FLEET_AVATAR_SNAP_DISTANCE * (0.90 + (0.20 * gear_alpha))
-        blend = FLEET_AVATAR_SMOOTHING_BLEND + (0.12 * gear_alpha)
-        return (float(deadband), float(snap_distance), float(blend))
-
     def _sync_fleet_avatar_overlays(self) -> None:
         if not self._avatars_enabled:
             for nodes in self._fleet_avatar_nodes.values():
@@ -521,7 +531,6 @@ class FleetViewerApp(ShowBase):
                 fleet_radius=float(state["radius"]),
             )
             if projected_anchor is None:
-                self._fleet_avatar_display_positions.pop(fleet_id, None)
                 for node in nodes.values():
                     node.hide()
                 continue
@@ -530,44 +539,13 @@ class FleetViewerApp(ShowBase):
             target_z = max(-0.90, min(0.92, float(projected_anchor[1])))
             target_positions[fleet_id] = (target_x, target_z)
         adjusted_target_positions = self._resolve_avatar_layout_positions(target_positions)
-        display_positions: dict[str, tuple[float, float]] = {}
         for fleet_id, nodes in self._fleet_avatar_nodes.items():
-            target_position = adjusted_target_positions.get(fleet_id)
-            if target_position is None:
-                self._fleet_avatar_display_positions.pop(fleet_id, None)
-                for node in nodes.values():
-                    node.hide()
-                continue
-            target_x, target_z = target_position
-            previous_position = self._fleet_avatar_display_positions.get(fleet_id)
-            if (not self._playing) or previous_position is None:
-                display_x = float(target_x)
-                display_z = float(target_z)
-            else:
-                deadband, snap_distance, blend = self._avatar_smoothing_profile()
-                delta_x = float(target_x) - float(previous_position[0])
-                delta_z = float(target_z) - float(previous_position[1])
-                distance = math.sqrt((delta_x * delta_x) + (delta_z * delta_z))
-                if distance <= deadband:
-                    display_x = float(previous_position[0])
-                    display_z = float(previous_position[1])
-                elif distance >= snap_distance:
-                    display_x = float(target_x)
-                    display_z = float(target_z)
-                else:
-                    display_x = float(previous_position[0]) + (blend * delta_x)
-                    display_z = float(previous_position[1]) + (blend * delta_z)
-            display_positions[fleet_id] = (display_x, display_z)
-        final_display_positions = self._resolve_avatar_layout_positions(display_positions)
-        for fleet_id, nodes in self._fleet_avatar_nodes.items():
-            final_position = final_display_positions.get(fleet_id)
+            final_position = adjusted_target_positions.get(fleet_id)
             if final_position is None:
-                self._fleet_avatar_display_positions.pop(fleet_id, None)
                 for node in nodes.values():
                     node.hide()
                 continue
             display_x, display_z = final_position
-            self._fleet_avatar_display_positions[fleet_id] = (display_x, display_z)
             for node in nodes.values():
                 node.setPos(display_x, 0.0, display_z)
                 node.show()

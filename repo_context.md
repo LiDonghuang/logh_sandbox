@@ -130,7 +130,7 @@ Current availability status:
 - current engineering read is that this late-terminal result may also matter for the unresolved early restoration problem: the useful correction turned out to be component-wise and one-sided, which suggests early restore compatibility may also be more directional than scalar
 - current guardrail rule is `viewer consumes, runtime owns`
 - current neutral-transit first-carrier validation still lives in `test_run` launcher / fixture telemetry, and `viz3d_panda/` can now consume that same bounded fixture path through a very small viewer-side source hookup plus minimal consumer-side objective marker / fleet halo overlays
-- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, falls back to a midpoint-based side-by-side layout when two battle fleets project too close, re-solves during paused camera movement, and now uses a small gear-aware anti-jitter profile during playback
+- current viewer-local fleet avatar overlay is fixed-size, screen-space, `4:5`, supports a local `P` show/hide toggle, uses per-fleet grouped layering, falls back to a midpoint-based side-by-side layout when two battle fleets project too close, re-solves during paused camera movement, stays on the main interpolation path through gear `5`, and now uses a lighter ring-style highlight without extra avatar-local playback smoothing
 - current dual-layer unit view includes a minimal transparency-order correction to reduce inner-cluster occlusion by the transparent outer shell, near/mid/far cluster fading, and cleaner low-speed transform-only smoothing of motion-facing elements
 - current tracked fleet camera now uses a small gear-aware playback stabilizer on focus motion only; pause/step inspection remains exact
 - a stage governance memo now records the accepted pre-Formation viewer-only state under `analysis/engineering_reports/developments/20260327/`; it is a local-state governance record, not canonical governance authority
@@ -143,6 +143,7 @@ Current availability status:
 - current GitHub collaboration mode now has an active repo-side workflow document under `docs/engineering/` for carrier-by-carrier branch / PR review
 - cross-thread protocol v1.4 now makes minimal human-readable evidence an explicit control requirement for substantive runtime modifications
 - the legality line now also has an active bounded hardening working charter under `docs/engineering/`, allowing multiple bounded baseline-hardening iterations until a real governance trigger is reached
+- current bounded standard-rectangle root-cause read is now recorded locally under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the early `aspect_ratio = 1.0 / 4.0` stretching is a runtime movement-vs-restore issue rather than malformed reference layout generation or a viewer-only artifact
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -255,6 +256,7 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260327/step3_3d_legality_first_bounded_implementation_plan_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_implementation_report_20260328.md`
 - `analysis/engineering_reports/developments/20260328/step3_3d_legality_first_bounded_baseline_validation_pack_20260328.md`
+- `analysis/engineering_reports/developments/20260328/step3_3d_standard_rectangle_root_cause_probe_note_20260328.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
