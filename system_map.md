@@ -79,7 +79,7 @@ Authority: Reference only, not canonical semantics authority
 - `docs/README.md`
   - repo-side documentation entry with canonical / context / reference / archive separation
 - `docs/APP_Files_Prefix_Mapping_v1.0.md`
-  - APP-side flat mirror policy and active 12-file governance working set
+  - APP-side flat mirror policy, active 10-file repo-backed governance working set, and local pointer-based orientation rule
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
   - active engineering workflow for direct-push vs branch + PR carrier review
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
@@ -138,6 +138,7 @@ Current availability:
 - a follow-up spacing-decoupling probe note now records a stronger read that the currently overloaded low-level spacing radius is a major amplifier in that same early stretch issue; this remains a harness-local diagnostic result and not a committed two-layer spacing mechanism
 - a new `20260329` two-layer spacing opening package now records the structural opening scope plus a second bounded comparison path; current engineering read is that the decoupling result remains strong across more than one bounded path, and governance is also being asked whether `v4a` should be reviewed as a possible shared neutral+battle default candidate while keeping `v3a` retained
 - the `20260329` package now also includes a two-layer spacing implementation-prep discussion note and a `v4a` shared default-review discussion note; current read remains discussion-only, with spacing implementation and default switching still closed
+- the `20260329` package now also includes one bounded battle-path-relevant two-layer spacing evidence pack; current read is that the spacing split remains a major amplifier outside the earlier neutral-transit fixture frame, but the line still remains pre-implementation
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - the maintained `neutral_transit_v1` harness now permits strict `objective_point_xy == initial centroid` for fixture expected-position reference construction by using the initial fleet forward orientation as a harness-only fallback axis; this does not widen runtime semantics
 - late-stage `realistic` human-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed

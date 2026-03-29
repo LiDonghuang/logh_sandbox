@@ -9,8 +9,11 @@ The repository remains the authoritative source with structured paths.
 
 ## Active APP Mirror Policy
 
-The APP-side active governance working set is intentionally narrowed to 12 markdown files.
-Those 12 files are the only active APP mirror set at present.
+The APP-side repo-backed active governance working set is intentionally narrowed to 10 markdown files.
+Those 10 files are the only active repo-backed APP mirror set at present.
+
+`repo_context.md` and `system_map.md` are no longer maintained as full APP local mirror files.
+APP-side orientation may instead rely on a local `REPO_INDEX_POINTER` workflow that directs Governance back to the repo-side authoritative paths.
 
 Everything else remains repo-side authoritative, reference, or archival material.
 It may still be retained in the repository, but it is not part of the APP active governance working set.
@@ -37,8 +40,16 @@ It may still be retained in the repository, but it is not part of the APP active
 | `10_Engine_v2.0_Skeleton_Freeze_Declaration.md` | `canonical/Engine_v2.0_Skeleton_Freeze_Declaration.md` | 10 | active |
 | `40_Phase_Transition_Governance_Playbook_v1_0.md` | `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md` | 40 | active; governance operations / playbook layer; non-canonical |
 | `40_Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md` | `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md` | 40 | active; phase working charter; bounded hardening mode only |
-| `50_repo_context.md` | `repo_context.md` | 50 | active; working context / orientation; non-canonical; not semantic authority |
-| `50_system_map.md` | `system_map.md` | 50 | active; working context / orientation; non-canonical; not semantic authority |
+
+## Pointer-Based Orientation Rule
+
+APP-side local orientation may use a local `REPO_INDEX_POINTER` workflow instead of full mirror copies of:
+
+- `repo_context.md`
+- `system_map.md`
+
+The repo remains authoritative for those two files.
+APP-side local pointer/orientation files are not treated as repo-backed semantic mirrors.
 
 ## Removed From APP Active Mirror
 
@@ -69,7 +80,9 @@ Examples include:
 
 ## Separation Rule (APP vs VS)
 
-APP-side mirror includes only the 12-file active governance working set listed above.
+APP-side repo-backed mirror includes only the 10-file active governance working set listed above.
+
+APP-side local pointer/orientation files may still exist outside that repo-backed mirror set.
 
 APP-side mirror does not include:
 
@@ -78,5 +91,6 @@ APP-side mirror does not include:
 - archive governance specs
 - runtime output artifacts
 - engineering report outputs
+- full mirror copies of `repo_context.md` / `system_map.md`
 
 Those remain VS-side only under their authoritative repository paths.

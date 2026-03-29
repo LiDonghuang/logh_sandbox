@@ -2,6 +2,7 @@
 
 This repository keeps structured repo-side documentation as the authoritative source.
 The APP-side mirror is narrower and is governed by [APP_Files_Prefix_Mapping_v1.0.md](APP_Files_Prefix_Mapping_v1.0.md).
+APP-side local orientation may use a `REPO_INDEX_POINTER` workflow instead of full mirror copies of `repo_context.md` / `system_map.md`.
 
 ## Canonical / Protocol
 

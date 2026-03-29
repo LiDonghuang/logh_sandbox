@@ -25,7 +25,7 @@ Authority: Reference only, not canonical semantics authority
 - A5 `test_run` structural reset functionally completed; residual maintained-path weight now sits in post-closeout engineering debt
 - GitHub branch + PR collaboration workflow now has an active repo-side engineering workflow document for larger carrier review
 - Cross-thread collaboration protocol v1.4 is now the active repo-side / APP-sync protocol baseline
-- APP-side governance mirror intentionally reduced to a 12-file active working set
+- APP-side governance workflow now uses a 10-file repo-backed mirror set plus a local `REPO_INDEX_POINTER` orientation workflow; `repo_context.md` and `system_map.md` are no longer maintained as full APP local mirror files
 
 Current emphasis is bounded 3D viewer bootstrap rather than personality expansion or 3D runtime semantics.
 
@@ -43,7 +43,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
 - `docs/README.md`
   - repo-side documentation layer entry: canonical / context / reference / archive separation
 - `docs/APP_Files_Prefix_Mapping_v1.0.md`
-  - APP mirror scope and active flat-file set policy
+  - APP mirror scope, repo-backed active flat-file set policy, and local pointer-based orientation rule
 - `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
   - governs experiment vs baseline-replacement boundary and replacement recording discipline
 - `docs/governance/Phase_Transition_Governance_Playbook_v1_0.md`
@@ -147,6 +147,7 @@ Current availability status:
 - a follow-up spacing-decoupling probe note now also exists under `analysis/engineering_reports/developments/20260328/`; current engineering read is that the overloaded low-level spacing radius is a major amplifier in the same early standard-rectangle stretch issue, but that result is still diagnostic-only and pre-implementation
 - a new two-layer spacing opening package now starts under `analysis/engineering_reports/developments/20260329/`; current engineering read is that the concept line is open structurally, a second bounded comparison path still supports the spacing-decoupling result, and governance is now also being asked whether `v4a` should be reviewed as a possible shared neutral+battle default candidate while keeping `v3a` retained
 - the `20260329` package now also includes implementation-prep discussion for two-layer spacing and a bounded shared default-review discussion note for `v4a`; current engineering read is still discussion-only, with no spacing implementation and no default switch authorized
+- the `20260329` package now also includes a battle-path-relevant next evidence pack; current engineering read is that the `expected/reference spacing = 2.0` vs `runtime low-level floor = 1.0` split remains materially important outside the earlier fixture-only frame, but still does not by itself authorize silent implementation
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
 
@@ -268,6 +269,8 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_followup_and_v4a_default_request_20260329.md`
 - `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_implementation_prep_discussion_note_20260329.md`
 - `analysis/engineering_reports/developments/20260329/step3_3d_v4a_shared_default_review_discussion_note_20260329.md`
+- `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_next_evidence_pack_20260329.md`
+- `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_battle_compact_comparison_20260329.csv`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
