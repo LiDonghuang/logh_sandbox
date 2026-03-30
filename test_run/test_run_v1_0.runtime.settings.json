@@ -10,8 +10,8 @@
     "background_map_seed": -1
   },
   "fleet": {
-    "fleet_a_archetype_id": "grillparzer",
-    "fleet_b_archetype_id": "knappstein",
+    "fleet_a_archetype_id": "lobos",
+    "fleet_b_archetype_id": "merkatz",
     "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,
     "initial_fleet_a_aspect_ratio": 4.0,
