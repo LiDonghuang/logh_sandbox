@@ -1,6 +1,6 @@
 {
   "fixture": {
-    "active_mode": "neutral_transit_v1",
+    "active_mode": "battle",
     "neutral_transit_v1": {
       "objective_point_xy": [
         350.0,
@@ -9,7 +9,7 @@
       "stop_radius": 2.0,
       "fleet_archetype_id": "lobos",
       "fleet_size": 100,
-      "aspect_ratio": 4.0,
+      "aspect_ratio": 1.0,
       "origin_xy": [
         50.0,
         50.0
@@ -25,11 +25,17 @@
       "v4a": {
         "test_only": {
           "expected_reference_spacing": 2.0,
-          "reference_layout_mode": "rect_centered_1.0",
+          "reference_layout_mode": "rect_centered_4.0",
           "reference_surface_mode": "soft_morphology_v1",
           "soft_morphology_relaxation": 0.2,
           "shape_vs_advance_strength": 0.65,
           "heading_relaxation": 0.18,
+          "battle_standoff_self_extent_weight": 0.15,
+          "battle_standoff_enemy_extent_weight": 0.15,
+          "battle_standoff_hold_band_ratio": 0.1,
+          "engaged_speed_scale": 0.7,
+          "attack_speed_lateral_scale": 0.65,
+          "attack_speed_backward_scale": 0.35,
           "restore_strength": 0.25
         }
       },

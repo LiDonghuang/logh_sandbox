@@ -555,6 +555,70 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             "runtime.movement.v4a.test_only.heading_relaxation must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
         )
+    v4a_battle_standoff_self_extent_weight = float(
+        get_runtime(
+            "v4a_battle_standoff_self_extent_weight",
+            execution.V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
+        )
+    )
+    if v4a_battle_standoff_self_extent_weight < 0.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.battle_standoff_self_extent_weight must be >= 0.0, "
+            f"got {v4a_battle_standoff_self_extent_weight}"
+        )
+    v4a_battle_standoff_enemy_extent_weight = float(
+        get_runtime(
+            "v4a_battle_standoff_enemy_extent_weight",
+            execution.V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
+        )
+    )
+    if v4a_battle_standoff_enemy_extent_weight < 0.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.battle_standoff_enemy_extent_weight must be >= 0.0, "
+            f"got {v4a_battle_standoff_enemy_extent_weight}"
+        )
+    v4a_battle_standoff_hold_band_ratio = float(
+        get_runtime(
+            "v4a_battle_standoff_hold_band_ratio",
+            execution.V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.battle_standoff_hold_band_ratio must be within [0.0, 1.0], "
+            f"got {v4a_battle_standoff_hold_band_ratio}"
+        )
+    v4a_engaged_speed_scale = float(
+        get_runtime("v4a_engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+    )
+    if not 0.0 < v4a_engaged_speed_scale <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.engaged_speed_scale must be within (0.0, 1.0], "
+            f"got {v4a_engaged_speed_scale}"
+        )
+    v4a_attack_speed_lateral_scale = float(
+        get_runtime(
+            "v4a_attack_speed_lateral_scale",
+            execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.attack_speed_lateral_scale must be within (0.0, 1.0], "
+            f"got {v4a_attack_speed_lateral_scale}"
+        )
+    v4a_attack_speed_backward_scale = float(
+        get_runtime(
+            "v4a_attack_speed_backward_scale",
+            execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.attack_speed_backward_scale must be within "
+            f"[0.0, attack_speed_lateral_scale], got backward={v4a_attack_speed_backward_scale}, "
+            f"lateral={v4a_attack_speed_lateral_scale}"
+        )
     movement_cfg = {
         "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
         "experiment_effective": _require_choice(
@@ -609,6 +673,12 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
         "v4a_shape_vs_advance_strength": v4a_shape_vs_advance_strength,
         "v4a_heading_relaxation": v4a_heading_relaxation,
+        "v4a_battle_standoff_self_extent_weight": v4a_battle_standoff_self_extent_weight,
+        "v4a_battle_standoff_enemy_extent_weight": v4a_battle_standoff_enemy_extent_weight,
+        "v4a_battle_standoff_hold_band_ratio": v4a_battle_standoff_hold_band_ratio,
+        "v4a_engaged_speed_scale": v4a_engaged_speed_scale,
+        "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
+        "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
     }
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
@@ -666,6 +736,36 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         movement_cfg["v4a_heading_relaxation"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_HEADING_RELAXATION_DEFAULT
+    )
+    movement_cfg["v4a_battle_standoff_self_extent_weight_effective"] = (
+        movement_cfg["v4a_battle_standoff_self_extent_weight"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT
+    )
+    movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"] = (
+        movement_cfg["v4a_battle_standoff_enemy_extent_weight"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT
+    )
+    movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"] = (
+        movement_cfg["v4a_battle_standoff_hold_band_ratio"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT
+    )
+    movement_cfg["v4a_engaged_speed_scale_effective"] = (
+        movement_cfg["v4a_engaged_speed_scale"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT
+    )
+    movement_cfg["v4a_attack_speed_lateral_scale_effective"] = (
+        movement_cfg["v4a_attack_speed_lateral_scale"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT
+    )
+    movement_cfg["v4a_attack_speed_backward_scale_effective"] = (
+        movement_cfg["v4a_attack_speed_backward_scale"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT
     )
     movement_cfg.setdefault("expected_reference_spacing_effective", None)
     movement_cfg.setdefault("reference_layout_mode_effective", None)
@@ -1165,6 +1265,24 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_heading_relaxation_effective": float(
                 movement_cfg["v4a_heading_relaxation_effective"]
             ),
+            "v4a_battle_standoff_self_extent_weight_effective": float(
+                movement_cfg["v4a_battle_standoff_self_extent_weight_effective"]
+            ),
+            "v4a_battle_standoff_enemy_extent_weight_effective": float(
+                movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"]
+            ),
+            "v4a_battle_standoff_hold_band_ratio_effective": float(
+                movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
+            ),
+            "v4a_engaged_speed_scale_effective": float(
+                movement_cfg["v4a_engaged_speed_scale_effective"]
+            ),
+            "v4a_attack_speed_lateral_scale_effective": float(
+                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
+            ),
+            "v4a_attack_speed_backward_scale_effective": float(
+                movement_cfg["v4a_attack_speed_backward_scale_effective"]
+            ),
             "battle_restore_bridge_active": bool(battle_restore_bridge_active),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
@@ -1379,6 +1497,24 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             ),
             "v4a_heading_relaxation_effective": float(
                 movement_cfg["v4a_heading_relaxation_effective"]
+            ),
+            "v4a_battle_standoff_self_extent_weight_effective": float(
+                movement_cfg["v4a_battle_standoff_self_extent_weight_effective"]
+            ),
+            "v4a_battle_standoff_enemy_extent_weight_effective": float(
+                movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"]
+            ),
+            "v4a_battle_standoff_hold_band_ratio_effective": float(
+                movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
+            ),
+            "v4a_engaged_speed_scale_effective": float(
+                movement_cfg["v4a_engaged_speed_scale_effective"]
+            ),
+            "v4a_attack_speed_lateral_scale_effective": float(
+                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
+            ),
+            "v4a_attack_speed_backward_scale_effective": float(
+                movement_cfg["v4a_attack_speed_backward_scale_effective"]
             ),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),

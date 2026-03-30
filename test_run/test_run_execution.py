@@ -103,6 +103,12 @@ V4A_CENTER_WING_DIFFERENTIAL_DEFAULT = 0.0
 V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT = 0.35
 V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT = 0.65
 V4A_HEADING_RELAXATION_DEFAULT = 0.18
+V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT = 0.15
+V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT = 0.15
+V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT = 0.10
+V4A_ENGAGED_SPEED_SCALE_DEFAULT = 0.70
+V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT = 0.65
+V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT = 0.35
 V4A_HOLD_AWAIT_SHAPE_ERROR_THRESHOLD = 0.12
 V4A_SHAPE_VS_ADVANCE_MIN_SHARE = 0.20
 V4A_TRANSITION_IDLE_SPEED_FLOOR = 0.45
@@ -231,6 +237,48 @@ def _compute_morphology_material_phase(
             min(1.0, float(lateral_offset) / lateral_extent),
         )
     return forward_phase_by_id, lateral_phase_by_id, float(forward_extent), float(lateral_extent)
+
+
+def _compute_projected_half_extents(
+    units: Sequence[UnitState],
+    primary_hat_xy: tuple[float, float],
+) -> tuple[float, float]:
+    if not units:
+        return (0.0, 0.0)
+    primary_dx = float(primary_hat_xy[0])
+    primary_dy = float(primary_hat_xy[1])
+    primary_norm = math.sqrt((primary_dx * primary_dx) + (primary_dy * primary_dy))
+    if primary_norm <= 1e-12:
+        primary_hat_xy = (1.0, 0.0)
+    else:
+        primary_hat_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
+    secondary_hat_xy = (-float(primary_hat_xy[1]), float(primary_hat_xy[0]))
+    centroid_x = sum(float(unit.position.x) for unit in units) / float(len(units))
+    centroid_y = sum(float(unit.position.y) for unit in units) / float(len(units))
+    forward_values: list[float] = []
+    lateral_values: list[float] = []
+    for unit in units:
+        rel_x = float(unit.position.x) - centroid_x
+        rel_y = float(unit.position.y) - centroid_y
+        forward_values.append((rel_x * float(primary_hat_xy[0])) + (rel_y * float(primary_hat_xy[1])))
+        lateral_values.append((rel_x * float(secondary_hat_xy[0])) + (rel_y * float(secondary_hat_xy[1])))
+    forward_extent = 0.5 * (max(forward_values) - min(forward_values)) if forward_values else 0.0
+    lateral_extent = 0.5 * (max(lateral_values) - min(lateral_values)) if lateral_values else 0.0
+    return (float(max(0.0, forward_extent)), float(max(0.0, lateral_extent)))
+
+
+def _compute_attack_direction_speed_scale(
+    cos_theta: float,
+    *,
+    lateral_scale: float,
+    backward_scale: float,
+) -> float:
+    cos_clamped = max(-1.0, min(1.0, float(cos_theta)))
+    lateral = max(0.0, min(1.0, float(lateral_scale)))
+    backward = max(0.0, min(lateral, float(backward_scale)))
+    if cos_clamped >= 0.0:
+        return float(lateral + ((1.0 - lateral) * cos_clamped))
+    return float(lateral + ((lateral - backward) * cos_clamped))
 
 
 def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[str, Any], tuple[float, float]]:
@@ -819,6 +867,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 return (dx * dx) + (dy * dy)
 
             sorted_enemy_units = sorted(enemy_units, key=_distance_sq)
+            reference_units: list[UnitState]
 
             if substrate == PRE_TL_TARGET_SUBSTRATE_NEAREST5:
                 reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
@@ -826,10 +875,11 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             elif substrate in {
                 PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
                 PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
-            }:
+                }:
                 local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
                 if not local_units:
                     local_units = sorted_enemy_units[:1]
+                reference_units = list(local_units)
                 distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
                 local_scale = max(1.0, sum(distances) / float(len(distances)))
                 boundary_index = min(4, len(distances) - 1)
@@ -857,6 +907,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
                 if not local_units:
                     local_units = sorted_enemy_units[:1]
+                reference_units = list(local_units)
                 distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
                 local_scale = max(1.0, sum(distances) / float(len(distances)))
                 weight_sum = 0.0
@@ -896,9 +947,50 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     if best_cluster_score is None or cluster_score < best_cluster_score:
                         best_cluster_score = cluster_score
                         best_cluster_units = cluster_units
+                reference_units = list(best_cluster_units)
                 ref_x, ref_y = self._compute_position_centroid(best_cluster_units)
 
-            direction, intensity = self._normalize_direction(ref_x - centroid_x, ref_y - centroid_y)
+            ref_dx = float(ref_x) - float(centroid_x)
+            ref_dy = float(ref_y) - float(centroid_y)
+            reference_direction_hat, _ = self._normalize_direction(ref_dx, ref_dy)
+            reference_distance = math.sqrt((ref_dx * ref_dx) + (ref_dy * ref_dy))
+            battle_bundle = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", {}).get(str(fleet_id), {})
+            if isinstance(battle_bundle, Mapping):
+                own_forward_extent, _ = _compute_projected_half_extents(own_units, reference_direction_hat)
+                enemy_forward_extent, _ = _compute_projected_half_extents(enemy_units, reference_direction_hat)
+                desired_distance = max(
+                    0.0,
+                    float(self.attack_range)
+                    + (
+                        float(battle_bundle.get("battle_standoff_self_extent_weight", 0.0))
+                        * float(own_forward_extent)
+                    )
+                    + (
+                        float(battle_bundle.get("battle_standoff_enemy_extent_weight", 0.0))
+                        * float(enemy_forward_extent)
+                    ),
+                )
+                hold_band = max(
+                    0.1,
+                    float(self.attack_range)
+                    * max(0.0, float(battle_bundle.get("battle_standoff_hold_band_ratio", 0.0))),
+                )
+                distance_gap = float(reference_distance) - float(desired_distance)
+                if distance_gap <= hold_band:
+                    direction = (0.0, 0.0)
+                    intensity = 0.0
+                else:
+                    pressure = min(
+                        1.0,
+                        max(0.0, (distance_gap - hold_band) / max(hold_band, float(self.attack_range), 1e-9)),
+                    )
+                    direction = (
+                        float(reference_direction_hat[0]) * pressure,
+                        float(reference_direction_hat[1]) * pressure,
+                    )
+                    intensity = float(pressure)
+            else:
+                direction, intensity = reference_direction_hat, reference_distance
             last_target_direction[fleet_id] = direction
             last_engagement_intensity[fleet_id] = intensity
 
@@ -1074,6 +1166,21 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     1e-9,
                     float(bundle.get("expected_reference_spacing", self.separation_radius)),
                 )
+                engaged_speed_scale = max(
+                    1e-6,
+                    min(1.0, float(bundle.get("engaged_speed_scale", V4A_ENGAGED_SPEED_SCALE_DEFAULT))),
+                )
+                attack_speed_lateral_scale = max(
+                    1e-6,
+                    min(1.0, float(bundle.get("attack_speed_lateral_scale", V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT))),
+                )
+                attack_speed_backward_scale = max(
+                    0.0,
+                    min(
+                        attack_speed_lateral_scale,
+                        float(bundle.get("attack_speed_backward_scale", V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT)),
+                    ),
+                )
                 updated_units = dict(movement_state.units)
                 changed = False
                 for unit_id, reference_speed in transition_reference_max_speed_by_unit.items():
@@ -1106,7 +1213,32 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         V4A_TRANSITION_IDLE_SPEED_FLOOR,
                         max(advance_share, shape_need),
                     )
-                    transition_speed = float(reference_speed) * shape_speed_scale * turn_speed_scale
+                    attack_speed_scale = 1.0
+                    engaged_target_id = str(unit.engaged_target_id).strip() if unit.engaged_target_id is not None else ""
+                    if bool(unit.engaged) and engaged_target_id:
+                        target_unit = movement_state.units.get(engaged_target_id)
+                        if target_unit is not None and float(target_unit.hit_points) > 0.0:
+                            attack_hat_xy, attack_norm = self._normalize_direction(
+                                float(target_unit.position.x) - float(unit.position.x),
+                                float(target_unit.position.y) - float(unit.position.y),
+                            )
+                            if attack_norm > 0.0:
+                                attack_cos_theta = (
+                                    (float(unit_heading_hat[0]) * float(attack_hat_xy[0]))
+                                    + (float(unit_heading_hat[1]) * float(attack_hat_xy[1]))
+                                )
+                                attack_direction_scale = _compute_attack_direction_speed_scale(
+                                    attack_cos_theta,
+                                    lateral_scale=attack_speed_lateral_scale,
+                                    backward_scale=attack_speed_backward_scale,
+                                )
+                                attack_speed_scale = float(engaged_speed_scale) * float(attack_direction_scale)
+                    transition_speed = (
+                        float(reference_speed)
+                        * shape_speed_scale
+                        * turn_speed_scale
+                        * float(attack_speed_scale)
+                    )
                     if abs(float(unit.max_speed) - transition_speed) <= 1e-9:
                         continue
                     updated_units[str(unit_id)] = replace(unit, max_speed=float(transition_speed))
@@ -1978,6 +2110,70 @@ def run_simulation(
             "run_simulation movement_cfg['v4a_heading_relaxation_effective'] must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
         )
+    v4a_battle_standoff_self_extent_weight = float(
+        movement_cfg.get(
+            "v4a_battle_standoff_self_extent_weight_effective",
+            V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
+        )
+    )
+    if v4a_battle_standoff_self_extent_weight < 0.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_standoff_self_extent_weight_effective'] must be >= 0.0, "
+            f"got {v4a_battle_standoff_self_extent_weight}"
+        )
+    v4a_battle_standoff_enemy_extent_weight = float(
+        movement_cfg.get(
+            "v4a_battle_standoff_enemy_extent_weight_effective",
+            V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
+        )
+    )
+    if v4a_battle_standoff_enemy_extent_weight < 0.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_standoff_enemy_extent_weight_effective'] must be >= 0.0, "
+            f"got {v4a_battle_standoff_enemy_extent_weight}"
+        )
+    v4a_battle_standoff_hold_band_ratio = float(
+        movement_cfg.get(
+            "v4a_battle_standoff_hold_band_ratio_effective",
+            V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_standoff_hold_band_ratio_effective'] must be within [0.0, 1.0], "
+            f"got {v4a_battle_standoff_hold_band_ratio}"
+        )
+    v4a_engaged_speed_scale = float(
+        movement_cfg.get("v4a_engaged_speed_scale_effective", V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+    )
+    if not 0.0 < v4a_engaged_speed_scale <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_engaged_speed_scale_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_engaged_speed_scale}"
+        )
+    v4a_attack_speed_lateral_scale = float(
+        movement_cfg.get(
+            "v4a_attack_speed_lateral_scale_effective",
+            V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_attack_speed_lateral_scale_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_attack_speed_lateral_scale}"
+        )
+    v4a_attack_speed_backward_scale = float(
+        movement_cfg.get(
+            "v4a_attack_speed_backward_scale_effective",
+            V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_attack_speed_backward_scale_effective'] must be within "
+            f"[0.0, v4a_attack_speed_lateral_scale_effective], got backward={v4a_attack_speed_backward_scale}, "
+            f"lateral={v4a_attack_speed_lateral_scale}"
+        )
     fixture_fleet_id = ""
     fixture_objective_point_xy = (0.0, 0.0)
     fixture_objective_contract_3d: dict[str, Any] = {}
@@ -2194,6 +2390,12 @@ def run_simulation(
         soft_morphology_relaxation: float = V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT,
         shape_vs_advance_strength: float = V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT,
         heading_relaxation: float = V4A_HEADING_RELAXATION_DEFAULT,
+        battle_standoff_self_extent_weight: float = V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
+        battle_standoff_enemy_extent_weight: float = V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
+        battle_standoff_hold_band_ratio: float = V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
+        engaged_speed_scale: float = V4A_ENGAGED_SPEED_SCALE_DEFAULT,
+        attack_speed_lateral_scale: float = V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
+        attack_speed_backward_scale: float = V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
     ) -> dict:
         centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
         if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
@@ -2291,6 +2493,12 @@ def run_simulation(
             "soft_morphology_relaxation": float(soft_morphology_relaxation),
             "shape_vs_advance_strength": float(shape_vs_advance_strength),
             "heading_relaxation": float(heading_relaxation),
+            "battle_standoff_self_extent_weight": float(battle_standoff_self_extent_weight),
+            "battle_standoff_enemy_extent_weight": float(battle_standoff_enemy_extent_weight),
+            "battle_standoff_hold_band_ratio": float(battle_standoff_hold_band_ratio),
+            "engaged_speed_scale": float(engaged_speed_scale),
+            "attack_speed_lateral_scale": float(attack_speed_lateral_scale),
+            "attack_speed_backward_scale": float(attack_speed_backward_scale),
             "reference_layout_mode": str(reference_layout_mode),
             "expected_reference_spacing": float(expected_reference_spacing),
             "center_wing_differential_target": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
@@ -2437,6 +2645,12 @@ def run_simulation(
                 soft_morphology_relaxation=v4a_soft_morphology_relaxation,
                 shape_vs_advance_strength=v4a_shape_vs_advance_strength,
                 heading_relaxation=v4a_heading_relaxation,
+                battle_standoff_self_extent_weight=v4a_battle_standoff_self_extent_weight,
+                battle_standoff_enemy_extent_weight=v4a_battle_standoff_enemy_extent_weight,
+                battle_standoff_hold_band_ratio=v4a_battle_standoff_hold_band_ratio,
+                engaged_speed_scale=v4a_engaged_speed_scale,
+                attack_speed_lateral_scale=v4a_attack_speed_lateral_scale,
+                attack_speed_backward_scale=v4a_attack_speed_backward_scale,
             )
             bundle["objective_point_xy"] = (
                 float(objective_point_xy[0]),
@@ -2503,6 +2717,12 @@ def run_simulation(
             soft_morphology_relaxation=v4a_soft_morphology_relaxation,
             shape_vs_advance_strength=v4a_shape_vs_advance_strength,
             heading_relaxation=v4a_heading_relaxation,
+            battle_standoff_self_extent_weight=v4a_battle_standoff_self_extent_weight,
+            battle_standoff_enemy_extent_weight=v4a_battle_standoff_enemy_extent_weight,
+            battle_standoff_hold_band_ratio=v4a_battle_standoff_hold_band_ratio,
+            engaged_speed_scale=v4a_engaged_speed_scale,
+            attack_speed_lateral_scale=v4a_attack_speed_lateral_scale,
+            attack_speed_backward_scale=v4a_attack_speed_backward_scale,
         )
         fixture_reference_bundle["objective_point_xy"] = (
             float(fixture_objective_point_xy[0]),

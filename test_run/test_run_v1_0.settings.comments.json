@@ -58,6 +58,12 @@
           "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
           "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
           "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
+          "battle_standoff_self_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies own current forward formation extent when building desired engagement distance d* on top of attack_range.",
+          "battle_standoff_enemy_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies enemy current forward formation extent when building desired engagement distance d* on top of attack_range.",
+          "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
+          "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
+          "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
+          "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale.",
           "restore_strength": "Continuous v4a test-only restore-strength scale in [0.0, 1.0]. 1.0 keeps the current full bridge strength; smaller values weaken the current bounded restore response without opening a new public parameter surface."
         }
       },
