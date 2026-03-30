@@ -519,6 +519,19 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             "runtime.movement.v4a.test_only.restore_strength must be within [0.0, 1.0], "
             f"got {v4a_restore_strength}"
         )
+    v4a_reference_surface_mode = _require_choice(
+        "runtime.movement.v4a.test_only.reference_surface_mode",
+        get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
+        execution.V4A_REFERENCE_SURFACE_MODE_LABELS,
+    )
+    v4a_soft_morphology_relaxation = float(
+        get_runtime("v4a_soft_morphology_relaxation", execution.V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT)
+    )
+    if not 0.0 < v4a_soft_morphology_relaxation <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.soft_morphology_relaxation must be within (0.0, 1.0], "
+            f"got {v4a_soft_morphology_relaxation}"
+        )
     movement_cfg = {
         "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
         "experiment_effective": _require_choice(
@@ -569,6 +582,8 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             else 1.0
         ),
         "v4a_restore_strength": v4a_restore_strength,
+        "v4a_reference_surface_mode": v4a_reference_surface_mode,
+        "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
     }
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
@@ -606,6 +621,16 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         movement_cfg["v4a_restore_strength"]
         if movement_cfg["model_effective"] == "v4a"
         else 1.0
+    )
+    movement_cfg["v4a_reference_surface_mode_effective"] = (
+        movement_cfg["v4a_reference_surface_mode"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS
+    )
+    movement_cfg["v4a_soft_morphology_relaxation_effective"] = (
+        movement_cfg["v4a_soft_morphology_relaxation"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT
     )
     return movement_cfg
 
@@ -1091,6 +1116,10 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
+            "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
+            "v4a_soft_morphology_relaxation_effective": float(
+                movement_cfg["v4a_soft_morphology_relaxation_effective"]
+            ),
             "battle_restore_bridge_active": bool(battle_restore_bridge_active),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
@@ -1294,6 +1323,10 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
+            "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
+            "v4a_soft_morphology_relaxation_effective": float(
+                movement_cfg["v4a_soft_morphology_relaxation_effective"]
+            ),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
             "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),

@@ -26,6 +26,8 @@
         "test_only": {
           "expected_reference_spacing": 2.0,
           "reference_layout_mode": "rect_centered_rows",
+          "reference_surface_mode": "soft_morphology_v1",
+          "soft_morphology_relaxation": 0.2,
           "restore_strength": 0.25
         }
       },
