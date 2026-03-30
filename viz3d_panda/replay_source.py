@@ -46,6 +46,21 @@ REALISTIC_MIN_DISPLACEMENT_FLOOR = 0.10
 REALISTIC_WINDOW_RADIUS = 3
 
 
+def _resolve_display_language(settings: dict) -> str:
+    language = str(settings_api.get_visualization_setting(settings, "display_language", "EN")).upper()
+    return language if language in {"EN", "ZH"} else "EN"
+
+
+def _resolve_full_name(data: dict, language: str, fallback: str) -> str:
+    value = data.get("full_name_ZH") if language == "ZH" else data.get("full_name_EN")
+    if value:
+        return str(value)
+    display_name = scenario.resolve_display_name(data, language)
+    if display_name:
+        return str(display_name)
+    return str(fallback)
+
+
 @dataclass(frozen=True)
 class ViewerUnitState:
     unit_id: str
@@ -501,6 +516,7 @@ def load_viewer_replay(
         raise TypeError(f"max_steps must be an int or None, got {type(max_steps).__name__}.")
 
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
+    display_language = _resolve_display_language(settings)
     settings_vector_display_mode = _resolve_vector_display_mode(settings)
     active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(
         settings,
@@ -543,6 +559,10 @@ def load_viewer_replay(
             "fleet_avatars": {
                 "A": scenario.resolve_avatar_with_fallback(fleet_data, DEFAULT_VIEWER_AVATAR_A),
             },
+            "fleet_full_names": {
+                "A": _resolve_full_name(fleet_data, display_language, "A"),
+            },
+            "display_language": display_language,
             "max_steps_effective": int(effective_max_steps),
             "max_steps_source": max_steps_source,
             "frame_stride": int(frame_stride),
@@ -593,6 +613,11 @@ def load_viewer_replay(
             "A": scenario.resolve_avatar_with_fallback(fleet_a_data, DEFAULT_VIEWER_AVATAR_A),
             "B": scenario.resolve_avatar_with_fallback(fleet_b_data, DEFAULT_VIEWER_AVATAR_B),
         },
+        "fleet_full_names": {
+            "A": _resolve_full_name(fleet_a_data, display_language, "A"),
+            "B": _resolve_full_name(fleet_b_data, display_language, "B"),
+        },
+        "display_language": display_language,
         "max_steps_effective": int(effective_max_steps),
         "max_steps_source": max_steps_source,
         "frame_stride": int(frame_stride),

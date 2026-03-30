@@ -47,23 +47,46 @@ STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
 FLEET_AVATAR_HEIGHT = 0.0525
 FLEET_AVATAR_ASPECT_RATIO = 4.0 / 5.0
-FLEET_AVATAR_SCREEN_NUDGE = 0.006
-FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.039
-FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.064
+FLEET_AVATAR_SCREEN_NUDGE = 0.008
+FLEET_AVATAR_MIN_SCREEN_OFFSET = 0.050
+FLEET_AVATAR_MAX_SCREEN_OFFSET = 0.082
 FLEET_AVATAR_BORDER_PAD = 0.0045
 FLEET_AVATAR_MATTE_PAD = 0.002
 FLEET_AVATAR_HIGHLIGHT_PAD = 0.009
 FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.48
 FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
 FLEET_AVATAR_BORDER_ALPHA = 1.0
-FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.17
-FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.12
-FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.21
-FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z = 0.15
-FLEET_AVATAR_PAIR_SEPARATION_X = 0.10
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.24
+FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.16
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.30
+FLEET_AVATAR_PAIR_EXIT_DISTANCE_Z = 0.20
+FLEET_AVATAR_PAIR_SEPARATION_X = 0.12
+# 头像区块 (avatar block): fixed corner portrait + bar + labels.
+CORNER_AVATAR_HEIGHT = 0.105
+CORNER_AVATAR_ASPECT_RATIO = 4.0 / 5.0
+CORNER_AVATAR_BORDER_PAD = 0.006
+CORNER_AVATAR_INSET_X = 0.12
+CORNER_AVATAR_INSET_Z = 0.20
+CORNER_AVATAR_ALIGNMENT_OVERSHOOT = 0.010
+CORNER_AVATAR_NAME_OFFSET = 0.046
+CORNER_AVATAR_TEXT_GAP = 0.008
+CORNER_AVATAR_BAR_OFFSET = 0.024
+CORNER_AVATAR_BAR_WIDTH = CORNER_AVATAR_HEIGHT * CORNER_AVATAR_ASPECT_RATIO * 4.0
+CORNER_AVATAR_BAR_HEIGHT = 0.016
+CORNER_AVATAR_TEXT_SCALE = 0.034
+CORNER_AVATAR_NAME_SCALE = 0.034
+CORNER_AVATAR_BAR_BG = (0.10, 0.14, 0.18, 0.92)
+CORNER_AVATAR_BAR_FILL = (0.78, 0.14, 0.14, 0.98)
+CORNER_AVATAR_TEXT_COLOR = (0.92, 0.95, 0.98, 1.0)
+CJK_FONT_CANDIDATES = (
+    Path("C:/Windows/Fonts/simhei.ttf"),
+    Path("C:/Windows/Fonts/msyh.ttc"),
+    Path("C:/Windows/Fonts/NotoSansSC-VF.ttf"),
+    Path("C:/Windows/Fonts/simsun.ttc"),
+)
 
 
-def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
+def _resolve_avatar_image_path(avatar_id: object, *, preferred_size: str | None = None) -> Path | None:
     stem = str(avatar_id).strip() if avatar_id is not None else ""
     if not stem:
         return None
@@ -74,7 +97,10 @@ def _resolve_avatar_image_path(avatar_id: object) -> Path | None:
     else:
         candidate_stems = [stem]
         if stem.startswith("avatar_") and not stem.endswith(("_m", "_s")):
-            candidate_stems = [f"{stem}_s"]
+            if preferred_size in {"m", "s"}:
+                candidate_stems = [f"{stem}_{preferred_size}", stem]
+            else:
+                candidate_stems = [stem]
         for candidate_stem in candidate_stems:
             candidate_names.extend([f"{candidate_stem}{suffix}" for suffix in suffixes])
     for name in candidate_names:
@@ -194,6 +220,21 @@ def _hex_to_rgba(value: str, *, alpha: float) -> tuple[float, float, float, floa
     return (red, green, blue, float(alpha))
 
 
+def _resolve_cjk_font_path() -> Path | None:
+    for path in CJK_FONT_CANDIDATES:
+        if path.exists():
+            return path
+    return None
+
+
+def _initial_total_hp_by_fleet(frame: ViewerFrame) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for unit in frame.units:
+        fleet_id = str(unit.fleet_id)
+        totals[fleet_id] = totals.get(fleet_id, 0.0) + max(0.0, float(unit.hit_points))
+    return totals
+
+
 class FleetViewerApp(ShowBase):
     def __init__(self, replay: ReplayBundle, *, playback_fps: float, fire_link_mode: str) -> None:
         if not replay.frames:
@@ -222,8 +263,14 @@ class FleetViewerApp(ShowBase):
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
+        self._corner_avatar_nodes: dict[str, dict[str, object]] = {}
         self._fleet_avatar_pair_layout_active = False
         self._fleet_avatar_world_lift = max(8.0, float(self._replay.arena_size) * 0.03)
+        self._fleet_initial_total_hp = _initial_total_hp_by_fleet(self._replay.frames[0])
+        self._ui_font = None
+        cjk_font_path = _resolve_cjk_font_path()
+        if cjk_font_path is not None:
+            self._ui_font = self.loader.loadFont(Filename.fromOsSpecific(str(cjk_font_path)).getFullpath())
 
         self._status_text = OnscreenText(
             text="",
@@ -336,12 +383,14 @@ class FleetViewerApp(ShowBase):
     def _render_frame(self, frame: ViewerFrame, *, pulse_phase: float = 0.0) -> None:
         self._unit_renderer.sync_frame(frame, pulse_phase=float(pulse_phase))
         self._unit_renderer.update_view(self.camera)
+        self._sync_corner_avatar_cards(frame)
         self._sync_fleet_avatar_overlays()
 
     def _build_avatar_overlays(self) -> None:
         raw_avatars = self._replay.metadata.get("fleet_avatars", {})
         if not isinstance(raw_avatars, dict):
             return
+        self._build_corner_avatar_portraits(raw_avatars)
         # OnscreenImage scale values are already half-extents in aspect2d space
         # because the underlying card spans [-1, +1]. Build border geometry around
         # those true half-extents so all four sides stay outside the portrait.
@@ -354,7 +403,7 @@ class FleetViewerApp(ShowBase):
         highlight_half_height = avatar_half_height + FLEET_AVATAR_HIGHLIGHT_PAD
         highlight_half_width = avatar_half_width + FLEET_AVATAR_HIGHLIGHT_PAD
         for stack_index, (fleet_id, avatar_id) in enumerate(sorted(raw_avatars.items(), key=lambda item: str(item[0]))):
-            avatar_path = _resolve_avatar_image_path(avatar_id)
+            avatar_path = _resolve_avatar_image_path(avatar_id, preferred_size="s")
             if avatar_path is None:
                 continue
             texture = self.loader.loadTexture(Filename.fromOsSpecific(str(avatar_path)))
@@ -453,6 +502,172 @@ class FleetViewerApp(ShowBase):
                 "border_right": border_bars["right"],
                 "image": node,
             }
+
+    def _build_corner_avatar_portraits(self, raw_avatars: dict[object, object]) -> None:
+        # Fixed corner avatar blocks stay visible regardless of the follow-avatar toggle.
+        raw_full_names = self._replay.metadata.get("fleet_full_names", {})
+        if not isinstance(raw_full_names, dict):
+            raw_full_names = {}
+        corner_specs = {
+            "A": (self.a2dTopLeft, CORNER_AVATAR_INSET_X, -CORNER_AVATAR_INSET_Z),
+            "B": (self.a2dTopRight, -CORNER_AVATAR_INSET_X, -CORNER_AVATAR_INSET_Z),
+        }
+        portrait_half_height = CORNER_AVATAR_HEIGHT
+        portrait_half_width = CORNER_AVATAR_HEIGHT * CORNER_AVATAR_ASPECT_RATIO
+        border_half_height = portrait_half_height + CORNER_AVATAR_BORDER_PAD
+        border_half_width = portrait_half_width + CORNER_AVATAR_BORDER_PAD
+        for fleet_id, (parent, pos_x, pos_z) in corner_specs.items():
+            avatar_id = raw_avatars.get(fleet_id)
+            if avatar_id is None:
+                continue
+            avatar_path = _resolve_avatar_image_path(avatar_id, preferred_size="m")
+            if avatar_path is None:
+                continue
+            texture = self.loader.loadTexture(Filename.fromOsSpecific(str(avatar_path)))
+            if texture is None:
+                continue
+            fleet_color = self._replay.fleet_colors.get(str(fleet_id), "#ffffff")
+            border_color = _hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_BORDER_ALPHA)
+            border_bars = {
+                "top": DirectFrame(
+                    parent=parent,
+                    frameSize=(-border_half_width, border_half_width, portrait_half_height, border_half_height),
+                    frameColor=border_color,
+                    pos=(pos_x, 0.0, pos_z),
+                ),
+                "bottom": DirectFrame(
+                    parent=parent,
+                    frameSize=(-border_half_width, border_half_width, -border_half_height, -portrait_half_height),
+                    frameColor=border_color,
+                    pos=(pos_x, 0.0, pos_z),
+                ),
+                "left": DirectFrame(
+                    parent=parent,
+                    frameSize=(-border_half_width, -portrait_half_width, -portrait_half_height, portrait_half_height),
+                    frameColor=border_color,
+                    pos=(pos_x, 0.0, pos_z),
+                ),
+                "right": DirectFrame(
+                    parent=parent,
+                    frameSize=(portrait_half_width, border_half_width, -portrait_half_height, portrait_half_height),
+                    frameColor=border_color,
+                    pos=(pos_x, 0.0, pos_z),
+                ),
+            }
+            for border_bar in border_bars.values():
+                border_bar.setTransparency(TransparencyAttrib.MAlpha)
+                border_bar.setBin("fixed", 75)
+                border_bar.setDepthTest(False)
+                border_bar.setDepthWrite(False)
+            node = OnscreenImage(
+                image=texture,
+                parent=parent,
+                pos=(pos_x, 0.0, pos_z),
+                scale=(portrait_half_width, 1.0, portrait_half_height),
+            )
+            node.setTransparency(TransparencyAttrib.MAlpha)
+            node.setBin("fixed", 76)
+            node.setDepthTest(False)
+            node.setDepthWrite(False)
+            text_align = TextNode.ALeft if fleet_id == "A" else TextNode.ARight
+            outer_edge_x = (
+                pos_x - border_half_width - CORNER_AVATAR_ALIGNMENT_OVERSHOOT
+                if fleet_id == "A"
+                else pos_x + border_half_width + CORNER_AVATAR_ALIGNMENT_OVERSHOOT
+            )
+            text_kwargs = {}
+            if self._ui_font is not None:
+                text_kwargs["font"] = self._ui_font
+            size_text = OnscreenText(
+                text="Fleet Size: 0",
+                parent=parent,
+                pos=(
+                    outer_edge_x,
+                    pos_z + portrait_half_height + CORNER_AVATAR_BAR_OFFSET + (CORNER_AVATAR_BAR_HEIGHT * 0.5) + CORNER_AVATAR_TEXT_GAP,
+                ),
+                scale=CORNER_AVATAR_TEXT_SCALE,
+                align=text_align,
+                fg=CORNER_AVATAR_TEXT_COLOR,
+                mayChange=True,
+                **text_kwargs,
+            )
+            size_text.setBin("fixed", 77)
+            size_text.setDepthTest(False)
+            size_text.setDepthWrite(False)
+            bar_bg = DirectFrame(
+                parent=parent,
+                frameSize=(
+                    (0.0, CORNER_AVATAR_BAR_WIDTH, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
+                    if fleet_id == "A"
+                    else (-CORNER_AVATAR_BAR_WIDTH, 0.0, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
+                ),
+                frameColor=CORNER_AVATAR_BAR_BG,
+                pos=(outer_edge_x, 0.0, pos_z + portrait_half_height + CORNER_AVATAR_BAR_OFFSET),
+            )
+            bar_bg.setTransparency(TransparencyAttrib.MAlpha)
+            bar_bg.setBin("fixed", 77)
+            bar_bg.setDepthTest(False)
+            bar_bg.setDepthWrite(False)
+            bar_fill = DirectFrame(
+                parent=bar_bg,
+                frameSize=(
+                    (0.0, CORNER_AVATAR_BAR_WIDTH, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
+                    if fleet_id == "A"
+                    else (-CORNER_AVATAR_BAR_WIDTH, 0.0, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
+                ),
+                frameColor=CORNER_AVATAR_BAR_FILL,
+            )
+            bar_fill.setTransparency(TransparencyAttrib.MAlpha)
+            bar_fill.setBin("fixed", 78)
+            bar_fill.setDepthTest(False)
+            bar_fill.setDepthWrite(False)
+            full_name = str(raw_full_names.get(fleet_id, self._replay.fleet_labels.get(fleet_id, fleet_id)))
+            name_text = OnscreenText(
+                text=full_name,
+                parent=parent,
+                pos=(outer_edge_x, pos_z - portrait_half_height - CORNER_AVATAR_NAME_OFFSET),
+                scale=CORNER_AVATAR_NAME_SCALE,
+                align=text_align,
+                fg=CORNER_AVATAR_TEXT_COLOR,
+                **text_kwargs,
+            )
+            name_text.setBin("fixed", 77)
+            name_text.setDepthTest(False)
+            name_text.setDepthWrite(False)
+            self._corner_avatar_nodes[str(fleet_id)] = {
+                "border_top": border_bars["top"],
+                "border_bottom": border_bars["bottom"],
+                "border_left": border_bars["left"],
+                "border_right": border_bars["right"],
+                "image": node,
+                "size_text": size_text,
+                "hp_bar_bg": bar_bg,
+                "hp_bar_fill": bar_fill,
+                "name_text": name_text,
+            }
+
+    def _sync_corner_avatar_cards(self, frame: ViewerFrame) -> None:
+        fleet_hp: dict[str, float] = {}
+        for unit in frame.units:
+            fleet_id = str(unit.fleet_id)
+            fleet_hp[fleet_id] = fleet_hp.get(fleet_id, 0.0) + max(0.0, float(unit.hit_points))
+        for fleet_id, nodes in self._corner_avatar_nodes.items():
+            hp_now = float(fleet_hp.get(fleet_id, 0.0))
+            hp_initial = float(self._fleet_initial_total_hp.get(fleet_id, 0.0))
+            hp_ratio = 0.0 if hp_initial <= 1e-9 else max(0.0, min(1.0, hp_now / hp_initial))
+            size_text = nodes.get("size_text")
+            if hasattr(size_text, "setText"):
+                size_text.setText(f"Fleet Size: {max(0, int(math.ceil(hp_now)))}")
+            bar_fill = nodes.get("hp_bar_fill")
+            if bar_fill is not None:
+                fill_width = CORNER_AVATAR_BAR_WIDTH * hp_ratio
+                if fleet_id == "B":
+                    left = -fill_width
+                    right = 0.0
+                else:
+                    left = 0.0
+                    right = fill_width
+                bar_fill["frameSize"] = (left, right, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
 
     def _project_avatar_anchor(self, *, centroid_x: float, centroid_y: float, fleet_radius: float) -> tuple[float, float] | None:
         world_lift = max(self._fleet_avatar_world_lift, float(fleet_radius) * 0.28)
@@ -614,7 +829,7 @@ class FleetViewerApp(ShowBase):
         control_lines = [
             "Space play/pause  N/B step/hold",
             "[/ ] speed gear  V fire-links  M smooth",
-            "P portraits  Tab HUD  LDrag pan  RDrag orbit",
+            "P follow avatars  Tab HUD  LDrag pan  RDrag orbit",
             "Wheel zoom  `/~ reset  1/2 track fleet  Esc quit",
         ]
         self._control_text.setText("\n".join(control_lines))
@@ -639,6 +854,7 @@ class FleetViewerApp(ShowBase):
                 if next_index >= len(self._replay.frames):
                     next_index = 0
                 self.go_to_frame(next_index)
+            current_frame = self._replay.frames[self._current_frame_index]
             if self._smoothing_active():
                 smoothing_alpha = self._accumulator / frame_period
                 if smoothing_alpha > 1e-6:
@@ -667,19 +883,21 @@ class FleetViewerApp(ShowBase):
                             position_alpha=smoothing_alpha,
                         )
                     self._unit_renderer.update_view(self.camera)
+                    self._sync_corner_avatar_cards(current_frame)
                     self._sync_fleet_avatar_overlays()
                     return task.cont
             elif self._unit_renderer.fire_link_mode == "enabled":
-                current_frame = self._replay.frames[self._current_frame_index]
                 self._camera_controller.sync_tracked_frame(current_frame, smooth=True)
                 self._unit_renderer.refresh_fire_links(
                     current_frame,
                     pulse_phase=(self._accumulator / frame_period) if frame_period > 1e-9 else 0.0,
                 )
             else:
-                current_frame = self._replay.frames[self._current_frame_index]
                 self._camera_controller.sync_tracked_frame(current_frame, smooth=True)
+        else:
+            current_frame = self._replay.frames[self._current_frame_index]
         self._unit_renderer.update_view(self.camera)
+        self._sync_corner_avatar_cards(current_frame)
         self._sync_fleet_avatar_overlays()
         return task.cont
 
