@@ -10,7 +10,7 @@
     "background_map_seed": -1
   },
   "fleet": {
-    "fleet_a_archetype_id": "lobos",
+    "fleet_a_archetype_id": "bewcock",
     "fleet_b_archetype_id": "merkatz",
     "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,

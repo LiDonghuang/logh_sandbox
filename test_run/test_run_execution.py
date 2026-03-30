@@ -94,9 +94,19 @@ V4A_REFERENCE_SURFACE_MODE_LABELS = {
     V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS,
     V4A_REFERENCE_SURFACE_MODE_SOFT_MORPHOLOGY_V1,
 }
+V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0 = "rect_centered_1.0"
+V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0 = "rect_centered_4.0"
 V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT = 0.20
+V4A_MORPHOLOGY_AXIS_RELAXATION_DEFAULT = 0.12
 V4A_SOFT_MORPHOLOGY_BAND_COUNT = 3
-V4A_SOFT_MORPHOLOGY_ENVELOPE_FILL_RATIO = 0.90
+V4A_CENTER_WING_DIFFERENTIAL_DEFAULT = 0.0
+V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT = 0.35
+V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT = 0.65
+V4A_HEADING_RELAXATION_DEFAULT = 0.18
+V4A_HOLD_AWAIT_SHAPE_ERROR_THRESHOLD = 0.12
+V4A_SHAPE_VS_ADVANCE_MIN_SHARE = 0.20
+V4A_TRANSITION_IDLE_SPEED_FLOOR = 0.45
+V4A_TURN_SPEED_FLOOR = 0.35
 
 
 def _clamp01(value: float) -> float:
@@ -116,6 +126,111 @@ def _sigmoid(value: float) -> float:
         return 1.0 / (1.0 + z)
     z = math.exp(value)
     return z / (1.0 + z)
+
+
+def _resolve_reference_layout_target_aspect(layout_mode: str) -> float:
+    normalized = str(layout_mode).strip().lower()
+    if normalized == V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0:
+        return 1.0
+    if normalized == V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0:
+        return 4.0
+    raise ValueError(
+        "v4a reference_layout_mode must be one of "
+        f"{{{V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0}, {V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0}}}, "
+        f"got {layout_mode!r}"
+    )
+
+
+def _build_centered_rect_row_counts(unit_count: int, aspect_ratio: float) -> list[int]:
+    grid_columns = max(1, int((int(unit_count) * float(aspect_ratio)) ** 0.5))
+    grid_rows = (int(unit_count) + grid_columns - 1) // grid_columns
+    while grid_columns / max(1, grid_rows) < float(aspect_ratio) and grid_columns < int(unit_count):
+        grid_columns += 1
+        grid_rows = (int(unit_count) + grid_columns - 1) // grid_columns
+    row_counts: list[int] = []
+    remaining = int(unit_count)
+    for _ in range(grid_rows):
+        row_count = min(grid_columns, remaining)
+        row_counts.append(int(row_count))
+        remaining -= row_count
+    return row_counts
+
+
+def _build_reference_slot_offsets_local(
+    ordered_unit_ids: Sequence[str],
+    *,
+    expected_reference_spacing: float,
+    reference_layout_mode: str,
+) -> dict[str, tuple[float, float]]:
+    target_aspect_ratio = _resolve_reference_layout_target_aspect(reference_layout_mode)
+    row_counts = _build_centered_rect_row_counts(len(ordered_unit_ids), target_aspect_ratio)
+    offsets_local: dict[str, tuple[float, float]] = {}
+    half_depth = (len(row_counts) - 1) / 2.0
+    unit_index = 0
+    for row, row_count in enumerate(row_counts):
+        row_offset = row - half_depth
+        half_width = (row_count - 1) / 2.0
+        for col in range(row_count):
+            if unit_index >= len(ordered_unit_ids):
+                break
+            lateral = col - half_width
+            unit_id = str(ordered_unit_ids[unit_index])
+            offsets_local[unit_id] = (
+                float(row_offset * expected_reference_spacing),
+                float(lateral * expected_reference_spacing),
+            )
+            unit_index += 1
+    return offsets_local
+
+
+def _assign_soft_morphology_band_identity(
+    offsets_by_id: Mapping[str, tuple[float, float]],
+) -> dict[str, tuple[int, int]]:
+    records = [
+        (str(unit_id), float(offset_local[0]), float(offset_local[1]))
+        for unit_id, offset_local in offsets_by_id.items()
+    ]
+    if not records:
+        return {}
+    band_identity_by_id: dict[str, list[int]] = {}
+    sorted_forward = sorted(records, key=lambda item: (item[1], item[2], item[0]))
+    sorted_lateral = sorted(records, key=lambda item: (item[2], item[1], item[0]))
+    total_count = len(records)
+    for index, (record_id, _, _) in enumerate(sorted_forward):
+        band_identity_by_id.setdefault(str(record_id), [1, 1])[0] = min(
+            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
+            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
+        )
+    for index, (record_id, _, _) in enumerate(sorted_lateral):
+        band_identity_by_id.setdefault(str(record_id), [1, 1])[1] = min(
+            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
+            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
+        )
+    return {
+        str(record_id): (int(bands[0]), int(bands[1]))
+        for record_id, bands in band_identity_by_id.items()
+    }
+
+
+def _compute_morphology_material_phase(
+    offsets_by_id: Mapping[str, tuple[float, float]],
+) -> tuple[dict[str, float], dict[str, float], float, float]:
+    if not offsets_by_id:
+        return {}, {}, 1.0, 1.0
+    forward_extent = max(1e-9, max(abs(float(offset[0])) for offset in offsets_by_id.values()))
+    lateral_extent = max(1e-9, max(abs(float(offset[1])) for offset in offsets_by_id.values()))
+    forward_phase_by_id: dict[str, float] = {}
+    lateral_phase_by_id: dict[str, float] = {}
+    for unit_id, (forward_offset, lateral_offset) in offsets_by_id.items():
+        forward_phase_by_id[str(unit_id)] = max(
+            -1.0,
+            min(1.0, float(forward_offset) / forward_extent),
+        )
+        lateral_phase_by_id[str(unit_id)] = max(
+            -1.0,
+            min(1.0, float(lateral_offset) / lateral_extent),
+        )
+    return forward_phase_by_id, lateral_phase_by_id, float(forward_extent), float(lateral_extent)
 
 
 def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[str, Any], tuple[float, float]]:
@@ -268,6 +383,19 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         return (0.0, 0.0), 0.0
 
     @staticmethod
+    def _relax_direction(
+        current_hat: tuple[float, float],
+        desired_hat: tuple[float, float],
+        relaxation: float,
+    ) -> tuple[float, float]:
+        relaxed_x = ((1.0 - relaxation) * float(current_hat[0])) + (relaxation * float(desired_hat[0]))
+        relaxed_y = ((1.0 - relaxation) * float(current_hat[1])) + (relaxation * float(desired_hat[1]))
+        normalized_hat, normalized_norm = TestModeEngineTickSkeleton._normalize_direction(relaxed_x, relaxed_y)
+        if normalized_norm <= 0.0:
+            return current_hat
+        return normalized_hat
+
+    @staticmethod
     def _resolve_v4a_reference_surface(
         state: BattleState,
         *,
@@ -304,6 +432,74 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             return {}, resolved_forward_hat
 
         centroid_x, centroid_y = TestModeEngineTickSkeleton._compute_position_centroid(alive_units)
+        current_axis = bundle.get("morphology_axis_current_xy", resolved_forward_hat)
+        if not isinstance(current_axis, Sequence) or len(current_axis) < 2:
+            current_axis = resolved_forward_hat
+        current_axis_hat, current_axis_norm = TestModeEngineTickSkeleton._normalize_direction(
+            float(current_axis[0]) if len(current_axis) >= 1 else float(resolved_forward_hat[0]),
+            float(current_axis[1]) if len(current_axis) >= 2 else float(resolved_forward_hat[1]),
+        )
+        if current_axis_norm <= 0.0:
+            current_axis_hat = resolved_forward_hat
+        terminal_active = bool(bundle.get("formation_terminal_active", False))
+        hold_active = bool(bundle.get("formation_hold_active", False))
+        hold_axis = bundle.get("formation_hold_axis_xy", current_axis_hat)
+        if not isinstance(hold_axis, Sequence) or len(hold_axis) < 2:
+            hold_axis = current_axis_hat
+        hold_axis_hat, hold_axis_norm = TestModeEngineTickSkeleton._normalize_direction(
+            float(hold_axis[0]) if len(hold_axis) >= 1 else float(current_axis_hat[0]),
+            float(hold_axis[1]) if len(hold_axis) >= 2 else float(current_axis_hat[1]),
+        )
+        if hold_axis_norm <= 0.0:
+            hold_axis_hat = current_axis_hat
+        terminal_axis = bundle.get("formation_terminal_axis_xy", current_axis_hat)
+        if not isinstance(terminal_axis, Sequence) or len(terminal_axis) < 2:
+            terminal_axis = current_axis_hat
+        terminal_axis_hat, terminal_axis_norm = TestModeEngineTickSkeleton._normalize_direction(
+            float(terminal_axis[0]) if len(terminal_axis) >= 1 else float(current_axis_hat[0]),
+            float(terminal_axis[1]) if len(terminal_axis) >= 2 else float(current_axis_hat[1]),
+        )
+        if terminal_axis_norm <= 0.0:
+            terminal_axis_hat = current_axis_hat
+        desired_axis_hat = current_axis_hat
+        if target_norm > 0.0:
+            desired_axis_hat = target_forward_hat
+        if not hold_active and not terminal_active:
+            current_axis_hat = TestModeEngineTickSkeleton._relax_direction(
+                current_axis_hat,
+                desired_axis_hat,
+                V4A_MORPHOLOGY_AXIS_RELAXATION_DEFAULT,
+            )
+        objective_point_xy = bundle.get("objective_point_xy")
+        hold_stop_radius = float(bundle.get("hold_stop_radius", 0.0))
+        within_hold_radius = False
+        if isinstance(objective_point_xy, Sequence) and len(objective_point_xy) >= 2 and hold_stop_radius > 0.0:
+            objective_dx = float(objective_point_xy[0]) - float(centroid_x)
+            objective_dy = float(objective_point_xy[1]) - float(centroid_y)
+            objective_distance = math.sqrt((objective_dx * objective_dx) + (objective_dy * objective_dy))
+            within_hold_radius = objective_distance <= hold_stop_radius
+        if hold_active:
+            current_axis_hat = hold_axis_hat
+        elif terminal_active:
+            current_axis_hat = terminal_axis_hat
+        bundle["morphology_axis_current_xy"] = current_axis_hat
+        resolved_forward_hat = current_axis_hat
+        secondary_hat = (-resolved_forward_hat[1], resolved_forward_hat[0])
+        current_center = bundle.get("morphology_center_current_xy", (centroid_x, centroid_y))
+        if not isinstance(current_center, Sequence) or len(current_center) < 2:
+            current_center = (centroid_x, centroid_y)
+        current_center_x = float(current_center[0]) if len(current_center) >= 1 else float(centroid_x)
+        current_center_y = float(current_center[1]) if len(current_center) >= 2 else float(centroid_y)
+        hold_center = bundle.get("formation_hold_center_xy", (current_center_x, current_center_y))
+        if not isinstance(hold_center, Sequence) or len(hold_center) < 2:
+            hold_center = (current_center_x, current_center_y)
+        hold_center_x = float(hold_center[0]) if len(hold_center) >= 1 else float(current_center_x)
+        hold_center_y = float(hold_center[1]) if len(hold_center) >= 2 else float(current_center_y)
+        terminal_center = bundle.get("formation_terminal_center_xy", (current_center_x, current_center_y))
+        if not isinstance(terminal_center, Sequence) or len(terminal_center) < 2:
+            terminal_center = (current_center_x, current_center_y)
+        terminal_center_x = float(terminal_center[0]) if len(terminal_center) >= 1 else float(current_center_x)
+        terminal_center_y = float(terminal_center[1]) if len(terminal_center) >= 2 else float(current_center_y)
         current_offsets_local: dict[str, tuple[float, float]] = {}
         for unit in alive_units:
             rel_x = float(unit.position.x) - centroid_x
@@ -327,88 +523,190 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 resolved_forward_hat,
             )
 
-        band_identity = bundle.get("band_identity_by_unit", {})
-        if not isinstance(band_identity, Mapping):
-            band_identity = {}
         initial_alive_count = max(1, int(bundle.get("initial_alive_count", len(current_offsets_local))))
         alive_ratio = max(0.0, min(1.0, float(len(current_offsets_local)) / float(initial_alive_count)))
         target_scale = math.sqrt(alive_ratio)
-        forward_extent_base = max(1e-9, float(bundle.get("forward_extent_base", 0.0)))
-        lateral_extent_base = max(1e-9, float(bundle.get("lateral_extent_base", 0.0)))
+        forward_extent_initial = max(1e-9, float(bundle.get("forward_extent_initial", 0.0)))
+        lateral_extent_initial = max(1e-9, float(bundle.get("lateral_extent_initial", 0.0)))
+        forward_extent_base = max(1e-9, float(bundle.get("forward_extent_base", forward_extent_initial)))
+        lateral_extent_base = max(1e-9, float(bundle.get("lateral_extent_base", lateral_extent_initial)))
         forward_extent_target = forward_extent_base * target_scale
         lateral_extent_target = lateral_extent_base * target_scale
+        actual_forward_extent = max(
+            1e-9,
+            max((abs(float(offset_local[0])) for offset_local in current_offsets_local.values()), default=0.0),
+        )
+        actual_lateral_extent = max(
+            1e-9,
+            max((abs(float(offset_local[1])) for offset_local in current_offsets_local.values()), default=0.0),
+        )
         relaxation = max(
             1e-6,
             min(1.0, float(bundle.get("soft_morphology_relaxation", V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT))),
         )
-        forward_extent_current = float(bundle.get("forward_extent_current", forward_extent_base))
-        lateral_extent_current = float(bundle.get("lateral_extent_current", lateral_extent_base))
-        forward_extent_current += (forward_extent_target - forward_extent_current) * relaxation
-        lateral_extent_current += (lateral_extent_target - lateral_extent_current) * relaxation
+        if hold_active:
+            current_center_x = hold_center_x
+            current_center_y = hold_center_y
+        elif terminal_active:
+            current_center_x += (float(terminal_center_x) - float(current_center_x)) * relaxation
+            current_center_y += (float(terminal_center_y) - float(current_center_y)) * relaxation
+        else:
+            current_center_x += (float(centroid_x) - float(current_center_x)) * relaxation
+            current_center_y += (float(centroid_y) - float(current_center_y)) * relaxation
+        bundle["morphology_center_current_xy"] = (float(current_center_x), float(current_center_y))
+        hold_forward_extent = bundle.get("formation_hold_forward_extent", None)
+        hold_lateral_extent = bundle.get("formation_hold_lateral_extent", None)
+        hold_center_wing_differential = bundle.get("formation_hold_center_wing_differential", None)
+        if hold_active and hold_forward_extent is not None and hold_lateral_extent is not None:
+            forward_extent_current = max(1e-9, float(hold_forward_extent))
+            lateral_extent_current = max(1e-9, float(hold_lateral_extent))
+            forward_extent_target = forward_extent_current
+            lateral_extent_target = lateral_extent_current
+        else:
+            forward_extent_current = float(bundle.get("forward_extent_current", forward_extent_initial))
+            lateral_extent_current = float(bundle.get("lateral_extent_current", lateral_extent_initial))
+            forward_extent_current += (forward_extent_target - forward_extent_current) * relaxation
+            lateral_extent_current += (lateral_extent_target - lateral_extent_current) * relaxation
+        center_wing_differential_target = float(
+            bundle.get("center_wing_differential_target", V4A_CENTER_WING_DIFFERENTIAL_DEFAULT)
+        )
+        if hold_active and hold_center_wing_differential is not None:
+            center_wing_differential_current = float(hold_center_wing_differential)
+            center_wing_differential_target = center_wing_differential_current
+        else:
+            center_wing_differential_current = float(
+                bundle.get("center_wing_differential_current", V4A_CENTER_WING_DIFFERENTIAL_DEFAULT)
+            )
+            center_wing_differential_current += (
+                center_wing_differential_target - center_wing_differential_current
+            ) * relaxation
         bundle["forward_extent_target"] = float(forward_extent_target)
         bundle["lateral_extent_target"] = float(lateral_extent_target)
         bundle["forward_extent_current"] = float(forward_extent_current)
         bundle["lateral_extent_current"] = float(lateral_extent_current)
-
-        target_half_forward = (forward_extent_current / float(V4A_SOFT_MORPHOLOGY_BAND_COUNT)) * V4A_SOFT_MORPHOLOGY_ENVELOPE_FILL_RATIO
-        target_half_lateral = (lateral_extent_current / float(V4A_SOFT_MORPHOLOGY_BAND_COUNT)) * V4A_SOFT_MORPHOLOGY_ENVELOPE_FILL_RATIO
-        band_step_forward = (2.0 * forward_extent_current) / float(V4A_SOFT_MORPHOLOGY_BAND_COUNT)
-        band_step_lateral = (2.0 * lateral_extent_current) / float(V4A_SOFT_MORPHOLOGY_BAND_COUNT)
-
-        grouped_units: dict[tuple[int, int], list[tuple[str, float, float]]] = {}
-        for unit_id, (forward_offset, lateral_offset) in current_offsets_local.items():
-            raw_band = band_identity.get(str(unit_id), (1, 1))
-            if not isinstance(raw_band, Sequence) or len(raw_band) < 2:
-                raw_band = (1, 1)
-            forward_band = max(0, min(2, int(raw_band[0])))
-            lateral_band = max(0, min(2, int(raw_band[1])))
-            grouped_units.setdefault((forward_band, lateral_band), []).append(
-                (str(unit_id), float(forward_offset), float(lateral_offset))
+        bundle["center_wing_differential_target"] = float(center_wing_differential_target)
+        bundle["center_wing_differential_current"] = float(center_wing_differential_current)
+        bundle["actual_forward_extent"] = float(actual_forward_extent)
+        bundle["actual_lateral_extent"] = float(actual_lateral_extent)
+        forward_shape_error = abs(actual_forward_extent - forward_extent_target) / max(1e-9, forward_extent_base)
+        lateral_shape_error = abs(actual_lateral_extent - lateral_extent_target) / max(1e-9, lateral_extent_base)
+        shape_error_current = min(1.0, max(0.0, max(forward_shape_error, lateral_shape_error)))
+        bundle["shape_error_current"] = float(shape_error_current)
+        bundle["hold_within_stop_radius"] = bool(within_hold_radius)
+        if (
+            not terminal_active
+            and within_hold_radius
+            and isinstance(objective_point_xy, Sequence)
+            and len(objective_point_xy) >= 2
+        ):
+            terminal_active = True
+            bundle["formation_terminal_active"] = True
+            bundle["formation_terminal_latched_tick"] = int(state.tick)
+            bundle["formation_terminal_axis_xy"] = current_axis_hat
+            bundle["formation_terminal_center_xy"] = (
+                float(objective_point_xy[0]),
+                float(objective_point_xy[1]),
             )
-
-        expected_offsets_local: dict[str, tuple[float, float]] = {}
-        for (forward_band, lateral_band), grouped_records in grouped_units.items():
-            if not grouped_records:
-                continue
-            current_center_forward = sum(record[1] for record in grouped_records) / float(len(grouped_records))
-            current_center_lateral = sum(record[2] for record in grouped_records) / float(len(grouped_records))
-            target_center_forward = (
-                (float(forward_band) - 0.5 * float(V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1)) * band_step_forward
-            )
-            target_center_lateral = (
-                (float(lateral_band) - 0.5 * float(V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1)) * band_step_lateral
-            )
-            clamped_center_forward = min(
-                max(current_center_forward, target_center_forward - target_half_forward),
-                target_center_forward + target_half_forward,
-            )
-            clamped_center_lateral = min(
-                max(current_center_lateral, target_center_lateral - target_half_lateral),
-                target_center_lateral + target_half_lateral,
-            )
-            expected_center_forward = current_center_forward + (
-                clamped_center_forward - current_center_forward
-            ) * relaxation
-            expected_center_lateral = current_center_lateral + (
-                clamped_center_lateral - current_center_lateral
-            ) * relaxation
-            current_half_span_forward = max(
-                abs(record[1] - current_center_forward) for record in grouped_records
-            ) if grouped_records else 0.0
-            current_half_span_lateral = max(
-                abs(record[2] - current_center_lateral) for record in grouped_records
-            ) if grouped_records else 0.0
-            forward_scale = 1.0
-            lateral_scale = 1.0
-            if current_half_span_forward > 1e-12:
-                forward_scale = min(1.0, target_half_forward / current_half_span_forward)
-            if current_half_span_lateral > 1e-12:
-                lateral_scale = min(1.0, target_half_lateral / current_half_span_lateral)
-            for unit_id, forward_offset, lateral_offset in grouped_records:
-                expected_offsets_local[unit_id] = (
-                    float(expected_center_forward + ((forward_offset - current_center_forward) * forward_scale)),
-                    float(expected_center_lateral + ((lateral_offset - current_center_lateral) * lateral_scale)),
+            terminal_axis_hat = current_axis_hat
+            terminal_center_x = float(objective_point_xy[0])
+            terminal_center_y = float(objective_point_xy[1])
+        if not hold_active and terminal_active and shape_error_current <= V4A_HOLD_AWAIT_SHAPE_ERROR_THRESHOLD:
+            hold_active = True
+            bundle["formation_hold_active"] = True
+            bundle["formation_hold_latched_tick"] = int(state.tick)
+            bundle["formation_hold_axis_xy"] = current_axis_hat
+            bundle["formation_hold_center_xy"] = (float(current_center_x), float(current_center_y))
+            bundle["formation_hold_forward_extent"] = float(forward_extent_current)
+            bundle["formation_hold_lateral_extent"] = float(lateral_extent_current)
+            bundle["formation_hold_center_wing_differential"] = float(center_wing_differential_current)
+        if hold_active and not terminal_active:
+            terminal_active = True
+            bundle["formation_terminal_active"] = True
+            bundle["formation_terminal_axis_xy"] = current_axis_hat
+            bundle["formation_terminal_center_xy"] = (float(current_center_x), float(current_center_y))
+        if hold_active and (
+            bundle.get("formation_hold_center_xy") is None
+            or hold_forward_extent is None
+            or hold_lateral_extent is None
+            or hold_center_wing_differential is None
+        ):
+            bundle["formation_hold_center_xy"] = (float(current_center_x), float(current_center_y))
+        if hold_active and (
+            hold_forward_extent is None
+            or hold_lateral_extent is None
+            or hold_center_wing_differential is None
+        ):
+            bundle["formation_hold_forward_extent"] = float(forward_extent_current)
+            bundle["formation_hold_lateral_extent"] = float(lateral_extent_current)
+            bundle["formation_hold_center_wing_differential"] = float(center_wing_differential_current)
+        current_material_forward_phase_by_unit = bundle.get("current_material_forward_phase_by_unit", {})
+        if not isinstance(current_material_forward_phase_by_unit, Mapping):
+            current_material_forward_phase_by_unit = {}
+        current_material_lateral_phase_by_unit = bundle.get("current_material_lateral_phase_by_unit", {})
+        if not isinstance(current_material_lateral_phase_by_unit, Mapping):
+            current_material_lateral_phase_by_unit = {}
+        target_material_forward_phase_by_unit = bundle.get("target_material_forward_phase_by_unit", {})
+        if not isinstance(target_material_forward_phase_by_unit, Mapping):
+            target_material_forward_phase_by_unit = {}
+        target_material_lateral_phase_by_unit = bundle.get("target_material_lateral_phase_by_unit", {})
+        if not isinstance(target_material_lateral_phase_by_unit, Mapping):
+            target_material_lateral_phase_by_unit = {}
+        if not hold_active:
+            updated_forward_phases: dict[str, float] = {}
+            updated_lateral_phases: dict[str, float] = {}
+            for unit_id in current_offsets_local:
+                current_forward_phase = current_material_forward_phase_by_unit.get(str(unit_id), 0.0)
+                if not isinstance(current_forward_phase, (int, float)):
+                    current_forward_phase = 0.0
+                current_lateral_phase = current_material_lateral_phase_by_unit.get(str(unit_id), 0.0)
+                if not isinstance(current_lateral_phase, (int, float)):
+                    current_lateral_phase = 0.0
+                target_forward_phase = target_material_forward_phase_by_unit.get(str(unit_id), current_forward_phase)
+                if not isinstance(target_forward_phase, (int, float)):
+                    target_forward_phase = current_forward_phase
+                target_lateral_phase = target_material_lateral_phase_by_unit.get(str(unit_id), current_lateral_phase)
+                if not isinstance(target_lateral_phase, (int, float)):
+                    target_lateral_phase = current_lateral_phase
+                next_forward_phase = float(current_forward_phase) + (
+                    (float(target_forward_phase) - float(current_forward_phase)) * relaxation
                 )
+                next_lateral_phase = float(current_lateral_phase) + (
+                    (float(target_lateral_phase) - float(current_lateral_phase)) * relaxation
+                )
+                updated_forward_phases[str(unit_id)] = max(-1.0, min(1.0, float(next_forward_phase)))
+                updated_lateral_phases[str(unit_id)] = max(-1.0, min(1.0, float(next_lateral_phase)))
+            bundle["current_material_forward_phase_by_unit"] = dict(updated_forward_phases)
+            bundle["current_material_lateral_phase_by_unit"] = dict(updated_lateral_phases)
+            current_material_forward_phase_by_unit = updated_forward_phases
+            current_material_lateral_phase_by_unit = updated_lateral_phases
+        expected_offsets_local: dict[str, tuple[float, float]] = {}
+        center_delta_x = float(current_center_x) - float(centroid_x)
+        center_delta_y = float(current_center_y) - float(centroid_y)
+        center_delta_forward = (
+            (center_delta_x * resolved_forward_hat[0]) + (center_delta_y * resolved_forward_hat[1])
+        )
+        center_delta_lateral = (
+            (center_delta_x * secondary_hat[0]) + (center_delta_y * secondary_hat[1])
+        )
+        for unit_id, (forward_offset, lateral_offset) in current_offsets_local.items():
+            material_forward = current_material_forward_phase_by_unit.get(str(unit_id))
+            if not isinstance(material_forward, (int, float)):
+                material_forward = float(forward_offset) / max(1e-9, forward_extent_current)
+            material_lateral = current_material_lateral_phase_by_unit.get(str(unit_id))
+            if not isinstance(material_lateral, (int, float)):
+                material_lateral = float(lateral_offset) / max(1e-9, lateral_extent_current)
+            material_forward = max(-1.0, min(1.0, float(material_forward)))
+            material_lateral = max(-1.0, min(1.0, float(material_lateral)))
+            center_wing_profile = 1.0 - (2.0 * abs(material_lateral))
+            target_forward_offset = (
+                material_forward * float(forward_extent_current)
+                + (center_wing_profile * float(center_wing_differential_current))
+            )
+            target_lateral_offset = material_lateral * float(lateral_extent_current)
+            expected_offsets_local[str(unit_id)] = (
+                float(target_forward_offset + center_delta_forward),
+                float(target_lateral_offset + center_delta_lateral),
+            )
 
         return expected_offsets_local, resolved_forward_hat
 
@@ -443,6 +741,20 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         ]
         if enemy_units:
             return None
+        fixture_bundle = getattr(self, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
+        terminal_hold_active = (
+            isinstance(fixture_bundle, Mapping)
+            and (
+                bool(fixture_bundle.get("formation_terminal_active", False))
+                or bool(fixture_bundle.get("formation_hold_active", False))
+            )
+        )
+        if terminal_hold_active:
+            return replace(
+                state,
+                last_target_direction={fleet_id: (0.0, 0.0)},
+                last_engagement_intensity={fleet_id: 0.0},
+            )
         if not own_units:
             direction = (0.0, 0.0)
             intensity = 0.0
@@ -633,19 +945,33 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         return replace(state, units=merged_units)
 
     def integrate_movement(self, state: BattleState) -> BattleState:
-        bundles_by_fleet = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
         movement_surface = getattr(self, "_movement_surface", {})
         movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
-        if (
-            not isinstance(bundles_by_fleet, Mapping)
-            or movement_model != "v4a"
-            or len(state.fleets) <= 0
-        ):
+        if movement_model != "v4a" or len(state.fleets) <= 0:
             return super().integrate_movement(state)
         if len(state.fleets) > 1 and not bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
             return super().integrate_movement(state)
+        previous_fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        had_previous_fixture_cfg = isinstance(previous_fixture_cfg, dict)
+        fixture_active_mode = (
+            str(previous_fixture_cfg.get("active_mode", FIXTURE_MODE_BATTLE)).strip().lower()
+            if had_previous_fixture_cfg
+            else FIXTURE_MODE_BATTLE
+        )
+        fixture_bundle = getattr(self, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
+        battle_bundles_by_fleet = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
         lead_fleet_id = str(next(iter(state.fleets.keys()), "")).strip()
-        bundle = bundles_by_fleet.get(lead_fleet_id)
+        bundle: Mapping[str, Any] | None = None
+        using_fixture_bundle = (
+            fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1
+            and had_previous_fixture_cfg
+            and isinstance(fixture_bundle, Mapping)
+        )
+        if using_fixture_bundle:
+            lead_fleet_id = str(previous_fixture_cfg.get("fleet_id", lead_fleet_id)).strip() or lead_fleet_id
+            bundle = fixture_bundle
+        elif isinstance(battle_bundles_by_fleet, Mapping):
+            bundle = battle_bundles_by_fleet.get(lead_fleet_id)
         if not isinstance(bundle, Mapping):
             return super().integrate_movement(state)
         expected_slot_offsets_local, current_forward_hat_xy = self._resolve_v4a_reference_surface(
@@ -655,9 +981,176 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
         if not expected_slot_offsets_local:
             return super().integrate_movement(state)
+        movement_state = state
+        terminal_active = bool(bundle.get("formation_terminal_active", False))
+        hold_active = bool(bundle.get("formation_hold_active", False))
+        if not hold_active:
+            if terminal_active:
+                raw_target_direction = (0.0, 0.0)
+            else:
+                raw_target_direction = state.last_target_direction.get(lead_fleet_id, (0.0, 0.0))
+            raw_target_hat, raw_target_norm = self._normalize_direction(
+                float(raw_target_direction[0]) if len(raw_target_direction) >= 1 else 0.0,
+                float(raw_target_direction[1]) if len(raw_target_direction) >= 2 else 0.0,
+            )
+            current_heading = bundle.get("movement_heading_current_xy", current_forward_hat_xy)
+            if not isinstance(current_heading, Sequence) or len(current_heading) < 2:
+                current_heading = current_forward_hat_xy
+            current_heading_hat, current_heading_norm = self._normalize_direction(
+                float(current_heading[0]) if len(current_heading) >= 1 else float(current_forward_hat_xy[0]),
+                float(current_heading[1]) if len(current_heading) >= 2 else float(current_forward_hat_xy[1]),
+            )
+            if current_heading_norm <= 0.0:
+                current_heading_hat = current_forward_hat_xy
+            desired_heading_hat = raw_target_hat if raw_target_norm > 0.0 else current_forward_hat_xy
+            heading_relaxation = max(
+                1e-6,
+                min(1.0, float(bundle.get("heading_relaxation", V4A_HEADING_RELAXATION_DEFAULT))),
+            )
+            current_heading_hat = self._relax_direction(
+                current_heading_hat,
+                desired_heading_hat,
+                heading_relaxation,
+            )
+            bundle["movement_heading_current_xy"] = current_heading_hat
+            shape_vs_advance_strength = max(
+                0.0,
+                min(1.0, float(bundle.get("shape_vs_advance_strength", V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT))),
+            )
+            shape_error_current = max(
+                0.0,
+                min(1.0, float(bundle.get("shape_error_current", 0.0))),
+            )
+            if raw_target_norm > 0.0:
+                advance_share = max(
+                    V4A_SHAPE_VS_ADVANCE_MIN_SHARE,
+                    1.0 - (shape_vs_advance_strength * shape_error_current),
+                )
+            else:
+                advance_share = 0.0
+            bundle["transition_advance_share"] = float(advance_share)
+            updated_last_target_direction = dict(state.last_target_direction)
+            updated_last_target_direction[lead_fleet_id] = (
+                float(current_heading_hat[0]) * raw_target_norm * advance_share,
+                float(current_heading_hat[1]) * raw_target_norm * advance_share,
+            )
+            updated_last_engagement_intensity = dict(state.last_engagement_intensity)
+            updated_last_engagement_intensity[lead_fleet_id] = (
+                float(updated_last_engagement_intensity.get(lead_fleet_id, 0.0)) * advance_share
+            )
+            movement_state = replace(
+                state,
+                last_target_direction=updated_last_target_direction,
+                last_engagement_intensity=updated_last_engagement_intensity,
+            )
 
-        previous_fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
-        had_previous_fixture_cfg = isinstance(previous_fixture_cfg, dict)
+            transition_reference_max_speed_by_unit = bundle.get("transition_reference_max_speed_by_unit", {})
+            if not isinstance(transition_reference_max_speed_by_unit, Mapping):
+                transition_reference_max_speed_by_unit = {
+                    str(unit_id): float(movement_state.units[unit_id].max_speed)
+                    for unit_id in state.fleets[lead_fleet_id].unit_ids
+                    if unit_id in movement_state.units
+                }
+                bundle["transition_reference_max_speed_by_unit"] = dict(transition_reference_max_speed_by_unit)
+            alive_units = [
+                movement_state.units[unit_id]
+                for unit_id in state.fleets[lead_fleet_id].unit_ids
+                if unit_id in movement_state.units and float(movement_state.units[unit_id].hit_points) > 0.0
+            ]
+            if alive_units:
+                centroid_x, centroid_y = self._compute_position_centroid(alive_units)
+                secondary_hat_xy = (-float(current_forward_hat_xy[1]), float(current_forward_hat_xy[0]))
+                expected_world_positions: dict[str, tuple[float, float]] = {}
+                for unit_id, offset_local in expected_slot_offsets_local.items():
+                    expected_world_positions[str(unit_id)] = (
+                        float(centroid_x)
+                        + (float(offset_local[0]) * float(current_forward_hat_xy[0]))
+                        + (float(offset_local[1]) * float(secondary_hat_xy[0])),
+                        float(centroid_y)
+                        + (float(offset_local[0]) * float(current_forward_hat_xy[1]))
+                        + (float(offset_local[1]) * float(secondary_hat_xy[1])),
+                    )
+                expected_reference_spacing = max(
+                    1e-9,
+                    float(bundle.get("expected_reference_spacing", self.separation_radius)),
+                )
+                updated_units = dict(movement_state.units)
+                changed = False
+                for unit_id, reference_speed in transition_reference_max_speed_by_unit.items():
+                    unit = updated_units.get(str(unit_id))
+                    if unit is None:
+                        continue
+                    expected_position = expected_world_positions.get(str(unit_id))
+                    if expected_position is None:
+                        shape_need = 0.0
+                    else:
+                        dx = float(expected_position[0]) - float(unit.position.x)
+                        dy = float(expected_position[1]) - float(unit.position.y)
+                        shape_distance = math.sqrt((dx * dx) + (dy * dy))
+                        shape_need = max(0.0, min(1.0, shape_distance / expected_reference_spacing))
+                    unit_heading_hat, unit_heading_norm = self._normalize_direction(
+                        float(unit.orientation_vector.x),
+                        float(unit.orientation_vector.y),
+                    )
+                    if unit_heading_norm <= 0.0:
+                        unit_heading_hat = current_heading_hat
+                    heading_alignment = max(
+                        0.0,
+                        (float(unit_heading_hat[0]) * float(current_heading_hat[0]))
+                        + (float(unit_heading_hat[1]) * float(current_heading_hat[1])),
+                    )
+                    turn_speed_scale = V4A_TURN_SPEED_FLOOR + (
+                        (1.0 - V4A_TURN_SPEED_FLOOR) * heading_alignment
+                    )
+                    shape_speed_scale = max(
+                        V4A_TRANSITION_IDLE_SPEED_FLOOR,
+                        max(advance_share, shape_need),
+                    )
+                    transition_speed = float(reference_speed) * shape_speed_scale * turn_speed_scale
+                    if abs(float(unit.max_speed) - transition_speed) <= 1e-9:
+                        continue
+                    updated_units[str(unit_id)] = replace(unit, max_speed=float(transition_speed))
+                    changed = True
+                if changed:
+                    movement_state = replace(movement_state, units=updated_units)
+        if hold_active:
+            updated_last_target_direction = dict(state.last_target_direction)
+            updated_last_target_direction[lead_fleet_id] = (0.0, 0.0)
+            updated_last_engagement_intensity = dict(state.last_engagement_intensity)
+            updated_last_engagement_intensity[lead_fleet_id] = 0.0
+            movement_state = replace(
+                state,
+                last_target_direction=updated_last_target_direction,
+                last_engagement_intensity=updated_last_engagement_intensity,
+            )
+            hold_reference_max_speed_by_unit = bundle.get("formation_hold_reference_max_speed_by_unit", {})
+            if not isinstance(hold_reference_max_speed_by_unit, Mapping):
+                hold_reference_max_speed_by_unit = {
+                    str(unit_id): float(movement_state.units[unit_id].max_speed)
+                    for unit_id in state.fleets[lead_fleet_id].unit_ids
+                    if unit_id in movement_state.units
+                }
+                bundle["formation_hold_reference_max_speed_by_unit"] = dict(hold_reference_max_speed_by_unit)
+            updated_units = dict(movement_state.units)
+            changed = False
+            for unit_id, reference_speed in hold_reference_max_speed_by_unit.items():
+                unit = updated_units.get(str(unit_id))
+                if unit is None:
+                    continue
+                held_speed = float(reference_speed) * V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT
+                if abs(float(unit.max_speed) - held_speed) <= 1e-9:
+                    continue
+                updated_units[str(unit_id)] = replace(unit, max_speed=float(held_speed))
+                changed = True
+            if changed:
+                movement_state = replace(movement_state, units=updated_units)
+
+        if using_fixture_bundle and had_previous_fixture_cfg:
+            previous_fixture_cfg["initial_forward_hat_xy"] = tuple(current_forward_hat_xy)
+            previous_fixture_cfg["expected_slot_offsets_local"] = dict(expected_slot_offsets_local)
+            previous_fixture_cfg["expected_position_candidate_active"] = True
+            previous_fixture_cfg["formation_hold_active"] = bool(bundle.get("formation_hold_active", False))
+            return super().integrate_movement(movement_state)
         if had_previous_fixture_cfg:
             previous_fixture_cfg["initial_forward_hat_xy"] = tuple(current_forward_hat_xy)
             previous_fixture_cfg["expected_slot_offsets_local"] = dict(expected_slot_offsets_local)
@@ -678,7 +1171,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
         self.TEST_RUN_FIXTURE_CFG = temp_fixture_cfg
         try:
-            return super().integrate_movement(state)
+            return super().integrate_movement(movement_state)
         finally:
             if had_previous_fixture_cfg:
                 self.TEST_RUN_FIXTURE_CFG = previous_fixture_cfg
@@ -1469,6 +1962,22 @@ def run_simulation(
             "run_simulation movement_cfg['v4a_soft_morphology_relaxation_effective'] must be within (0.0, 1.0], "
             f"got {v4a_soft_morphology_relaxation}"
         )
+    v4a_shape_vs_advance_strength = float(
+        movement_cfg.get("v4a_shape_vs_advance_strength_effective", V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT)
+    )
+    if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_shape_vs_advance_strength_effective'] must be within [0.0, 1.0], "
+            f"got {v4a_shape_vs_advance_strength}"
+        )
+    v4a_heading_relaxation = float(
+        movement_cfg.get("v4a_heading_relaxation_effective", V4A_HEADING_RELAXATION_DEFAULT)
+    )
+    if not 0.0 < v4a_heading_relaxation <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_heading_relaxation_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_heading_relaxation}"
+        )
     fixture_fleet_id = ""
     fixture_objective_point_xy = (0.0, 0.0)
     fixture_objective_contract_3d: dict[str, Any] = {}
@@ -1677,9 +2186,14 @@ def run_simulation(
         position_map: Mapping[str, tuple[float, float]],
         objective_point_xy: tuple[float, float],
         *,
+        ordered_unit_ids: Sequence[str] | None = None,
+        expected_reference_spacing: float,
+        reference_layout_mode: str,
         fallback_axis_xy: tuple[float, float] = (1.0, 0.0),
         reference_surface_mode: str = V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS,
         soft_morphology_relaxation: float = V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT,
+        shape_vs_advance_strength: float = V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT,
+        heading_relaxation: float = V4A_HEADING_RELAXATION_DEFAULT,
     ) -> dict:
         centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
         if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
@@ -1697,49 +2211,119 @@ def run_simulation(
         else:
             primary_axis_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
         secondary_axis_xy = (-primary_axis_xy[1], primary_axis_xy[0])
-        expected_slot_offsets_local = {}
-        raw_offsets: list[tuple[str, float, float]] = []
-        initial_front_extent = 0.0
+        ordered_reference_unit_ids = [
+            str(unit_id)
+            for unit_id in (
+                ordered_unit_ids
+                if ordered_unit_ids is not None
+                else tuple(position_map.keys())
+            )
+            if str(unit_id) in position_map
+        ]
+        if len(ordered_reference_unit_ids) != len(position_map):
+            ordered_reference_unit_ids = [str(unit_id) for unit_id in position_map.keys()]
+        reference_offsets_local = _build_reference_slot_offsets_local(
+            ordered_reference_unit_ids,
+            expected_reference_spacing=float(expected_reference_spacing),
+            reference_layout_mode=str(reference_layout_mode),
+        )
+        actual_offsets_local: dict[str, tuple[float, float]] = {}
         for unit_id, position in position_map.items():
             rel_x = float(position[0]) - centroid_x
             rel_y = float(position[1]) - centroid_y
             forward_offset = (rel_x * primary_axis_xy[0]) + (rel_y * primary_axis_xy[1])
             lateral_offset = (rel_x * secondary_axis_xy[0]) + (rel_y * secondary_axis_xy[1])
-            expected_slot_offsets_local[str(unit_id)] = (forward_offset, lateral_offset)
-            raw_offsets.append((str(unit_id), float(forward_offset), float(lateral_offset)))
-            if forward_offset > initial_front_extent:
-                initial_front_extent = forward_offset
-        forward_extent_base = max((abs(item[1]) for item in raw_offsets), default=0.0)
-        lateral_extent_base = max((abs(item[2]) for item in raw_offsets), default=0.0)
-        band_identity_by_unit: dict[str, tuple[int, int]] = {}
-        if raw_offsets:
-            sorted_forward = sorted(raw_offsets, key=lambda item: (item[1], item[2], item[0]))
-            sorted_lateral = sorted(raw_offsets, key=lambda item: (item[2], item[1], item[0]))
-            total_count = len(raw_offsets)
-            for index, (unit_id, _, _) in enumerate(sorted_forward):
-                band_identity_by_unit.setdefault(str(unit_id), [1, 1])[0] = min(
-                    V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-                    int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-                )
-            for index, (unit_id, _, _) in enumerate(sorted_lateral):
-                band_identity_by_unit.setdefault(str(unit_id), [1, 1])[1] = min(
-                    V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-                    int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-                )
+            actual_offsets_local[str(unit_id)] = (float(forward_offset), float(lateral_offset))
+        initial_front_extent = max(
+            (float(offset_local[0]) for offset_local in reference_offsets_local.values()),
+            default=0.0,
+        )
+        initial_forward_phase_by_unit, initial_lateral_phase_by_unit, forward_extent_initial, lateral_extent_initial = (
+            _compute_morphology_material_phase(actual_offsets_local)
+        )
+        forward_extent_base = max(
+            (abs(float(offset_local[0])) for offset_local in reference_offsets_local.values()),
+            default=0.0,
+        )
+        lateral_extent_base = max(
+            (abs(float(offset_local[1])) for offset_local in reference_offsets_local.values()),
+            default=0.0,
+        )
+        target_forward_phase_by_unit, target_lateral_phase_by_unit, _, _ = _compute_morphology_material_phase(
+            reference_offsets_local
+        )
+        band_identity_by_unit = _assign_soft_morphology_band_identity(actual_offsets_local)
         return {
             "initial_forward_hat_xy": primary_axis_xy,
             "initial_secondary_hat_xy": secondary_axis_xy,
-            "expected_slot_offsets_local": expected_slot_offsets_local,
+            "expected_slot_offsets_local": {
+                str(unit_id): tuple(reference_offsets_local[str(unit_id)])
+                for unit_id in ordered_reference_unit_ids
+            },
+            "reference_slot_offsets_local": {
+                str(unit_id): tuple(reference_offsets_local[str(unit_id)])
+                for unit_id in ordered_reference_unit_ids
+            },
             "initial_front_extent": float(initial_front_extent),
             "initial_alive_count": int(len(position_map)),
+            "forward_extent_initial": float(forward_extent_initial),
+            "lateral_extent_initial": float(lateral_extent_initial),
             "forward_extent_base": float(forward_extent_base),
             "lateral_extent_base": float(lateral_extent_base),
-            "forward_extent_current": float(forward_extent_base),
-            "lateral_extent_current": float(lateral_extent_base),
+            "forward_extent_current": float(forward_extent_initial),
+            "lateral_extent_current": float(lateral_extent_initial),
             "forward_extent_target": float(forward_extent_base),
             "lateral_extent_target": float(lateral_extent_base),
+            "morphology_axis_current_xy": primary_axis_xy,
+            "morphology_center_current_xy": (float(centroid_x), float(centroid_y)),
+            "formation_terminal_active": False,
+            "formation_terminal_axis_xy": None,
+            "formation_terminal_center_xy": None,
+            "formation_terminal_latched_tick": None,
+            "formation_hold_active": False,
+            "formation_hold_axis_xy": None,
+            "formation_hold_center_xy": None,
+            "formation_hold_latched_tick": None,
+            "formation_hold_forward_extent": None,
+            "formation_hold_lateral_extent": None,
+            "formation_hold_center_wing_differential": None,
             "reference_surface_mode": str(reference_surface_mode),
             "soft_morphology_relaxation": float(soft_morphology_relaxation),
+            "shape_vs_advance_strength": float(shape_vs_advance_strength),
+            "heading_relaxation": float(heading_relaxation),
+            "reference_layout_mode": str(reference_layout_mode),
+            "expected_reference_spacing": float(expected_reference_spacing),
+            "center_wing_differential_target": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
+            "center_wing_differential_current": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
+            "movement_heading_current_xy": primary_axis_xy,
+            "shape_error_current": 0.0,
+            "actual_forward_extent": float(forward_extent_initial),
+            "actual_lateral_extent": float(lateral_extent_initial),
+            "hold_within_stop_radius": False,
+            "initial_material_forward_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in initial_forward_phase_by_unit.items()
+            },
+            "initial_material_lateral_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in initial_lateral_phase_by_unit.items()
+            },
+            "target_material_forward_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in target_forward_phase_by_unit.items()
+            },
+            "target_material_lateral_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in target_lateral_phase_by_unit.items()
+            },
+            "current_material_forward_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in initial_forward_phase_by_unit.items()
+            },
+            "current_material_lateral_phase_by_unit": {
+                str(unit_id): float(phase)
+                for unit_id, phase in initial_lateral_phase_by_unit.items()
+            },
             "band_identity_by_unit": {
                 str(unit_id): (int(bands[0]), int(bands[1]))
                 for unit_id, bands in band_identity_by_unit.items()
@@ -1845,14 +2429,20 @@ def run_simulation(
             bundle = _build_fixture_expected_reference_bundle(
                 fleet_positions,
                 objective_point_xy,
+                ordered_unit_ids=tuple(fleet.unit_ids),
+                expected_reference_spacing=float(movement_cfg.get("expected_reference_spacing_effective", 1.0)),
+                reference_layout_mode=str(movement_cfg.get("reference_layout_mode_effective", V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0)),
                 fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
                 reference_surface_mode=v4a_reference_surface_mode,
                 soft_morphology_relaxation=v4a_soft_morphology_relaxation,
+                shape_vs_advance_strength=v4a_shape_vs_advance_strength,
+                heading_relaxation=v4a_heading_relaxation,
             )
             bundle["objective_point_xy"] = (
                 float(objective_point_xy[0]),
                 float(objective_point_xy[1]),
             )
+            bundle["hold_stop_radius"] = 0.0
             battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
     if battle_restore_bundles_by_fleet:
         engine.TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET = battle_restore_bundles_by_fleet
@@ -1905,10 +2495,21 @@ def run_simulation(
         fixture_reference_bundle = _build_fixture_expected_reference_bundle(
             initial_positions,
             fixture_objective_point_xy,
+            ordered_unit_ids=tuple(initial_state.fleets[fixture_fleet_id].unit_ids),
+            expected_reference_spacing=float(movement_cfg.get("expected_reference_spacing_effective", 1.0)),
+            reference_layout_mode=str(movement_cfg.get("reference_layout_mode_effective", V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0)),
             fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
             reference_surface_mode=v4a_reference_surface_mode,
             soft_morphology_relaxation=v4a_soft_morphology_relaxation,
+            shape_vs_advance_strength=v4a_shape_vs_advance_strength,
+            heading_relaxation=v4a_heading_relaxation,
         )
+        fixture_reference_bundle["objective_point_xy"] = (
+            float(fixture_objective_point_xy[0]),
+            float(fixture_objective_point_xy[1]),
+        )
+        fixture_reference_bundle["hold_stop_radius"] = float(fixture_stop_radius)
+        engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
         initial_centroid_x, initial_centroid_y, initial_rms_radius = _compute_centroid_and_rms_radius(initial_positions)
         initial_distance = math.sqrt(
             ((initial_centroid_x - fixture_objective_point_xy[0]) ** 2)
@@ -1952,6 +2553,8 @@ def run_simulation(
             "projection_pairs_count": [],
             "projection_mean_displacement": [],
             "projection_max_displacement": [],
+            "shape_error_current": [],
+            "transition_advance_share": [],
             "legality_reference_surface_count": [],
             "legality_feasible_surface_count": [],
             "legality_middle_stage_active": [],
@@ -2180,6 +2783,12 @@ def run_simulation(
             fixture_metrics["projection_max_displacement"].append(
                 float(fixture_runtime_debug.get("projection_max_displacement", 0.0))
             )
+            fixture_metrics["shape_error_current"].append(
+                float(fixture_reference_bundle.get("shape_error_current", 0.0))
+            )
+            fixture_metrics["transition_advance_share"].append(
+                float(fixture_reference_bundle.get("transition_advance_share", 1.0))
+            )
             fixture_metrics["legality_reference_surface_count"].append(
                 int(fixture_runtime_debug.get("legality_reference_surface_count", 0))
             )
@@ -2192,10 +2801,57 @@ def run_simulation(
             fixture_metrics["legality_handoff_ready"].append(
                 bool(fixture_runtime_debug.get("legality_handoff_ready", False))
             )
+            fixture_terminal_ready = bool(fixture_reference_bundle.get("formation_terminal_active", False))
+            if (
+                not fixture_terminal_ready
+                and math.isfinite(distance_to_objective)
+                and distance_to_objective <= fixture_stop_radius
+            ):
+                latched_axis = fixture_reference_bundle.get(
+                    "morphology_axis_current_xy",
+                    fixture_reference_bundle.get("initial_forward_hat_xy", (1.0, 0.0)),
+                )
+                if not isinstance(latched_axis, Sequence) or len(latched_axis) < 2:
+                    latched_axis = fixture_reference_bundle.get("initial_forward_hat_xy", (1.0, 0.0))
+                fixture_reference_bundle["formation_terminal_active"] = True
+                fixture_reference_bundle["formation_terminal_latched_tick"] = int(state.tick)
+                fixture_reference_bundle["formation_terminal_axis_xy"] = (
+                    float(latched_axis[0]),
+                    float(latched_axis[1]),
+                )
+                fixture_reference_bundle["formation_terminal_center_xy"] = (
+                    float(fixture_objective_point_xy[0]),
+                    float(fixture_objective_point_xy[1]),
+                )
+                fixture_reference_bundle["formation_hold_active"] = True
+                fixture_reference_bundle["formation_hold_latched_tick"] = int(state.tick)
+                fixture_reference_bundle["formation_hold_axis_xy"] = (
+                    float(latched_axis[0]),
+                    float(latched_axis[1]),
+                )
+                fixture_reference_bundle["formation_hold_center_xy"] = (
+                    float(fixture_objective_point_xy[0]),
+                    float(fixture_objective_point_xy[1]),
+                )
+                fixture_reference_bundle["formation_hold_forward_extent"] = float(
+                    fixture_reference_bundle.get("forward_extent_current", 0.0)
+                )
+                fixture_reference_bundle["formation_hold_lateral_extent"] = float(
+                    fixture_reference_bundle.get("lateral_extent_current", 0.0)
+                )
+                fixture_reference_bundle["formation_hold_center_wing_differential"] = float(
+                    fixture_reference_bundle.get(
+                        "center_wing_differential_current",
+                        V4A_CENTER_WING_DIFFERENTIAL_DEFAULT,
+                    )
+                )
+                engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
+                fixture_terminal_ready = True
             if (
                 fixture_metrics.get("objective_reached_tick") is None
                 and math.isfinite(distance_to_objective)
                 and distance_to_objective <= fixture_stop_radius
+                and fixture_terminal_ready
             ):
                 fixture_metrics["objective_reached_tick"] = int(state.tick)
                 if (

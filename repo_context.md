@@ -151,6 +151,7 @@ Current availability status:
 - the `20260329` package now also includes a battle-path-relevant next evidence pack; current engineering read is that the `expected/reference spacing = 2.0` vs `runtime low-level floor = 1.0` split remains materially important outside the earlier fixture-only frame, but still does not by itself authorize silent implementation
 - the active `eng/two-layer-spacing-first-bounded-impl` PR branch now adds a first bounded two-layer spacing implementation candidate entirely in `test_run/`; current branch-only read is that maintained battle can now see the restore line through direct `v4a` test-only reference settings (`expected_reference_spacing`, `reference_layout_mode`), while the latest restore-weakening follow-up adds a test-only `restore_strength` seam and sharpens the read further: neutral-transit remains semantically real but still too rigid, and weakening restore from `1.0` down to `0.25` and `0.05` does not materially change the primary scene, so the remaining formation-side issue appears more basic than restore-strength tuning alone
 - the same PR #6 branch now also adds a bounded `soft_morphology_v1` reference-surface carrier under `runtime.movement.v4a.test_only`; current branch-only read is that the branch now has a first credible soft planar formation-reference carrier with alive-ratio-driven morphology state and stable broad-band ownership, but neutral-transit still reads tighter than a fully settled "living formation" substrate
+- the same PR #6 branch now also carries a bounded transition-movement and terminal-semantics seam package under `runtime.movement.v4a.test_only`; current branch-only read is that `shape_vs_advance_strength`, `heading_relaxation`, continuous material-phase transport, and a morphology-level terminal/hold stage materially reduce the earlier non-arrival bug and make mismatch transitions more continuous, but the branch still does not yet solve believable `1 -> 4` / `4 -> 1` formation change or fully settled arrival behavior
 - the same `20260329` branch package now also includes a bounded turning-cost / heading-inertia discussion note plus a future 3D runtime computation-principles review note; both remain methodology discussion only and do not authorize implementation or default switching
 - no parallel simulation settings surface is owned by `viz3d_panda/`
 - no 3D runtime combat/movement baseline is established by this surface
@@ -164,6 +165,7 @@ Current availability status:
   - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and `neutral_transit_v1` objective-arrival continuation
 - `test_run/test_run_v1_0.testonly.settings.json`
   - test-only harness controls
+  - active PR #6 branch-only movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`
 - `test_run/test_run_v1_0.viz.settings.json`
   - visualization values
 - `test_run/test_run_v1_0.settings.comments.json`

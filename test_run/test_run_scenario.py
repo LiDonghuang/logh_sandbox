@@ -22,9 +22,16 @@ DEFAULT_DT = 1.0
 DEFAULT_SPAWN_MARGIN_RATIO = 0.05
 DEFAULT_POST_RESOLUTION_HOLD_STEPS = 10
 DEFAULT_PLOT_COLORS = ("#1f77b4", "#ff7f0e")
-REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS = "rect_centered_rows"
+FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS = "rect_centered_rows"
+REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0 = "rect_centered_1.0"
+REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0 = "rect_centered_4.0"
 REFERENCE_LAYOUT_MODE_LABELS = {
-    REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
+    REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0,
+    REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0,
+}
+FORMATION_LAYOUT_MODE_LABELS = {
+    FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS,
+    *REFERENCE_LAYOUT_MODE_LABELS,
 }
 TEST_MODE_LABELS = {
     0: "default",
@@ -390,9 +397,9 @@ def _resolve_initial_formation_layout(unit_count: int, aspect_ratio: float, layo
     resolved_layout_mode = _require_choice(
         "reference_layout_mode",
         layout_mode,
-        REFERENCE_LAYOUT_MODE_LABELS,
+        FORMATION_LAYOUT_MODE_LABELS,
     )
-    if resolved_layout_mode != REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS:
+    if resolved_layout_mode not in FORMATION_LAYOUT_MODE_LABELS:
         raise ValueError(
             f"unsupported reference_layout_mode={resolved_layout_mode!r}"
         )
@@ -532,6 +539,22 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             "runtime.movement.v4a.test_only.soft_morphology_relaxation must be within (0.0, 1.0], "
             f"got {v4a_soft_morphology_relaxation}"
         )
+    v4a_shape_vs_advance_strength = float(
+        get_runtime("v4a_shape_vs_advance_strength", execution.V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT)
+    )
+    if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.shape_vs_advance_strength must be within [0.0, 1.0], "
+            f"got {v4a_shape_vs_advance_strength}"
+        )
+    v4a_heading_relaxation = float(
+        get_runtime("v4a_heading_relaxation", execution.V4A_HEADING_RELAXATION_DEFAULT)
+    )
+    if not 0.0 < v4a_heading_relaxation <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.test_only.heading_relaxation must be within (0.0, 1.0], "
+            f"got {v4a_heading_relaxation}"
+        )
     movement_cfg = {
         "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
         "experiment_effective": _require_choice(
@@ -584,6 +607,8 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
+        "v4a_shape_vs_advance_strength": v4a_shape_vs_advance_strength,
+        "v4a_heading_relaxation": v4a_heading_relaxation,
     }
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
@@ -632,6 +657,18 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT
     )
+    movement_cfg["v4a_shape_vs_advance_strength_effective"] = (
+        movement_cfg["v4a_shape_vs_advance_strength"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT
+    )
+    movement_cfg["v4a_heading_relaxation_effective"] = (
+        movement_cfg["v4a_heading_relaxation"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_HEADING_RELAXATION_DEFAULT
+    )
+    movement_cfg.setdefault("expected_reference_spacing_effective", None)
+    movement_cfg.setdefault("reference_layout_mode_effective", None)
     return movement_cfg
 
 
@@ -651,7 +688,7 @@ def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_ef
             f"got {physical_min_spacing}"
         )
     expected_reference_spacing = float(physical_min_spacing)
-    reference_layout_mode = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS
+    reference_layout_mode = REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0
     if movement_model_effective != "v4a":
         return {
             "expected_reference_spacing": expected_reference_spacing,
@@ -754,7 +791,7 @@ def build_initial_state(
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
-    layout_mode: str = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
+    layout_mode: str = FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS,
     fleet_a_origin_x: float | None = None,
     fleet_a_origin_y: float | None = None,
     fleet_b_origin_x: float | None = None,
@@ -843,7 +880,7 @@ def build_single_fleet_initial_state(
     unit_speed: float,
     unit_max_hit_points: float,
     arena_size: float,
-    layout_mode: str = REFERENCE_LAYOUT_MODE_RECT_CENTERED_ROWS,
+    layout_mode: str = FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS,
     fleet_origin_x: float | None = None,
     fleet_origin_y: float | None = None,
     fleet_facing_angle_deg: float | None = None,
@@ -949,6 +986,8 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         get_runtime,
         movement_model_effective=movement_cfg["model_effective"],
     )
+    movement_cfg["expected_reference_spacing_effective"] = float(v4a_reference_cfg["expected_reference_spacing"])
+    movement_cfg["reference_layout_mode_effective"] = str(v4a_reference_cfg["reference_layout_mode"])
     battle_restore_bridge_active = movement_cfg["model_effective"] == "v4a"
     spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
@@ -1120,6 +1159,12 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]
             ),
+            "v4a_shape_vs_advance_strength_effective": float(
+                movement_cfg["v4a_shape_vs_advance_strength_effective"]
+            ),
+            "v4a_heading_relaxation_effective": float(
+                movement_cfg["v4a_heading_relaxation_effective"]
+            ),
             "battle_restore_bridge_active": bool(battle_restore_bridge_active),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
@@ -1217,6 +1262,8 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         get_runtime,
         movement_model_effective=movement_cfg["model_effective"],
     )
+    movement_cfg["expected_reference_spacing_effective"] = float(v4a_reference_cfg["expected_reference_spacing"])
+    movement_cfg["reference_layout_mode_effective"] = str(v4a_reference_cfg["reference_layout_mode"])
 
     unit_cfg = _build_unit_cfg(get_unit, get_runtime)
     unit_spacing = float(v4a_reference_cfg["expected_reference_spacing"])
@@ -1326,6 +1373,12 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]
+            ),
+            "v4a_shape_vs_advance_strength_effective": float(
+                movement_cfg["v4a_shape_vs_advance_strength_effective"]
+            ),
+            "v4a_heading_relaxation_effective": float(
+                movement_cfg["v4a_heading_relaxation_effective"]
             ),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),

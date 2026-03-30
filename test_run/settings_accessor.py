@@ -24,6 +24,8 @@ RUNTIME_SETTING_PATHS = {
     "v4a_restore_strength": ("movement", "v4a", "test_only", "restore_strength"),
     "v4a_reference_surface_mode": ("movement", "v4a", "test_only", "reference_surface_mode"),
     "v4a_soft_morphology_relaxation": ("movement", "v4a", "test_only", "soft_morphology_relaxation"),
+    "v4a_shape_vs_advance_strength": ("movement", "v4a", "test_only", "shape_vs_advance_strength"),
+    "v4a_heading_relaxation": ("movement", "v4a", "test_only", "heading_relaxation"),
     "movement_v3a_experiment": ("movement", "v3a", "test_only", "experiment"),
     "centroid_probe_scale": ("movement", "v3a", "test_only", "centroid_probe_scale"),
     "pre_tl_target_substrate": ("movement", "v3a", "test_only", "pre_tl_target_substrate"),
