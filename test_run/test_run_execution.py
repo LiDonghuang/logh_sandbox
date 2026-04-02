@@ -113,6 +113,10 @@ V4A_HOLD_AWAIT_SHAPE_ERROR_THRESHOLD = 0.12
 V4A_SHAPE_VS_ADVANCE_MIN_SHARE = 0.20
 V4A_TRANSITION_IDLE_SPEED_FLOOR = 0.45
 V4A_TURN_SPEED_FLOOR = 0.35
+V4A_FORWARD_TRANSPORT_BRAKE_STRENGTH_DEFAULT = 0.75
+V4A_FORWARD_TRANSPORT_BOOST_STRENGTH_DEFAULT = 0.55
+V4A_FORWARD_TRANSPORT_BRAKE_FLOOR = 0.15
+V4A_FORWARD_TRANSPORT_MAX_SPEED_SCALE = 1.20
 
 
 def _clamp01(value: float) -> float:
@@ -599,8 +603,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             current_center_x += (float(terminal_center_x) - float(current_center_x)) * relaxation
             current_center_y += (float(terminal_center_y) - float(current_center_y)) * relaxation
         else:
-            current_center_x += (float(centroid_x) - float(current_center_x)) * relaxation
-            current_center_y += (float(centroid_y) - float(current_center_y)) * relaxation
+            current_center_x = float(centroid_x)
+            current_center_y = float(centroid_y)
         bundle["morphology_center_current_xy"] = (float(current_center_x), float(current_center_y))
         hold_forward_extent = bundle.get("formation_hold_forward_extent", None)
         hold_lateral_extent = bundle.get("formation_hold_lateral_extent", None)
@@ -736,6 +740,10 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         center_delta_lateral = (
             (center_delta_x * secondary_hat[0]) + (center_delta_y * secondary_hat[1])
         )
+        forward_transport_deltas_local: list[float] = []
+        phase_forward_deltas_local: list[float] = []
+        forward_transport_alignment_count = 0
+        forward_transport_alignment_matches = 0
         for unit_id, (forward_offset, lateral_offset) in current_offsets_local.items():
             material_forward = current_material_forward_phase_by_unit.get(str(unit_id))
             if not isinstance(material_forward, (int, float)):
@@ -754,6 +762,35 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             expected_offsets_local[str(unit_id)] = (
                 float(target_forward_offset + center_delta_forward),
                 float(target_lateral_offset + center_delta_lateral),
+            )
+            forward_transport_delta = float(target_forward_offset + center_delta_forward - float(forward_offset))
+            phase_forward_delta = float(target_forward_offset - float(forward_offset))
+            forward_transport_deltas_local.append(forward_transport_delta)
+            phase_forward_deltas_local.append(phase_forward_delta)
+            if abs(float(forward_offset)) > 1e-9 and abs(forward_transport_delta) > 1e-9:
+                forward_transport_alignment_count += 1
+                if float(forward_offset) * float(forward_transport_delta) < 0.0:
+                    forward_transport_alignment_matches += 1
+        if forward_transport_deltas_local:
+            bundle["center_delta_forward"] = float(center_delta_forward)
+            bundle["forward_transport_delta_mean"] = (
+                sum(forward_transport_deltas_local) / float(len(forward_transport_deltas_local))
+            )
+            bundle["forward_transport_negative_fraction"] = (
+                sum(1 for value in forward_transport_deltas_local if value < -1e-9)
+                / float(len(forward_transport_deltas_local))
+            )
+            bundle["forward_transport_positive_fraction"] = (
+                sum(1 for value in forward_transport_deltas_local if value > 1e-9)
+                / float(len(forward_transport_deltas_local))
+            )
+        if phase_forward_deltas_local:
+            bundle["phase_forward_delta_mean"] = (
+                sum(phase_forward_deltas_local) / float(len(phase_forward_deltas_local))
+            )
+        if forward_transport_alignment_count > 0:
+            bundle["forward_transport_alignment"] = (
+                float(forward_transport_alignment_matches) / float(forward_transport_alignment_count)
             )
 
         return expected_offsets_local, resolved_forward_hat
@@ -866,95 +903,107 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 dy = unit.position.y - centroid_y
                 return (dx * dx) + (dy * dy)
 
-            sorted_enemy_units = sorted(enemy_units, key=_distance_sq)
+            battle_restore_bundles = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
+            battle_bundle = (
+                battle_restore_bundles.get(str(fleet_id))
+                if isinstance(battle_restore_bundles, Mapping)
+                else None
+            )
             reference_units: list[UnitState]
-
-            if substrate == PRE_TL_TARGET_SUBSTRATE_NEAREST5:
-                reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
+            if isinstance(battle_bundle, Mapping):
+                # v4a far-field battle target now reads as global enemy relation + d*.
+                # Local enemy semantics are intentionally deferred out of Layer A.
+                reference_units = list(enemy_units)
                 ref_x, ref_y = self._compute_position_centroid(reference_units)
-            elif substrate in {
-                PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
-                PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
-                }:
-                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                if not local_units:
-                    local_units = sorted_enemy_units[:1]
-                reference_units = list(local_units)
-                distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
-                local_scale = max(1.0, sum(distances) / float(len(distances)))
-                boundary_index = min(4, len(distances) - 1)
-                boundary_distance = max(1e-9, distances[boundary_index])
-                envelope_factor = 0.20 if substrate == PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT else 0.35
-                envelope_width = max(0.5, local_scale * envelope_factor)
-                weight_sum = 0.0
-                ref_x = 0.0
-                ref_y = 0.0
-                for unit, distance in zip(local_units, distances, strict=False):
-                    radial_weight = math.exp(-((distance / local_scale) ** 2))
-                    envelope_weight = 1.0 / (
-                        1.0 + math.exp((distance - boundary_distance) / envelope_width)
-                    )
-                    weight = radial_weight * envelope_weight
-                    ref_x += unit.position.x * weight
-                    ref_y += unit.position.y * weight
-                    weight_sum += weight
-                if weight_sum > 0.0:
-                    ref_x /= weight_sum
-                    ref_y /= weight_sum
-                else:
-                    ref_x, ref_y = self._compute_position_centroid(local_units)
-            elif substrate == PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL:
-                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                if not local_units:
-                    local_units = sorted_enemy_units[:1]
-                reference_units = list(local_units)
-                distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
-                local_scale = max(1.0, sum(distances) / float(len(distances)))
-                weight_sum = 0.0
-                ref_x = 0.0
-                ref_y = 0.0
-                for unit, distance in zip(local_units, distances, strict=False):
-                    weight = math.exp(-((distance / local_scale) ** 2))
-                    ref_x += unit.position.x * weight
-                    ref_y += unit.position.y * weight
-                    weight_sum += weight
-                if weight_sum > 0.0:
-                    ref_x /= weight_sum
-                    ref_y /= weight_sum
-                else:
-                    ref_x, ref_y = self._compute_position_centroid(local_units)
             else:
-                local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                if not local_units:
-                    local_units = sorted_enemy_units[:1]
-                cluster_size = min(3, len(local_units))
-                best_cluster_score = None
-                best_cluster_units = local_units[:cluster_size]
-                for anchor in local_units:
-                    cluster_units = sorted(
-                        local_units,
-                        key=lambda candidate: (
-                            (candidate.position.x - anchor.position.x) ** 2
-                            + (candidate.position.y - anchor.position.y) ** 2
-                        ),
-                    )[:cluster_size]
-                    cluster_centroid_x, cluster_centroid_y = self._compute_position_centroid(cluster_units)
-                    cluster_score = sum(
-                        ((unit.position.x - cluster_centroid_x) ** 2)
-                        + ((unit.position.y - cluster_centroid_y) ** 2)
-                        for unit in cluster_units
-                    ) / float(cluster_size)
-                    if best_cluster_score is None or cluster_score < best_cluster_score:
-                        best_cluster_score = cluster_score
-                        best_cluster_units = cluster_units
-                reference_units = list(best_cluster_units)
-                ref_x, ref_y = self._compute_position_centroid(best_cluster_units)
+                sorted_enemy_units = sorted(enemy_units, key=_distance_sq)
+                if substrate == PRE_TL_TARGET_SUBSTRATE_NEAREST5:
+                    reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
+                    ref_x, ref_y = self._compute_position_centroid(reference_units)
+                elif substrate in {
+                    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
+                    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
+                    }:
+                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                    if not local_units:
+                        local_units = sorted_enemy_units[:1]
+                    reference_units = list(local_units)
+                    distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
+                    local_scale = max(1.0, sum(distances) / float(len(distances)))
+                    boundary_index = min(4, len(distances) - 1)
+                    boundary_distance = max(1e-9, distances[boundary_index])
+                    envelope_factor = (
+                        0.20 if substrate == PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT else 0.35
+                    )
+                    envelope_width = max(0.5, local_scale * envelope_factor)
+                    weight_sum = 0.0
+                    ref_x = 0.0
+                    ref_y = 0.0
+                    for unit, distance in zip(local_units, distances, strict=False):
+                        radial_weight = math.exp(-((distance / local_scale) ** 2))
+                        envelope_weight = 1.0 / (
+                            1.0 + math.exp((distance - boundary_distance) / envelope_width)
+                        )
+                        weight = radial_weight * envelope_weight
+                        ref_x += unit.position.x * weight
+                        ref_y += unit.position.y * weight
+                        weight_sum += weight
+                    if weight_sum > 0.0:
+                        ref_x /= weight_sum
+                        ref_y /= weight_sum
+                    else:
+                        ref_x, ref_y = self._compute_position_centroid(local_units)
+                elif substrate == PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL:
+                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                    if not local_units:
+                        local_units = sorted_enemy_units[:1]
+                    reference_units = list(local_units)
+                    distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
+                    local_scale = max(1.0, sum(distances) / float(len(distances)))
+                    weight_sum = 0.0
+                    ref_x = 0.0
+                    ref_y = 0.0
+                    for unit, distance in zip(local_units, distances, strict=False):
+                        weight = math.exp(-((distance / local_scale) ** 2))
+                        ref_x += unit.position.x * weight
+                        ref_y += unit.position.y * weight
+                        weight_sum += weight
+                    if weight_sum > 0.0:
+                        ref_x /= weight_sum
+                        ref_y /= weight_sum
+                    else:
+                        ref_x, ref_y = self._compute_position_centroid(local_units)
+                else:
+                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
+                    if not local_units:
+                        local_units = sorted_enemy_units[:1]
+                    cluster_size = min(3, len(local_units))
+                    best_cluster_score = None
+                    best_cluster_units = local_units[:cluster_size]
+                    for anchor in local_units:
+                        cluster_units = sorted(
+                            local_units,
+                            key=lambda candidate: (
+                                (candidate.position.x - anchor.position.x) ** 2
+                                + (candidate.position.y - anchor.position.y) ** 2
+                            ),
+                        )[:cluster_size]
+                        cluster_centroid_x, cluster_centroid_y = self._compute_position_centroid(cluster_units)
+                        cluster_score = sum(
+                            ((unit.position.x - cluster_centroid_x) ** 2)
+                            + ((unit.position.y - cluster_centroid_y) ** 2)
+                            for unit in cluster_units
+                        ) / float(cluster_size)
+                        if best_cluster_score is None or cluster_score < best_cluster_score:
+                            best_cluster_score = cluster_score
+                            best_cluster_units = cluster_units
+                    reference_units = list(best_cluster_units)
+                    ref_x, ref_y = self._compute_position_centroid(best_cluster_units)
 
             ref_dx = float(ref_x) - float(centroid_x)
             ref_dy = float(ref_y) - float(centroid_y)
             reference_direction_hat, _ = self._normalize_direction(ref_dx, ref_dy)
             reference_distance = math.sqrt((ref_dx * ref_dx) + (ref_dy * ref_dy))
-            battle_bundle = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", {}).get(str(fleet_id), {})
             if isinstance(battle_bundle, Mapping):
                 own_forward_extent, _ = _compute_projected_half_extents(own_units, reference_direction_hat)
                 enemy_forward_extent, _ = _compute_projected_half_extents(enemy_units, reference_direction_hat)
@@ -1013,6 +1062,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
 
         base_fleets = state.fleets
         merged_units = dict(state.units)
+        merged_last_target_direction = dict(state.last_target_direction)
+        merged_last_engagement_intensity = dict(state.last_engagement_intensity)
         first_debug_snapshot = None
         for lead_fleet_id in fleet_ids:
             ordered_fleets = {lead_fleet_id: base_fleets[lead_fleet_id]}
@@ -1030,11 +1081,20 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 moved_unit = moved_variant.units.get(unit_id)
                 if moved_unit is not None:
                     merged_units[unit_id] = moved_unit
+            if lead_fleet_id in moved_variant.last_target_direction:
+                merged_last_target_direction[lead_fleet_id] = moved_variant.last_target_direction[lead_fleet_id]
+            if lead_fleet_id in moved_variant.last_engagement_intensity:
+                merged_last_engagement_intensity[lead_fleet_id] = moved_variant.last_engagement_intensity[lead_fleet_id]
         if first_debug_snapshot is not None:
             self.debug_diag_last_tick = first_debug_snapshot["debug_diag_last_tick"]
             self.debug_last_cohesion_v3 = first_debug_snapshot["debug_last_cohesion_v3"]
             self.debug_last_cohesion_v3_components = first_debug_snapshot["debug_last_cohesion_v3_components"]
-        return replace(state, units=merged_units)
+        return replace(
+            state,
+            units=merged_units,
+            last_target_direction=merged_last_target_direction,
+            last_engagement_intensity=merged_last_engagement_intensity,
+        )
 
     def integrate_movement(self, state: BattleState) -> BattleState:
         movement_surface = getattr(self, "_movement_surface", {})
@@ -1188,6 +1248,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     if unit is None:
                         continue
                     expected_position = expected_world_positions.get(str(unit_id))
+                    forward_transport_delta = 0.0
                     if expected_position is None:
                         shape_need = 0.0
                     else:
@@ -1195,6 +1256,10 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         dy = float(expected_position[1]) - float(unit.position.y)
                         shape_distance = math.sqrt((dx * dx) + (dy * dy))
                         shape_need = max(0.0, min(1.0, shape_distance / expected_reference_spacing))
+                        forward_transport_delta = (
+                            (dx * float(current_forward_hat_xy[0]))
+                            + (dy * float(current_forward_hat_xy[1]))
+                        )
                     unit_heading_hat, unit_heading_norm = self._normalize_direction(
                         float(unit.orientation_vector.x),
                         float(unit.orientation_vector.y),
@@ -1213,6 +1278,27 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         V4A_TRANSITION_IDLE_SPEED_FLOOR,
                         max(advance_share, shape_need),
                     )
+                    forward_transport_need = max(
+                        0.0,
+                        min(1.0, abs(float(forward_transport_delta)) / expected_reference_spacing),
+                    )
+                    forward_transport_speed_scale = 1.0
+                    if forward_transport_delta < 0.0:
+                        forward_transport_speed_scale = max(
+                            V4A_FORWARD_TRANSPORT_BRAKE_FLOOR,
+                            1.0 - (
+                                V4A_FORWARD_TRANSPORT_BRAKE_STRENGTH_DEFAULT
+                                * forward_transport_need
+                            ),
+                        )
+                    elif forward_transport_delta > 0.0:
+                        forward_transport_speed_scale = min(
+                            V4A_FORWARD_TRANSPORT_MAX_SPEED_SCALE,
+                            1.0 + (
+                                V4A_FORWARD_TRANSPORT_BOOST_STRENGTH_DEFAULT
+                                * forward_transport_need
+                            ),
+                        )
                     attack_speed_scale = 1.0
                     engaged_target_id = str(unit.engaged_target_id).strip() if unit.engaged_target_id is not None else ""
                     if bool(unit.engaged) and engaged_target_id:
@@ -1236,6 +1322,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     transition_speed = (
                         float(reference_speed)
                         * shape_speed_scale
+                        * float(forward_transport_speed_scale)
                         * turn_speed_scale
                         * float(attack_speed_scale)
                     )
@@ -2818,6 +2905,47 @@ def run_simulation(
     center_wing_position_history = _per_fleet_series()
     posture_persistence_state = {fleet_id: {"sign": 0, "length": 0} for fleet_id in fleet_ids}
 
+    def _build_focus_indicator_payload(current_state: BattleState) -> dict[str, dict[str, float]]:
+        if movement_model != "v4a":
+            return {}
+        focus_payload: dict[str, dict[str, float]] = {}
+        bundle_entries: dict[str, Mapping[str, Any]] = {}
+        if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+            fixture_bundle = getattr(engine, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
+            if isinstance(fixture_bundle, Mapping):
+                bundle_entries[str(fixture_fleet_id)] = fixture_bundle
+        else:
+            battle_bundles = getattr(engine, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
+            if isinstance(battle_bundles, Mapping):
+                for fleet_id, bundle in battle_bundles.items():
+                    if isinstance(bundle, Mapping):
+                        bundle_entries[str(fleet_id)] = bundle
+        for fleet_id, bundle in bundle_entries.items():
+            target_direction = current_state.last_target_direction.get(str(fleet_id), (0.0, 0.0))
+            td_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
+            td_y = float(target_direction[1]) if len(target_direction) >= 2 else 0.0
+            focus_payload[str(fleet_id)] = {
+                "td_norm": math.sqrt((td_x * td_x) + (td_y * td_y)),
+                "forward_current": float(bundle.get("forward_extent_current", float("nan"))),
+                "actual_forward": float(bundle.get("actual_forward_extent", float("nan"))),
+                "lateral_current": float(bundle.get("lateral_extent_current", float("nan"))),
+                "actual_lateral": float(bundle.get("actual_lateral_extent", float("nan"))),
+                "shape_err": float(bundle.get("shape_error_current", float("nan"))),
+                "advance_share": float(bundle.get("transition_advance_share", float("nan"))),
+                "center_forward_offset": float(bundle.get("center_delta_forward", float("nan"))),
+                "phase_forward_mean": float(bundle.get("phase_forward_delta_mean", float("nan"))),
+                "forward_align": float(
+                    bundle.get("forward_transport_alignment", float("nan"))
+                ),
+                "forward_neg_frac": float(
+                    bundle.get("forward_transport_negative_fraction", float("nan"))
+                ),
+                "forward_pos_frac": float(
+                    bundle.get("forward_transport_positive_fraction", float("nan"))
+                ),
+            }
+        return focus_payload
+
     def _append_empty_shape_metrics(fleet_id: str, series: list[float]) -> None:
         series.append(float("nan"))
         observer_telemetry["front_curvature_index"][fleet_id].append(float("nan"))
@@ -2866,9 +2994,13 @@ def run_simulation(
             frame[fleet_id] = points
         if include_target_lines:
             frame["targets"] = targets
-        frame["runtime_debug"] = extract_runtime_debug_payload(
+        runtime_debug = extract_runtime_debug_payload(
             getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
         )
+        focus_indicators = _build_focus_indicator_payload(current_state)
+        if focus_indicators:
+            runtime_debug["focus_indicators"] = focus_indicators
+        frame["runtime_debug"] = runtime_debug
         position_frames.append(frame)
 
     if steps <= 0:

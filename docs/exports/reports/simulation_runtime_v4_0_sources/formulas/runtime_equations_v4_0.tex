@@ -1,0 +1,47 @@
+% Fleet Sandbox v4.0 Runtime Equations
+
+% 1) Canonical normalization
+\hat{x}=\frac{x-1}{9}, \quad x\in[1,10],\ \hat{x}\in[0,1]
+
+% 2) Cohesion scalar
+c_f^{t+1}=\operatorname{clip}_{[0,1]}\left(c_f^t+0.01\kappa_f-0.005(1-\kappa_f)\right)
+
+% 3) Fleet target direction
+\mathbf{d}_f=
+\begin{cases}
+\dfrac{\mathbf{p}_{e^\*}-\mathbf{g}_f}{\lVert\mathbf{p}_{e^\*}-\mathbf{g}_f\rVert}, & \lVert\mathbf{p}_{e^\*}-\mathbf{g}_f\rVert>0\\
+(0,0), & \text{otherwise}
+\end{cases}
+
+% 4) Intra-fleet separation kernel
+\mathbf{v}_{ij}=\operatorname{norm}(\mathbf{p}_i-\mathbf{p}_j)\left(1-\frac{\lVert\mathbf{p}_i-\mathbf{p}_j\rVert}{r_{\mathrm{sep}}}\right)
+
+% 5) Movement composition
+\mathbf{u}_i=\operatorname{norm}\left(\mathbf{d}_{f(i)}+\kappa_{f(i)}\mathbf{c}_i+\alpha_{\mathrm{sep}}\hat{\mathbf{s}}_i\right),\quad
+\mathbf{p}_i^{t+1}=\mathbf{p}_i^t+\mathbf{u}_i\cdot v_i\cdot\Delta t
+
+% 6) Global minimum spacing projection (single pass)
+\lVert\mathbf{p}_i-\mathbf{p}_j\rVert^2 < m^2-\varepsilon
+\Rightarrow
+\Delta\mathbf{p}_i \mathrel{+}= \frac{1}{2}\delta\mathbf{n}_{ij},\ 
+\Delta\mathbf{p}_j \mathrel{-}= \frac{1}{2}\delta\mathbf{n}_{ij},\ 
+\delta=m-\lVert\mathbf{p}_i-\mathbf{p}_j\rVert
+
+% 7) Combat in-range set
+E_r=\left\{e\in E\mid \lVert\mathbf{p}_e-\mathbf{p}_a\rVert^2 \le r_{\mathrm{atk}}^2-\varepsilon\right\}
+
+% 8) Target score (v4.0 structural refactor)
+\mathrm{score}(e)=w_{hp}\frac{HP_e}{HP_e^{\max}}+w_d\frac{\lVert\mathbf{p}_e-\mathbf{p}_a\rVert^2}{r_{\mathrm{atk}}^2},
+\quad w_{hp}=1,\ w_d\ll1
+
+% 9) ODW bias + clamp
+b_i=0.6(\mathrm{ODW}_i-0.5),\quad
+s_{i\to j}=\max(0,1+b_i-b_j)
+
+% 10) Participation ratio coupling (v3.13/v4.0 baseline)
+p_F=\frac{n_F}{N_F},\quad
+f_{i\to j}=1+0.3\left(p_{F(i)}-p_{F(j)}\right)
+
+% 11) Final per-hit damage
+d_{i\to j}=d_0\cdot s_{i\to j}\cdot f_{i\to j}
+

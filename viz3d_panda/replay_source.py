@@ -442,11 +442,16 @@ def build_replay_bundle(
         raise ValueError("position_frames is empty; viewer bootstrap requires captured frame data.")
 
     raw_frames: list[ViewerFrame] = []
+    runtime_debug_frames: list[dict[str, Any]] = []
     seen_fleet_ids: list[str] = []
     for raw_frame in position_frames:
         if not isinstance(raw_frame, dict):
             raise ValueError(f"Each position frame must be a mapping, got {type(raw_frame).__name__}.")
         tick = int(raw_frame.get("tick", len(raw_frames)))
+        raw_runtime_debug = raw_frame.get("runtime_debug", {})
+        if not isinstance(raw_runtime_debug, dict):
+            raw_runtime_debug = {}
+        runtime_debug_frames.append(dict(raw_runtime_debug))
         units: list[ViewerUnitState] = []
         for fleet_id, points in raw_frame.items():
             if fleet_id in FRAME_CONTROL_KEYS:
@@ -493,6 +498,7 @@ def build_replay_bundle(
     replay_metadata = dict(metadata or {})
     replay_metadata.setdefault("frame_count", len(frames))
     replay_metadata.setdefault("fleet_ids", tuple(seen_fleet_ids))
+    replay_metadata.setdefault("runtime_debug_frames", tuple(runtime_debug_frames))
     return ReplayBundle(
         source_kind=str(source_kind),
         arena_size=float(arena_size),

@@ -278,8 +278,18 @@ Current availability status:
 - `analysis/engineering_reports/developments/20260329/step3_3d_v4a_shared_default_review_discussion_note_20260329.md`
 - `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_next_evidence_pack_20260329.md`
 - `analysis/engineering_reports/developments/20260329/step3_3d_two_layer_spacing_battle_compact_comparison_20260329.csv`
+- `analysis/engineering_reports/developments/20260401/step3_3d_pr6_far_field_target_and_engagement_geometry_design_note_20260401.md`
+- `analysis/engineering_reports/developments/20260401/step3_3d_pr6_far_field_target_cleanup_local_note_20260401.md`
+- `analysis/engineering_reports/developments/20260401/step3_3d_pr6_human_motion_read_rubric_note_20260401.md`
+- `analysis/engineering_reports/developments/20260401/step3_3d_pr6_literature_review_background_and_goal_note_20260401.md`
 - `docs/engineering/GitHub_Branch_PR_Collaboration_Workflow_v1.0.md`
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
+- `docs/archive/ts_handoff_archive/`
+  - current long-term home for TS handoff packages previously stored under the top-level `archive/` path
+- `docs/exports/`
+  - current repo-side home for exported reports / flowcharts / formulas
+- `viz3d_panda/docs/3D_VIZ_Debug_Block_Reference_v1.0.md`
+  - maintained viewer-side reference for the 3D HUD/debug block and current focus indicators
 - `analysis/engineering_reports/developments/20260326/test_run_vector_display_mode_source_of_truth_cleanup_20260326.md`
 - `docs/governance/Global_Road_Map_Engagement_to_Personality_20260318.md`
 - `analysis/engineering_reports/developments/20260318/structural_cleanup/a5_iteration0_baseline_anchor_20260318.md`

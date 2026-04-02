@@ -99,6 +99,8 @@ Authority: Reference only, not canonical semantics authority
   - simple viewer-local orbit/pan/zoom controls
 - `launch_dev_v2_0_viewer.bat`
   - thin human-facing launcher
+- `viz3d_panda/docs/3D_VIZ_Debug_Block_Reference_v1.0.md`
+  - maintained viewer-local reference for the left-bottom debug block, focus indicators, and HUD layout rule
 - `.vscode/launch.json`
   - includes `dev_v2.0 Viewer (Panda3D)` launch entry for local debug/run use
 
@@ -130,6 +132,7 @@ Current availability:
 - current viewer-side fleet avatar support is fixed-size, screen-space, `4:5`, toggleable with local `P` portraits on/off control, uses per-fleet grouped layering, falls back to midpoint-based side-by-side layout when two battle fleets project too close on screen, re-solves during paused camera movement, stays on the main interpolation path through gear `5`, and now uses a lighter ring-style highlight without extra avatar-local playback smoothing
 - current 3D avatar support is now role-split: screen-follow portraits use `_s` assets, while fixed corner avatar blocks use `_m` assets plus language-aware full names and HP-total bar cards; the corner avatar blocks remain independent of the local `P` follow-avatar toggle
 - current follow-avatar `_s` asset layer now uses tighter square `40x40` portrait crops, while the corner avatar-block presentation remains a separate `_m` card layer
+- current left-bottom debug block now follows a maintained bottom-edge alignment rule shared with the right-bottom control block, and the active focus indicators are documented under `viz3d_panda/docs/`
 - current dual-layer unit rendering includes a minimal transparency-order correction intended to reduce inner-cluster occlusion by the transparent outer shell, plus near/mid/far cluster fading and transform-only smoothing of motion-facing elements
 - a stage governance memo now records the accepted pre-Formation viewer-only state under `analysis/engineering_reports/developments/20260327/`; this is a local-state governance memo, not canonical governance authority
 - a simplified warship-like proxy remains proposal-only and is not an active unit-rendering path
@@ -145,6 +148,7 @@ Current availability:
 - the same PR #6 branch now also adds a bounded `soft_morphology_v1` reference-surface carrier inside `test_run/`; current branch-only read is that expected/reference spacing, physical minimum spacing, and restore remain semantically real, while the new carrier replaces rigid dead-slot continuation with a planar-first soft morphology surface plus stable broad-band ownership, yet neutral-transit still reads too tight for merge discussion
 - the same PR #6 branch now also adds a bounded transition-movement / terminal package inside `test_run/`; current branch-only read is that `shape_vs_advance_strength`, `heading_relaxation`, continuous material-phase transport, and a morphology-level terminal/hold stage are now active on the local carrier line, materially reducing the previous non-arrival bug while still leaving believable `1 -> 4` / `4 -> 1` transition quality unresolved
 - the same PR #6 branch now also adds a Round 1 / Round 2 formation-transition package and new `v4a test_only` battle seams in `test_run/`; current branch-only read is that battle can now be read through a bounded fleet-level standoff distance plus a unit-level attack-direction-aware speed envelope, while Human read says these seams are basically correct and now expose the next visible battle issue more clearly: drifting fire-plane alignment, wing-localized engagement, and rotation around a local contact junction
+- the same PR #6 branch now also carries a bounded far-field battle-target cleanup on the active `v4a` line inside `test_run/`; current branch-only read is that Layer A now prefers `global enemy relation + d*`, while older `nearest5 / weighted_local / local_cluster / soft_local_weighted` enemy-localization semantics are being retired from the active far-field owner read and kept only as legacy harness material
 - the `20260329` branch package now also includes a turning-cost / heading-inertia discussion note and a future 3D runtime computation-principles review note; both are repo-side structural discussion assets only and do not activate new runtime doctrine
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
 - the maintained `neutral_transit_v1` harness now permits strict `objective_point_xy == initial centroid` for fixture expected-position reference construction by using the initial fleet forward orientation as a harness-only fallback axis; this does not widen runtime semantics

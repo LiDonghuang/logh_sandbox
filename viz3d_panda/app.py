@@ -45,6 +45,9 @@ FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
+HUD_BOTTOM_INSET = 0.05
+HUD_SIDE_INSET = 0.03
+HUD_TEXT_SCALE = 0.042
 FLEET_AVATAR_HEIGHT = 0.042
 FLEET_AVATAR_ASPECT_RATIO = 1.0
 FLEET_AVATAR_SCREEN_NUDGE = 0.008
@@ -275,16 +278,16 @@ class FleetViewerApp(ShowBase):
         self._status_text = OnscreenText(
             text="",
             parent=self.a2dBottomLeft,
-            pos=(0.03, 0.21),
-            scale=0.042,
+            pos=(HUD_SIDE_INSET, HUD_BOTTOM_INSET),
+            scale=HUD_TEXT_SCALE,
             align=TextNode.ALeft,
             fg=(0.72, 0.80, 0.89, 1.0),
         )
         self._control_text = OnscreenText(
             text="",
             parent=self.a2dBottomRight,
-            pos=(-0.03, 0.21),
-            scale=0.042,
+            pos=(-HUD_SIDE_INSET, HUD_BOTTOM_INSET),
+            scale=HUD_TEXT_SCALE,
             align=TextNode.ARight,
             fg=(0.72, 0.80, 0.89, 1.0),
         )
@@ -303,8 +306,8 @@ class FleetViewerApp(ShowBase):
         self.accept("[", self._adjust_playback_speed, [-1])
         self.accept("1", self._focus_fleet_camera, ["A"])
         self.accept("2", self._focus_fleet_camera, ["B"])
-        self.accept("home", self.go_to_frame, [0])
-        self.accept("end", self.go_to_frame, [len(self._replay.frames) - 1])
+        self.accept("home", self._jump_to_boundary_frame, [0])
+        self.accept("end", self._jump_to_boundary_frame, [len(self._replay.frames) - 1])
         self.accept("escape", self.userExit)
 
         self.go_to_frame(0)
@@ -352,6 +355,11 @@ class FleetViewerApp(ShowBase):
         self._playing = False
         next_index = self._current_frame_index + int(direction)
         self.go_to_frame(next_index)
+
+    def _jump_to_boundary_frame(self, frame_index: int) -> None:
+        self._playing = False
+        self._camera_controller.reset()
+        self.go_to_frame(frame_index)
 
     def _begin_hold_step(self, direction: int) -> None:
         normalized_direction = 1 if int(direction) > 0 else -1
@@ -785,6 +793,22 @@ class FleetViewerApp(ShowBase):
         self._render_frame(frame, pulse_phase=0.0)
         self._refresh_overlay()
 
+    @staticmethod
+    def _compute_hud_block_y(*, text_node: OnscreenText, line_count: int) -> float:
+        effective_lines = max(1, int(line_count))
+        line_height = 1.0
+        panda_text_node = getattr(text_node, "textNode", None)
+        if panda_text_node is not None:
+            try:
+                line_height = float(panda_text_node.getLineHeight())
+            except Exception:
+                line_height = 1.0
+        return float(HUD_BOTTOM_INSET + ((effective_lines - 1) * line_height * HUD_TEXT_SCALE))
+
+    def _align_hud_block_to_bottom(self, text_node: OnscreenText, *, line_count: int, side: str) -> None:
+        pos_x = -HUD_SIDE_INSET if str(side).strip().lower() == "right" else HUD_SIDE_INSET
+        text_node.setPos(pos_x, self._compute_hud_block_y(text_node=text_node, line_count=line_count))
+
     def _refresh_overlay(self) -> None:
         if not self._hud_enabled:
             return
@@ -815,6 +839,37 @@ class FleetViewerApp(ShowBase):
             centroid_parts.append(f"{fleet_id}=({sum_x / count:.1f}, {sum_y / count:.1f})")
         centroid_text = "  ".join(centroid_parts) if centroid_parts else "centroids=n/a"
         status_lines.append(centroid_text)
+        fleet_speeds: dict[str, float] = {}
+        if self._current_frame_index > 0:
+            previous_frame = self._replay.frames[self._current_frame_index - 1]
+            previous_fleet_centroids: dict[str, tuple[float, float, int]] = {}
+            for unit in previous_frame.units:
+                sum_x, sum_y, count = previous_fleet_centroids.get(unit.fleet_id, (0.0, 0.0, 0))
+                previous_fleet_centroids[unit.fleet_id] = (
+                    float(sum_x) + float(unit.x),
+                    float(sum_y) + float(unit.y),
+                    int(count) + 1,
+                )
+            for fleet_id in sorted(fleet_centroids):
+                current_sum_x, current_sum_y, current_count = fleet_centroids[fleet_id]
+                previous_entry = previous_fleet_centroids.get(fleet_id)
+                if current_count <= 0 or previous_entry is None or int(previous_entry[2]) <= 0:
+                    fleet_speeds[fleet_id] = 0.0
+                    continue
+                current_centroid_x = float(current_sum_x) / float(current_count)
+                current_centroid_y = float(current_sum_y) / float(current_count)
+                previous_centroid_x = float(previous_entry[0]) / float(previous_entry[2])
+                previous_centroid_y = float(previous_entry[1]) / float(previous_entry[2])
+                delta_x = current_centroid_x - previous_centroid_x
+                delta_y = current_centroid_y - previous_centroid_y
+                fleet_speeds[fleet_id] = math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
+        speed_parts = [
+            f"{fleet_id}={fleet_speeds.get(fleet_id, 0.0):.2f}"
+            for fleet_id in sorted(fleet_centroids)
+        ]
+        status_lines.append(
+            f"speed/frame: {'  '.join(speed_parts)}" if speed_parts else "speed/frame=n/a"
+        )
         status_tail = f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}"
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
@@ -825,14 +880,55 @@ class FleetViewerApp(ShowBase):
                 f"{status_tail}  fixture={owner}/{objective_mode}/{no_enemy}"
             )
         status_lines.append(status_tail)
+        runtime_debug_frames = self._replay.metadata.get("runtime_debug_frames")
+        runtime_debug = {}
+        if (
+            isinstance(runtime_debug_frames, (list, tuple))
+            and 0 <= self._current_frame_index < len(runtime_debug_frames)
+            and isinstance(runtime_debug_frames[self._current_frame_index], dict)
+        ):
+            runtime_debug = runtime_debug_frames[self._current_frame_index]
+        focus_indicators = runtime_debug.get("focus_indicators", {}) if isinstance(runtime_debug, dict) else {}
+        if isinstance(focus_indicators, dict) and focus_indicators:
+            for fleet_id in sorted(focus_indicators):
+                row = focus_indicators.get(fleet_id, {})
+                if not isinstance(row, dict):
+                    continue
+                status_lines.append(
+                    "focus "
+                    f"{fleet_id}: "
+                    f"td={float(row.get('td_norm', float('nan'))):.2f}  "
+                    f"adv={float(row.get('advance_share', float('nan'))):.2f}  "
+                    f"shape_err={float(row.get('shape_err', float('nan'))):.2f}  "
+                    f"fcur/afwd={float(row.get('forward_current', float('nan'))):.2f}/{float(row.get('actual_forward', float('nan'))):.2f}  "
+                    f"lcur/alat={float(row.get('lateral_current', float('nan'))):.2f}/{float(row.get('actual_lateral', float('nan'))):.2f}"
+                )
+                if any(
+                    math.isfinite(float(row.get(key, float("nan"))))
+                    for key in (
+                        "forward_neg_frac",
+                        "forward_pos_frac",
+                    )
+                ):
+                    status_lines.append(
+                        "focus "
+                        f"{fleet_id}+: "
+                        f"ctr_fwd={float(row.get('center_forward_offset', float('nan'))):.2f}  "
+                        f"phase_fwd={float(row.get('phase_forward_mean', float('nan'))):.2f}  "
+                        f"fwd_align={float(row.get('forward_align', float('nan'))):.2f}  "
+                        f"fwd-={float(row.get('forward_neg_frac', float('nan'))):.2f}  "
+                        f"fwd+={float(row.get('forward_pos_frac', float('nan'))):.2f}"
+                    )
         self._status_text.setText("\n".join(status_lines))
+        self._align_hud_block_to_bottom(self._status_text, line_count=len(status_lines), side="left")
         control_lines = [
             "Space play/pause  N/B step/hold",
             "[/ ] speed gear  V fire-links  M smooth",
             "P follow avatars  Tab HUD  LDrag pan  RDrag orbit",
-            "Wheel zoom  `/~ reset  1/2 track fleet  Esc quit",
+            "Wheel zoom  Home/End reset+jump  `/~ reset  1/2 track fleet  Esc quit",
         ]
         self._control_text.setText("\n".join(control_lines))
+        self._align_hud_block_to_bottom(self._control_text, line_count=len(control_lines), side="right")
 
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
