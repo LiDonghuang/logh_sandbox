@@ -32,7 +32,7 @@
           "heading_relaxation": 0.18,
           "battle_standoff_self_extent_weight": 0.15,
           "battle_standoff_enemy_extent_weight": 0.15,
-          "battle_standoff_hold_band_ratio": 0.1,
+          "battle_standoff_hold_band_ratio": 0.5,
           "engaged_speed_scale": 0.7,
           "attack_speed_lateral_scale": 0.65,
           "attack_speed_backward_scale": 0.35,

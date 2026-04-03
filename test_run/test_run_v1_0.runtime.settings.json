@@ -14,8 +14,8 @@
     "fleet_b_archetype_id": "merkatz",
     "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,
-    "initial_fleet_a_aspect_ratio": 4.0,
-    "initial_fleet_b_aspect_ratio": 4.0,
+    "initial_fleet_a_aspect_ratio": 1.0,
+    "initial_fleet_b_aspect_ratio": 1.0,
     "initial_fleet_a_origin_xy": [
       50.0,
       50.0
@@ -28,7 +28,7 @@
     "initial_fleet_b_facing_angle_deg": 225.0
   },
   "unit": {
-    "attack_range": 5.0,
+    "attack_range": 10.0,
     "damage_per_tick": 1.0,
     "unit_max_hit_points": 100.0,
     "unit_speed": 1.0

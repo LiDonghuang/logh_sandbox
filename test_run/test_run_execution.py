@@ -493,8 +493,11 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
         if current_axis_norm <= 0.0:
             current_axis_hat = resolved_forward_hat
-        terminal_active = bool(bundle.get("formation_terminal_active", False))
-        hold_active = bool(bundle.get("formation_hold_active", False))
+        # Current local read: terminal/hold morphology latching over-regularizes arrival
+        # into a visibly discrete end-state. Keep arrival detection, but disable the
+        # harness-side terminal/hold reshape path for now.
+        terminal_active = False
+        hold_active = False
         hold_axis = bundle.get("formation_hold_axis_xy", current_axis_hat)
         if not isinstance(hold_axis, Sequence) or len(hold_axis) < 2:
             hold_axis = current_axis_hat
@@ -645,52 +648,17 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         shape_error_current = min(1.0, max(0.0, max(forward_shape_error, lateral_shape_error)))
         bundle["shape_error_current"] = float(shape_error_current)
         bundle["hold_within_stop_radius"] = bool(within_hold_radius)
-        if (
-            not terminal_active
-            and within_hold_radius
-            and isinstance(objective_point_xy, Sequence)
-            and len(objective_point_xy) >= 2
-        ):
-            terminal_active = True
-            bundle["formation_terminal_active"] = True
-            bundle["formation_terminal_latched_tick"] = int(state.tick)
-            bundle["formation_terminal_axis_xy"] = current_axis_hat
-            bundle["formation_terminal_center_xy"] = (
-                float(objective_point_xy[0]),
-                float(objective_point_xy[1]),
-            )
-            terminal_axis_hat = current_axis_hat
-            terminal_center_x = float(objective_point_xy[0])
-            terminal_center_y = float(objective_point_xy[1])
-        if not hold_active and terminal_active and shape_error_current <= V4A_HOLD_AWAIT_SHAPE_ERROR_THRESHOLD:
-            hold_active = True
-            bundle["formation_hold_active"] = True
-            bundle["formation_hold_latched_tick"] = int(state.tick)
-            bundle["formation_hold_axis_xy"] = current_axis_hat
-            bundle["formation_hold_center_xy"] = (float(current_center_x), float(current_center_y))
-            bundle["formation_hold_forward_extent"] = float(forward_extent_current)
-            bundle["formation_hold_lateral_extent"] = float(lateral_extent_current)
-            bundle["formation_hold_center_wing_differential"] = float(center_wing_differential_current)
-        if hold_active and not terminal_active:
-            terminal_active = True
-            bundle["formation_terminal_active"] = True
-            bundle["formation_terminal_axis_xy"] = current_axis_hat
-            bundle["formation_terminal_center_xy"] = (float(current_center_x), float(current_center_y))
-        if hold_active and (
-            bundle.get("formation_hold_center_xy") is None
-            or hold_forward_extent is None
-            or hold_lateral_extent is None
-            or hold_center_wing_differential is None
-        ):
-            bundle["formation_hold_center_xy"] = (float(current_center_x), float(current_center_y))
-        if hold_active and (
-            hold_forward_extent is None
-            or hold_lateral_extent is None
-            or hold_center_wing_differential is None
-        ):
-            bundle["formation_hold_forward_extent"] = float(forward_extent_current)
-            bundle["formation_hold_lateral_extent"] = float(lateral_extent_current)
-            bundle["formation_hold_center_wing_differential"] = float(center_wing_differential_current)
+        bundle["formation_terminal_active"] = False
+        bundle["formation_hold_active"] = False
+        bundle["formation_terminal_latched_tick"] = None
+        bundle["formation_hold_latched_tick"] = None
+        bundle["formation_terminal_axis_xy"] = None
+        bundle["formation_terminal_center_xy"] = None
+        bundle["formation_hold_axis_xy"] = None
+        bundle["formation_hold_center_xy"] = None
+        bundle["formation_hold_forward_extent"] = None
+        bundle["formation_hold_lateral_extent"] = None
+        bundle["formation_hold_center_wing_differential"] = None
         current_material_forward_phase_by_unit = bundle.get("current_material_forward_phase_by_unit", {})
         if not isinstance(current_material_forward_phase_by_unit, Mapping):
             current_material_forward_phase_by_unit = {}
@@ -3153,94 +3121,24 @@ def run_simulation(
             fixture_metrics["legality_handoff_ready"].append(
                 bool(fixture_runtime_debug.get("legality_handoff_ready", False))
             )
-            fixture_terminal_ready = bool(fixture_reference_bundle.get("formation_terminal_active", False))
-            if (
-                not fixture_terminal_ready
-                and math.isfinite(distance_to_objective)
-                and distance_to_objective <= fixture_stop_radius
-            ):
-                latched_axis = fixture_reference_bundle.get(
-                    "morphology_axis_current_xy",
-                    fixture_reference_bundle.get("initial_forward_hat_xy", (1.0, 0.0)),
-                )
-                if not isinstance(latched_axis, Sequence) or len(latched_axis) < 2:
-                    latched_axis = fixture_reference_bundle.get("initial_forward_hat_xy", (1.0, 0.0))
-                fixture_reference_bundle["formation_terminal_active"] = True
-                fixture_reference_bundle["formation_terminal_latched_tick"] = int(state.tick)
-                fixture_reference_bundle["formation_terminal_axis_xy"] = (
-                    float(latched_axis[0]),
-                    float(latched_axis[1]),
-                )
-                fixture_reference_bundle["formation_terminal_center_xy"] = (
-                    float(fixture_objective_point_xy[0]),
-                    float(fixture_objective_point_xy[1]),
-                )
-                fixture_reference_bundle["formation_hold_active"] = True
-                fixture_reference_bundle["formation_hold_latched_tick"] = int(state.tick)
-                fixture_reference_bundle["formation_hold_axis_xy"] = (
-                    float(latched_axis[0]),
-                    float(latched_axis[1]),
-                )
-                fixture_reference_bundle["formation_hold_center_xy"] = (
-                    float(fixture_objective_point_xy[0]),
-                    float(fixture_objective_point_xy[1]),
-                )
-                fixture_reference_bundle["formation_hold_forward_extent"] = float(
-                    fixture_reference_bundle.get("forward_extent_current", 0.0)
-                )
-                fixture_reference_bundle["formation_hold_lateral_extent"] = float(
-                    fixture_reference_bundle.get("lateral_extent_current", 0.0)
-                )
-                fixture_reference_bundle["formation_hold_center_wing_differential"] = float(
-                    fixture_reference_bundle.get(
-                        "center_wing_differential_current",
-                        V4A_CENTER_WING_DIFFERENTIAL_DEFAULT,
-                    )
-                )
-                engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
-                fixture_terminal_ready = True
+            fixture_reference_bundle["formation_terminal_active"] = False
+            fixture_reference_bundle["formation_terminal_latched_tick"] = None
+            fixture_reference_bundle["formation_terminal_axis_xy"] = None
+            fixture_reference_bundle["formation_terminal_center_xy"] = None
+            fixture_reference_bundle["formation_hold_active"] = False
+            fixture_reference_bundle["formation_hold_latched_tick"] = None
+            fixture_reference_bundle["formation_hold_axis_xy"] = None
+            fixture_reference_bundle["formation_hold_center_xy"] = None
+            fixture_reference_bundle["formation_hold_forward_extent"] = None
+            fixture_reference_bundle["formation_hold_lateral_extent"] = None
+            fixture_reference_bundle["formation_hold_center_wing_differential"] = None
+            engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
             if (
                 fixture_metrics.get("objective_reached_tick") is None
                 and math.isfinite(distance_to_objective)
                 and distance_to_objective <= fixture_stop_radius
-                and fixture_terminal_ready
             ):
                 fixture_metrics["objective_reached_tick"] = int(state.tick)
-                if (
-                    fixture_candidate_a_active
-                    and not bool(engine.TEST_RUN_FIXTURE_CFG.get("frozen_terminal_frame_active", False))
-                    and math.isfinite(centroid_x)
-                    and math.isfinite(centroid_y)
-                ):
-                    fallback_axis = fixture_reference_bundle["initial_forward_hat_xy"]
-                    objective_axis_dx = fixture_objective_point_xy[0] - centroid_x
-                    objective_axis_dy = fixture_objective_point_xy[1] - centroid_y
-                    frozen_primary_axis_xy = engine._normalize_direction_with_fallback(
-                        float(objective_axis_dx),
-                        float(objective_axis_dy),
-                        float(fallback_axis[0]),
-                        float(fallback_axis[1]),
-                    )
-                    frozen_secondary_axis_xy = (
-                        -float(frozen_primary_axis_xy[1]),
-                        float(frozen_primary_axis_xy[0]),
-                    )
-                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_frame_active"] = True
-                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_primary_axis_xy"] = (
-                        float(frozen_primary_axis_xy[0]),
-                        float(frozen_primary_axis_xy[1]),
-                    )
-                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_secondary_axis_xy"] = (
-                        float(frozen_secondary_axis_xy[0]),
-                        float(frozen_secondary_axis_xy[1]),
-                    )
-                    engine.TEST_RUN_FIXTURE_CFG["frozen_terminal_latched_tick"] = int(state.tick)
-                    fixture_metrics["frozen_terminal_frame_active"] = True
-                    fixture_metrics["frozen_terminal_latched_tick"] = int(state.tick)
-                    fixture_metrics["frozen_terminal_primary_axis_xy"] = [
-                        float(frozen_primary_axis_xy[0]),
-                        float(frozen_primary_axis_xy[1]),
-                    ]
                 elimination_tick = int(state.tick)
                 post_elimination_stop_tick = min(999, elimination_tick + post_elimination_extra_ticks)
             _capture_position_frame(state)

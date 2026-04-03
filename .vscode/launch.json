@@ -53,7 +53,41 @@
         "PYTHONPATH": "${workspaceFolder}"
       },
       "python": "${workspaceFolder}\\.venv_dev_v2_0\\Scripts\\python.exe",
-      "args": ["--direction-mode", "realistic"]
+      "args": [
+        "--direction-mode",
+        "movement",
+        "--camera-take-output",
+        "${workspaceFolder}/analysis/exports/videos/dev_v2_0_camera_take.json"
+      ]
+    },
+    {
+      "name": "dev_v2.0 Video Export (Panda3D)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/viz3d_panda/export_video.py",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "python": "${workspaceFolder}\\.venv_dev_v2_0\\Scripts\\python.exe",
+      "args": [
+        "--preset",
+        "${input:devV20PandaExportPreset}"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "devV20PandaExportPreset",
+      "type": "pickString",
+      "description": "Panda3D offline export preset",
+      "options": [
+        "standard",
+        "low",
+        "high"
+      ],
+      "default": "standard"
     }
   ]
 }
