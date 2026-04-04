@@ -46,6 +46,26 @@ RUNTIME_SETTING_PATHS = {
         "v4a",
         "battle_relation_lead_ticks",
     ),
+    "v4a_battle_hold_relaxation": (
+        "movement",
+        "v4a",
+        "battle_hold_relaxation",
+    ),
+    "v4a_battle_approach_drive_relaxation": (
+        "movement",
+        "v4a",
+        "battle_approach_drive_relaxation",
+    ),
+    "v4a_battle_near_contact_internal_stability_blend": (
+        "movement",
+        "v4a",
+        "battle_near_contact_internal_stability_blend",
+    ),
+    "v4a_battle_near_contact_speed_relaxation": (
+        "movement",
+        "v4a",
+        "battle_near_contact_speed_relaxation",
+    ),
     "v4a_engaged_speed_scale": ("movement", "v4a", "engaged_speed_scale"),
     "v4a_attack_speed_lateral_scale": ("movement", "v4a", "attack_speed_lateral_scale"),
     "v4a_attack_speed_backward_scale": ("movement", "v4a", "attack_speed_backward_scale"),

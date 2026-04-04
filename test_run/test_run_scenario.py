@@ -600,6 +600,50 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             "runtime.movement.v4a.battle_relation_lead_ticks must be finite and > 0, "
             f"got {v4a_battle_relation_lead_ticks}"
         )
+    v4a_battle_hold_relaxation = float(
+        get_runtime(
+            "v4a_battle_hold_relaxation",
+            execution.V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_hold_relaxation <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_hold_relaxation must be within (0.0, 1.0], "
+            f"got {v4a_battle_hold_relaxation}"
+        )
+    v4a_battle_approach_drive_relaxation = float(
+        get_runtime(
+            "v4a_battle_approach_drive_relaxation",
+            execution.V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_approach_drive_relaxation <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_approach_drive_relaxation must be within (0.0, 1.0], "
+            f"got {v4a_battle_approach_drive_relaxation}"
+        )
+    v4a_battle_near_contact_internal_stability_blend = float(
+        get_runtime(
+            "v4a_battle_near_contact_internal_stability_blend",
+            execution.V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_near_contact_internal_stability_blend <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_near_contact_internal_stability_blend must be within [0.0, 1.0], "
+            f"got {v4a_battle_near_contact_internal_stability_blend}"
+        )
+    v4a_battle_near_contact_speed_relaxation = float(
+        get_runtime(
+            "v4a_battle_near_contact_speed_relaxation",
+            execution.V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_near_contact_speed_relaxation <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_near_contact_speed_relaxation must be within (0.0, 1.0], "
+            f"got {v4a_battle_near_contact_speed_relaxation}"
+        )
     v4a_engaged_speed_scale = float(
         get_runtime("v4a_engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
@@ -689,6 +733,10 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         "v4a_battle_target_front_strip_gap_bias": v4a_battle_target_front_strip_gap_bias,
         "v4a_battle_hold_weight_strength": v4a_battle_hold_weight_strength,
         "v4a_battle_relation_lead_ticks": v4a_battle_relation_lead_ticks,
+        "v4a_battle_hold_relaxation": v4a_battle_hold_relaxation,
+        "v4a_battle_approach_drive_relaxation": v4a_battle_approach_drive_relaxation,
+        "v4a_battle_near_contact_internal_stability_blend": v4a_battle_near_contact_internal_stability_blend,
+        "v4a_battle_near_contact_speed_relaxation": v4a_battle_near_contact_speed_relaxation,
         "v4a_engaged_speed_scale": v4a_engaged_speed_scale,
         "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
         "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
@@ -769,6 +817,26 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         movement_cfg["v4a_battle_relation_lead_ticks"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
+    )
+    movement_cfg["v4a_battle_hold_relaxation_effective"] = (
+        movement_cfg["v4a_battle_hold_relaxation"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_HOLD_RELAXATION_DEFAULT
+    )
+    movement_cfg["v4a_battle_approach_drive_relaxation_effective"] = (
+        movement_cfg["v4a_battle_approach_drive_relaxation"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT
+    )
+    movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"] = (
+        movement_cfg["v4a_battle_near_contact_internal_stability_blend"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT
+    )
+    movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"] = (
+        movement_cfg["v4a_battle_near_contact_speed_relaxation"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT
     )
     movement_cfg["v4a_engaged_speed_scale_effective"] = (
         movement_cfg["v4a_engaged_speed_scale"]
@@ -1297,6 +1365,18 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_battle_relation_lead_ticks_effective": float(
                 movement_cfg["v4a_battle_relation_lead_ticks_effective"]
             ),
+            "v4a_battle_hold_relaxation_effective": float(
+                movement_cfg["v4a_battle_hold_relaxation_effective"]
+            ),
+            "v4a_battle_approach_drive_relaxation_effective": float(
+                movement_cfg["v4a_battle_approach_drive_relaxation_effective"]
+            ),
+            "v4a_battle_near_contact_internal_stability_blend_effective": float(
+                movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"]
+            ),
+            "v4a_battle_near_contact_speed_relaxation_effective": float(
+                movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
+            ),
             "v4a_engaged_speed_scale_effective": float(
                 movement_cfg["v4a_engaged_speed_scale_effective"]
             ),
@@ -1534,6 +1614,18 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             ),
             "v4a_battle_relation_lead_ticks_effective": float(
                 movement_cfg["v4a_battle_relation_lead_ticks_effective"]
+            ),
+            "v4a_battle_hold_relaxation_effective": float(
+                movement_cfg["v4a_battle_hold_relaxation_effective"]
+            ),
+            "v4a_battle_approach_drive_relaxation_effective": float(
+                movement_cfg["v4a_battle_approach_drive_relaxation_effective"]
+            ),
+            "v4a_battle_near_contact_internal_stability_blend_effective": float(
+                movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"]
+            ),
+            "v4a_battle_near_contact_speed_relaxation_effective": float(
+                movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
             ),
             "v4a_engaged_speed_scale_effective": float(
                 movement_cfg["v4a_engaged_speed_scale_effective"]

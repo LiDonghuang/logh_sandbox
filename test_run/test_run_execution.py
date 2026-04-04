@@ -114,6 +114,10 @@ V4A_EFFECTIVE_FIRE_AXIS_RELAXATION_DEFAULT = 0.16
 V4A_FIRE_AXIS_COHERENCE_RELAXATION_DEFAULT = 0.18
 V4A_FRONT_REORIENTATION_RELAXATION_DEFAULT = 0.18
 V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT = 18.0
+V4A_BATTLE_HOLD_RELAXATION_DEFAULT = 0.20
+V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT = 0.22
+V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT = 0.55
+V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT = 0.28
 V4A_ENGAGED_SPEED_SCALE_DEFAULT = 0.70
 V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT = 0.65
 V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT = 0.35
@@ -1272,6 +1276,27 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 )
                 if not math.isfinite(battle_relation_lead_ticks) or battle_relation_lead_ticks <= 0.0:
                     battle_relation_lead_ticks = V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
+                battle_hold_relaxation = float(
+                    battle_bundle.get(
+                        "battle_hold_relaxation",
+                        V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
+                    )
+                )
+                if not math.isfinite(battle_hold_relaxation) or not 0.0 < battle_hold_relaxation <= 1.0:
+                    battle_hold_relaxation = V4A_BATTLE_HOLD_RELAXATION_DEFAULT
+                battle_approach_drive_relaxation = float(
+                    battle_bundle.get(
+                        "battle_approach_drive_relaxation",
+                        V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
+                    )
+                )
+                if (
+                    not math.isfinite(battle_approach_drive_relaxation)
+                    or not 0.0 < battle_approach_drive_relaxation <= 1.0
+                ):
+                    battle_approach_drive_relaxation = (
+                        V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT
+                    )
                 relation_scale = max(
                     float(relation_reference_speed) * battle_relation_lead_ticks,
                     float(hold_band),
@@ -1281,17 +1306,67 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     -1.0,
                     min(1.0, float(distance_gap) / relation_scale),
                 )
-                relation_gap_current = float(relation_gap_raw)
+                prior_relation_gap_current = float(
+                    battle_bundle.get(
+                        "battle_relation_gap_current",
+                        battle_bundle.get("battle_relation_gap_raw", relation_gap_raw),
+                    )
+                )
+                relation_gap_current = _relax_scalar(
+                    prior_relation_gap_current,
+                    float(relation_gap_raw),
+                    battle_hold_relaxation,
+                )
                 close_drive_raw = _clamp01(-relation_gap_raw)
-                close_drive = float(close_drive_raw)
+                prior_close_drive = float(
+                    battle_bundle.get(
+                        "battle_close_drive_current",
+                        battle_bundle.get("battle_close_drive_raw", close_drive_raw),
+                    )
+                )
+                close_drive = _relax_scalar(
+                    prior_close_drive,
+                    float(close_drive_raw),
+                    battle_hold_relaxation,
+                )
                 brake_drive_raw = hold_weight_strength * close_drive_raw
-                brake_drive = float(brake_drive_raw)
+                prior_brake_drive = float(
+                    battle_bundle.get(
+                        "battle_brake_drive_current",
+                        battle_bundle.get("battle_brake_drive_raw", brake_drive_raw),
+                    )
+                )
+                brake_drive = _relax_scalar(
+                    prior_brake_drive,
+                    float(brake_drive_raw),
+                    battle_hold_relaxation,
+                )
                 hold_weight_raw = hold_weight_strength * _clamp01(
                     1.0 - min(1.0, abs(relation_gap_raw))
                 )
-                hold_weight = float(hold_weight_raw)
+                prior_hold_weight = float(
+                    battle_bundle.get(
+                        "battle_hold_weight_current",
+                        battle_bundle.get("battle_hold_weight_raw", hold_weight_raw),
+                    )
+                )
+                hold_weight = _relax_scalar(
+                    prior_hold_weight,
+                    float(hold_weight_raw),
+                    battle_hold_relaxation,
+                )
                 approach_drive_raw = _clamp01(relation_gap_raw)
-                approach_drive = float(approach_drive_raw)
+                prior_approach_drive = float(
+                    battle_bundle.get(
+                        "battle_approach_drive_current",
+                        battle_bundle.get("battle_approach_drive_raw", approach_drive_raw),
+                    )
+                )
+                approach_drive = _relax_scalar(
+                    prior_approach_drive,
+                    float(approach_drive_raw),
+                    battle_approach_drive_relaxation,
+                )
                 if isinstance(battle_bundle, dict):
                     battle_bundle["effective_fire_axis_raw_xy"] = (
                         float(effective_fire_axis_raw_hat[0]),
@@ -1331,6 +1406,10 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     battle_bundle["battle_enemy_front_strip_depth"] = float(enemy_front_strip_depth)
                     battle_bundle["battle_relation_scale"] = float(relation_scale)
                     battle_bundle["battle_relation_lead_ticks"] = float(battle_relation_lead_ticks)
+                    battle_bundle["battle_hold_relaxation"] = float(battle_hold_relaxation)
+                    battle_bundle["battle_approach_drive_relaxation"] = float(
+                        battle_approach_drive_relaxation
+                    )
                     battle_bundle["battle_close_drive_raw"] = float(close_drive_raw)
                     battle_bundle["battle_close_drive_current"] = float(close_drive)
                     battle_bundle["battle_brake_drive_raw"] = float(brake_drive_raw)
@@ -1624,6 +1703,32 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                                 * forward_transport_need
                             ),
                         )
+                    near_contact_stability = _clamp01(
+                        battle_hold_weight_current
+                        * max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    bundle.get(
+                                        "battle_near_contact_internal_stability_blend",
+                                        V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
+                                    )
+                                ),
+                            ),
+                        )
+                    )
+                    if near_contact_stability > 0.0:
+                        forward_transport_speed_scale = _relax_scalar(
+                            float(forward_transport_speed_scale),
+                            1.0,
+                            near_contact_stability,
+                        )
+                        shape_speed_scale = _relax_scalar(
+                            float(shape_speed_scale),
+                            max(V4A_TRANSITION_IDLE_SPEED_FLOOR, advance_share),
+                            near_contact_stability,
+                        )
                     attack_speed_scale = 1.0
                     engaged_target_id = str(unit.engaged_target_id).strip() if unit.engaged_target_id is not None else ""
                     if bool(unit.engaged) and engaged_target_id:
@@ -1662,7 +1767,23 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         * turn_speed_scale
                         * float(attack_speed_scale)
                     )
-                    transition_speed = float(transition_speed_target)
+                    battle_near_contact_speed_relaxation = max(
+                        1e-6,
+                        min(
+                            1.0,
+                            float(
+                                bundle.get(
+                                    "battle_near_contact_speed_relaxation",
+                                    V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
+                                )
+                            ),
+                        ),
+                    )
+                    transition_speed = _relax_scalar(
+                        float(unit.max_speed),
+                        float(transition_speed_target),
+                        battle_near_contact_speed_relaxation,
+                    )
                     if abs(float(unit.max_speed) - transition_speed) <= 1e-9:
                         continue
                     updated_units[str(unit_id)] = replace(unit, max_speed=float(transition_speed))
@@ -2578,6 +2699,50 @@ def run_simulation(
             "run_simulation movement_cfg['v4a_battle_relation_lead_ticks_effective'] must be finite and > 0, "
             f"got {v4a_battle_relation_lead_ticks}"
         )
+    v4a_battle_hold_relaxation = float(
+        movement_cfg.get(
+            "v4a_battle_hold_relaxation_effective",
+            V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_hold_relaxation <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_hold_relaxation_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_battle_hold_relaxation}"
+        )
+    v4a_battle_approach_drive_relaxation = float(
+        movement_cfg.get(
+            "v4a_battle_approach_drive_relaxation_effective",
+            V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_approach_drive_relaxation <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_approach_drive_relaxation_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_battle_approach_drive_relaxation}"
+        )
+    v4a_battle_near_contact_internal_stability_blend = float(
+        movement_cfg.get(
+            "v4a_battle_near_contact_internal_stability_blend_effective",
+            V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_near_contact_internal_stability_blend <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_near_contact_internal_stability_blend_effective'] must be within [0.0, 1.0], "
+            f"got {v4a_battle_near_contact_internal_stability_blend}"
+        )
+    v4a_battle_near_contact_speed_relaxation = float(
+        movement_cfg.get(
+            "v4a_battle_near_contact_speed_relaxation_effective",
+            V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
+        )
+    )
+    if not 0.0 < v4a_battle_near_contact_speed_relaxation <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_near_contact_speed_relaxation_effective'] must be within (0.0, 1.0], "
+            f"got {v4a_battle_near_contact_speed_relaxation}"
+        )
     v4a_engaged_speed_scale = float(
         movement_cfg.get("v4a_engaged_speed_scale_effective", V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
@@ -2841,6 +3006,16 @@ def run_simulation(
             ),
             "battle_hold_weight_strength": float(v4a_battle_hold_weight_strength),
             "battle_relation_lead_ticks": float(v4a_battle_relation_lead_ticks),
+            "battle_hold_relaxation": float(v4a_battle_hold_relaxation),
+            "battle_approach_drive_relaxation": float(
+                v4a_battle_approach_drive_relaxation
+            ),
+            "battle_near_contact_internal_stability_blend": float(
+                v4a_battle_near_contact_internal_stability_blend
+            ),
+            "battle_near_contact_speed_relaxation": float(
+                v4a_battle_near_contact_speed_relaxation
+            ),
         },
         "motion": {
             "engaged_speed_scale": float(v4a_engaged_speed_scale),

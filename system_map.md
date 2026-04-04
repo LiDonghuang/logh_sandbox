@@ -73,7 +73,12 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
 - current authoritative post-resolution hold surface is `test_run/test_run_v1_0.runtime.settings.json::run_control.post_resolution_hold_steps`
-- current local `20260404` snapshot retires several temporary `v4a` hold-smoothing knobs from the active public test-only surface; the local line now also restores `v4a.restore_strength` as an explicit active runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`
+- current local `20260404` / `dev_v2.1` line restores `v4a.restore_strength` as an explicit active runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`
+- the same local line also restores the first bounded near-contact smoothing/stability group on the public `v4a` test-only surface:
+  - `battle_hold_relaxation`
+  - `battle_approach_drive_relaxation`
+  - `battle_near_contact_internal_stability_blend`
+  - `battle_near_contact_speed_relaxation`
 
 ### 7. Documentation Layer
 

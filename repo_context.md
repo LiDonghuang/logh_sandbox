@@ -167,7 +167,7 @@ Current availability status:
   - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and `neutral_transit_v1` objective-arrival continuation
 - `test_run/test_run_v1_0.testonly.settings.json`
   - test-only harness controls
-  - active PR #6 branch-only movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`; `v4a.restore_strength` is now explicitly active again as the runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`, while some temporary local `20260404` smoothing knobs remain retired
+  - active PR #6 / `dev_v2.1` local movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`; `v4a.restore_strength` is active again as the runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`, and the first near-contact smoothing group (`battle_hold_relaxation`, `battle_approach_drive_relaxation`, `battle_near_contact_internal_stability_blend`, `battle_near_contact_speed_relaxation`) is also active again on the local `v4a` line
 - `test_run/test_run_v1_0.viz.settings.json`
   - visualization values
 - `test_run/test_run_v1_0.settings.comments.json`

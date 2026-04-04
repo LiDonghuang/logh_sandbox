@@ -51,6 +51,10 @@
     - `runtime.movement.v4a.battle_target_front_strip_gap_bias` is the single active correction bias on the base front-strip target gap; it replaces the older two-weight extent buffer interface on the current local line
     - `runtime.movement.v4a.battle_hold_weight_strength` defines how strongly the bounded near-`d*` hold state suppresses approach authority; the read is reversible, so if fleets are separated again, pre-contact-like approach can resume
     - `runtime.movement.v4a.battle_relation_lead_ticks` defines the near-contact lead window in ticks for signed battle-relation slowdown
+    - `runtime.movement.v4a.battle_hold_relaxation` defines the restored raw-to-current smoothing weight for the signed near-contact relation family (`battle_relation_gap`, `close_drive`, `brake_drive`, `hold_weight`)
+    - `runtime.movement.v4a.battle_approach_drive_relaxation` defines the restored raw-to-current smoothing weight for forward approach authority as a separate seam from hold/brake state
+    - `runtime.movement.v4a.battle_near_contact_internal_stability_blend` defines the restored near-contact internal-speed unification blend that pulls unit-local speed factors back toward fleet-level behavior while hold is active
+    - `runtime.movement.v4a.battle_near_contact_speed_relaxation` defines the restored per-unit max-speed smoothing seam used after near-contact internal stabilization adjusts unit-local speed targets
     - `runtime.movement.v4a.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
     - `runtime.movement.v4a.attack_speed_lateral_scale` and `runtime.movement.v4a.attack_speed_backward_scale` define the first bounded attack-direction-aware movement allowance for engaged units, aligned conceptually with the existing combat-angle cosine read
 

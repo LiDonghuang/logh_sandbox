@@ -34,6 +34,10 @@
         "battle_target_front_strip_gap_bias": -4.0,
         "battle_hold_weight_strength": 1.0,
         "battle_relation_lead_ticks": 18.0,
+        "battle_hold_relaxation": 0.2,
+        "battle_approach_drive_relaxation": 0.22,
+        "battle_near_contact_internal_stability_blend": 0.55,
+        "battle_near_contact_speed_relaxation": 0.28,
         "engaged_speed_scale": 0.7,
         "attack_speed_lateral_scale": 0.65,
         "attack_speed_backward_scale": 0.35
