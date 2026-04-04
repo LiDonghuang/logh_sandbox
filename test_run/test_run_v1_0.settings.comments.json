@@ -51,33 +51,29 @@
     },
     "movement": {
       "v4a": {
-        "test_only": {
-          "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
-          "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
-          "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
-          "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
-          "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
-          "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
-          "battle_standoff_self_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies own current forward formation extent when building desired engagement distance d* on top of attack_range.",
-          "battle_standoff_enemy_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies enemy current forward formation extent when building desired engagement distance d* on top of attack_range.",
-          "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
-          "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
-          "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
-          "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale.",
-          "restore_strength": "Continuous v4a test-only restore-strength scale in [0.0, 1.0]. 1.0 keeps the current full bridge strength; smaller values weaken the current bounded restore response without opening a new public parameter surface."
-        }
+        "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
+        "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
+        "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
+        "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
+        "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
+        "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
+        "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
+        "battle_target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
+        "battle_hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
+        "battle_relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
+        "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
+        "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
+        "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale."
       },
       "v3a": {
-        "test_only": {
-          "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
-          "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe. v4a currently reuses this direct-cohesion probe unchanged.",
-          "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
-          "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
-          "odw_posture_bias": {
-            "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",
-            "k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when enabled=true and movement_model=v3a.",
-            "clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when enabled=true and movement_model=v3a."
-          }
+        "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
+        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe. v4a currently reuses this direct-cohesion probe unchanged.",
+        "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
+        "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
+        "odw_posture_bias": {
+          "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",
+          "k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when enabled=true and movement_model=v3a.",
+          "clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when enabled=true and movement_model=v3a."
         }
       }
     },
@@ -104,23 +100,22 @@
       "contact_model": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
         "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR.",
-        "test_only": {
-          "hostile_contact_impedance": {
-            "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
-            "hybrid_v2": {
-              "radius_multiplier": "v2 hybrid local influence radius as a multiplier of min_unit_spacing.",
-              "repulsion_max_disp_ratio": "v2 hybrid-only per-tick max hostile-repulsion displacement as a ratio of min_unit_spacing.",
-              "forward_damping_strength": "v2 hybrid damping fraction removable from positive forward displacement at full local hostile proximity."
-            },
-            "intent_unified_spacing_v1": {
-              "scale": "Hostile occupancy / penetration-lookahead radius as a multiplier of min_unit_spacing for intent-layer penetration bias with unified final spacing resolution.",
-              "strength": "Continuous intent-layer penetration-bias strength applied before movement, with final spacing left to the unified baseline feasibility-resolution layer."
-            }
+        "hostile_contact_impedance": {
+          "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
+          "hybrid_v2": {
+            "radius_multiplier": "v2 hybrid local influence radius as a multiplier of min_unit_spacing.",
+            "repulsion_max_disp_ratio": "v2 hybrid-only per-tick max hostile-repulsion displacement as a ratio of min_unit_spacing.",
+            "forward_damping_strength": "v2 hybrid damping fraction removable from positive forward displacement at full local hostile proximity."
+          },
+          "intent_unified_spacing_v1": {
+            "scale": "Hostile occupancy / penetration-lookahead radius as a multiplier of min_unit_spacing for intent-layer penetration bias with unified final spacing resolution.",
+            "strength": "Continuous intent-layer penetration-bias strength applied before movement, with final spacing left to the unified baseline feasibility-resolution layer."
           }
         }
       }
     },
     "observer": {
+      "tick_timing_enabled": "Observer telemetry toggle for per-tick wall-clock elapsed time recording inside test_run. true records tick_elapsed_ms for each simulation tick; false skips timing capture. This is harness/runtime-observation only and does not change battle semantics.",
       "event_bridge": {
         "theta_split": "Tier-2 Formation Cut bridge threshold on split_separation (Channel-T condition).",
         "theta_env": "Tier-2 Pocket Formation bridge threshold on angle_coverage (Channel-T condition).",

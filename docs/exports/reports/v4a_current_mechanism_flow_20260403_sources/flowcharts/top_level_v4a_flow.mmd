@@ -1,0 +1,53 @@
+flowchart TD
+
+    S["Layered settings + scenario prep<br/>test_run settings_accessor / scenario"]:::shared
+    I["Initial state + v4a reference bundle<br/>axis / extents / phases / battle bundle"]:::shared
+    T["Engine tick step"]:::shared
+
+    S -->|prepare| I -->|seed state| T
+
+    T -->|calls| C1["evaluate_cohesion"]:::shared
+    C1 -->|calls| C2["evaluate_target"]:::shared
+    C2 -->|calls| C3["integrate_movement"]:::shared
+    C3 -->|calls| C4["resolve_combat<br/>frozen runtime hot path"]:::D
+    C4 -->|produce| N["State(t+1)"]:::shared
+
+    C2 -->|battle branch| BATTLEA["Battle Layer A<br/>global enemy relation + d* + hold"]:::A
+    C2 -->|neutral branch| NEUTRALA["Neutral objective read<br/>same broad stop-chasing surface"]:::A
+
+    BATTLEA -->|compute now| BREF["reference_distance / desired_distance<br/>hold_weight / approach_scale"]:::C
+    BATTLEA -->|compute + store| BGEOM["effective_fire_axis<br/>engagement_geometry_active<br/>front_reorientation_weight"]:::B
+    NEUTRALA -->|compute now| NOBJ["objective direction / stop_radius arrival gain"]:::A
+
+    BREF -->|write now| TD["last_target_direction<br/>last_engagement_intensity"]:::B
+    NOBJ -->|write now| TD
+
+    BGEOM -.->|bias later| MAXIS["morphology_axis_current_xy<br/>movement_heading_current_xy"]:::B
+    TD -->|direct feed now| MAXIS
+    I -->|seed / carry bundle| MAXIS
+
+    MAXIS -->|write current| MSHAPE["forward/lateral extents<br/>material phases<br/>shape_err"]:::B
+    MSHAPE -->|produce| MREF["expected world positions<br/>reference surface"]:::B
+
+    TD -->|direct feed now| MSPEED["shape_vs_advance<br/>engaged speed envelope<br/>attack-direction speed scales"]:::C
+    MREF -->|direct feed now| MSPEED
+    MSPEED -->|write now| MMOVE["unit max_speed shaping + movement integration"]:::C
+
+    MMOVE -->|feeds combat snapshot| C4
+
+    C4 -->|compute now| TARGET["target selection in range<br/>engaged_target_id"]:::D
+    C4 -->|compute now| FIREQ["angle-based fire quality<br/>orientation vs target direction"]:::D
+    C4 -->|compute now| CONTACT["contact hysteresis / in_contact / damage events"]:::D
+
+    TARGET -->|write now| N
+    FIREQ -->|write now| N
+    CONTACT -->|write now| N
+
+    N -->|event only| TERM["objective_reached event<br/>no hard terminal latch path"]:::E
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;
+    classDef D fill:#c7f9cc,stroke:#15803d,color:#111827,stroke-width:1px;
+    classDef E fill:#ddd6fe,stroke:#7c3aed,color:#111827,stroke-width:1px;

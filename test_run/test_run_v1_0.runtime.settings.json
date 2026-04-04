@@ -68,6 +68,7 @@
       }
     },
     "observer": {
+      "tick_timing_enabled": true,
       "event_bridge": {
         "theta_split": 1.7,
         "theta_env": 0.5,

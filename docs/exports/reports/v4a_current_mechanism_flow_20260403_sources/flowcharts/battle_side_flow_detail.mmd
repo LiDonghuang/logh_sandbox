@@ -1,0 +1,24 @@
+flowchart LR
+
+    G["Enemy fleet relation<br/>fleet centroid to enemy centroid"]:::shared
+    DS["d* computation<br/>attack_range + own_extent + enemy_extent"]:::A
+    H["hold_weight<br/>battle_hold_weight_strength × hold band relation"]:::C
+    P["approach_scale = 1 - hold_weight"]:::C
+
+    EF["effective_fire_axis<br/>aggregate engaged attack directions"]:::B
+    EA["engagement_geometry_active"]:::A
+    FRW["front_reorientation_weight"]:::B
+    FA["morphology/front axis bias"]:::B
+
+    G -->|direct feed now| DS -->|write now| H -->|write now| P
+    EF -->|direct feed now| FRW
+    EA -->|direct feed now| FRW
+    FRW -->|store / bias later| FA
+
+    P -->|write now| TD["last_target_direction"]:::B
+    FA -.->|later bias front axis| TD
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;

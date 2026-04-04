@@ -1,3 +1,4 @@
+import math
 import random
 import re
 from collections.abc import Sequence
@@ -520,14 +521,8 @@ def _build_run_cfg(
 
 
 def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, test_mode: int) -> dict:
-    v4a_restore_strength = float(get_runtime("v4a_restore_strength", 1.0))
-    if not 0.0 <= v4a_restore_strength <= 1.0:
-        raise ValueError(
-            "runtime.movement.v4a.test_only.restore_strength must be within [0.0, 1.0], "
-            f"got {v4a_restore_strength}"
-        )
     v4a_reference_surface_mode = _require_choice(
-        "runtime.movement.v4a.test_only.reference_surface_mode",
+        "runtime.movement.v4a.reference_surface_mode",
         get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
         execution.V4A_REFERENCE_SURFACE_MODE_LABELS,
     )
@@ -536,7 +531,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_soft_morphology_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.soft_morphology_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.soft_morphology_relaxation must be within (0.0, 1.0], "
             f"got {v4a_soft_morphology_relaxation}"
         )
     v4a_shape_vs_advance_strength = float(
@@ -544,7 +539,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.shape_vs_advance_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.shape_vs_advance_strength must be within [0.0, 1.0], "
             f"got {v4a_shape_vs_advance_strength}"
         )
     v4a_heading_relaxation = float(
@@ -552,30 +547,8 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_heading_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.heading_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.heading_relaxation must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
-        )
-    v4a_battle_standoff_self_extent_weight = float(
-        get_runtime(
-            "v4a_battle_standoff_self_extent_weight",
-            execution.V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
-        )
-    )
-    if v4a_battle_standoff_self_extent_weight < 0.0:
-        raise ValueError(
-            "runtime.movement.v4a.test_only.battle_standoff_self_extent_weight must be >= 0.0, "
-            f"got {v4a_battle_standoff_self_extent_weight}"
-        )
-    v4a_battle_standoff_enemy_extent_weight = float(
-        get_runtime(
-            "v4a_battle_standoff_enemy_extent_weight",
-            execution.V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
-        )
-    )
-    if v4a_battle_standoff_enemy_extent_weight < 0.0:
-        raise ValueError(
-            "runtime.movement.v4a.test_only.battle_standoff_enemy_extent_weight must be >= 0.0, "
-            f"got {v4a_battle_standoff_enemy_extent_weight}"
         )
     v4a_battle_standoff_hold_band_ratio = float(
         get_runtime(
@@ -585,15 +558,48 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.battle_standoff_hold_band_ratio must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle_standoff_hold_band_ratio must be within [0.0, 1.0], "
             f"got {v4a_battle_standoff_hold_band_ratio}"
+        )
+    v4a_battle_target_front_strip_gap_bias = float(
+        get_runtime(
+            "v4a_battle_target_front_strip_gap_bias",
+            execution.V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
+        )
+    )
+    if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
+        raise ValueError(
+            "runtime.movement.v4a.battle_target_front_strip_gap_bias must be finite, "
+            f"got {v4a_battle_target_front_strip_gap_bias}"
+        )
+    v4a_battle_hold_weight_strength = float(
+        get_runtime(
+            "v4a_battle_hold_weight_strength",
+            execution.V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_hold_weight_strength <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_hold_weight_strength must be within [0.0, 1.0], "
+            f"got {v4a_battle_hold_weight_strength}"
+        )
+    v4a_battle_relation_lead_ticks = float(
+        get_runtime(
+            "v4a_battle_relation_lead_ticks",
+            execution.V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
+        )
+    )
+    if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
+        raise ValueError(
+            "runtime.movement.v4a.battle_relation_lead_ticks must be finite and > 0, "
+            f"got {v4a_battle_relation_lead_ticks}"
         )
     v4a_engaged_speed_scale = float(
         get_runtime("v4a_engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
     if not 0.0 < v4a_engaged_speed_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.engaged_speed_scale must be within (0.0, 1.0], "
+            "runtime.movement.v4a.engaged_speed_scale must be within (0.0, 1.0], "
             f"got {v4a_engaged_speed_scale}"
         )
     v4a_attack_speed_lateral_scale = float(
@@ -604,7 +610,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.attack_speed_lateral_scale must be within (0.0, 1.0], "
+            "runtime.movement.v4a.attack_speed_lateral_scale must be within (0.0, 1.0], "
             f"got {v4a_attack_speed_lateral_scale}"
         )
     v4a_attack_speed_backward_scale = float(
@@ -615,7 +621,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
         raise ValueError(
-            "runtime.movement.v4a.test_only.attack_speed_backward_scale must be within "
+            "runtime.movement.v4a.attack_speed_backward_scale must be within "
             f"[0.0, attack_speed_lateral_scale], got backward={v4a_attack_speed_backward_scale}, "
             f"lateral={v4a_attack_speed_lateral_scale}"
         )
@@ -668,14 +674,14 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             if runtime_decision_source_effective == "v3_test"
             else 1.0
         ),
-        "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
         "v4a_shape_vs_advance_strength": v4a_shape_vs_advance_strength,
         "v4a_heading_relaxation": v4a_heading_relaxation,
-        "v4a_battle_standoff_self_extent_weight": v4a_battle_standoff_self_extent_weight,
-        "v4a_battle_standoff_enemy_extent_weight": v4a_battle_standoff_enemy_extent_weight,
         "v4a_battle_standoff_hold_band_ratio": v4a_battle_standoff_hold_band_ratio,
+        "v4a_battle_target_front_strip_gap_bias": v4a_battle_target_front_strip_gap_bias,
+        "v4a_battle_hold_weight_strength": v4a_battle_hold_weight_strength,
+        "v4a_battle_relation_lead_ticks": v4a_battle_relation_lead_ticks,
         "v4a_engaged_speed_scale": v4a_engaged_speed_scale,
         "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
         "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
@@ -712,11 +718,6 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         if movement_cfg["odw_posture_bias"]["enabled_effective"]
         else 0.2
     )
-    movement_cfg["v4a_restore_strength_effective"] = (
-        movement_cfg["v4a_restore_strength"]
-        if movement_cfg["model_effective"] == "v4a"
-        else 1.0
-    )
     movement_cfg["v4a_reference_surface_mode_effective"] = (
         movement_cfg["v4a_reference_surface_mode"]
         if movement_cfg["model_effective"] == "v4a"
@@ -737,20 +738,25 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_HEADING_RELAXATION_DEFAULT
     )
-    movement_cfg["v4a_battle_standoff_self_extent_weight_effective"] = (
-        movement_cfg["v4a_battle_standoff_self_extent_weight"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT
-    )
-    movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"] = (
-        movement_cfg["v4a_battle_standoff_enemy_extent_weight"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT
-    )
     movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"] = (
         movement_cfg["v4a_battle_standoff_hold_band_ratio"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT
+    )
+    movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"] = (
+        movement_cfg["v4a_battle_target_front_strip_gap_bias"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT
+    )
+    movement_cfg["v4a_battle_hold_weight_strength_effective"] = (
+        movement_cfg["v4a_battle_hold_weight_strength"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT
+    )
+    movement_cfg["v4a_battle_relation_lead_ticks_effective"] = (
+        movement_cfg["v4a_battle_relation_lead_ticks"]
+        if movement_cfg["model_effective"] == "v4a"
+        else execution.V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
     )
     movement_cfg["v4a_engaged_speed_scale_effective"] = (
         movement_cfg["v4a_engaged_speed_scale"]
@@ -800,27 +806,27 @@ def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_ef
         runtime_section = {}
     v4a_testonly_cfg = settings_api.get_nested_mapping_value(
         runtime_section,
-        ("movement", "v4a", "test_only"),
+        ("movement", "v4a"),
         {},
     )
     if not isinstance(v4a_testonly_cfg, dict):
         v4a_testonly_cfg = {}
     if "expected_reference_spacing" not in v4a_testonly_cfg:
         raise ValueError(
-            "runtime.movement.v4a.test_only.expected_reference_spacing must be provided when movement_model=v4a"
+            "runtime.movement.v4a.expected_reference_spacing must be provided when movement_model=v4a"
         )
     expected_reference_spacing = float(v4a_testonly_cfg["expected_reference_spacing"])
     if expected_reference_spacing <= 0.0:
         raise ValueError(
-            "runtime.movement.v4a.test_only.expected_reference_spacing must be > 0, "
+            "runtime.movement.v4a.expected_reference_spacing must be > 0, "
             f"got {expected_reference_spacing}"
         )
     if "reference_layout_mode" not in v4a_testonly_cfg:
         raise ValueError(
-            "runtime.movement.v4a.test_only.reference_layout_mode must be provided when movement_model=v4a"
+            "runtime.movement.v4a.reference_layout_mode must be provided when movement_model=v4a"
         )
     reference_layout_mode = _require_choice(
-        "runtime.movement.v4a.test_only.reference_layout_mode",
+        "runtime.movement.v4a.reference_layout_mode",
         v4a_testonly_cfg["reference_layout_mode"],
         REFERENCE_LAYOUT_MODE_LABELS,
     )
@@ -1039,6 +1045,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     get_contact_model = partial(settings_api.get_contact_model_test_setting, settings)
     get_event_bridge = partial(settings_api.get_event_bridge_setting, settings)
     get_fleet = partial(settings_api.get_fleet_setting, settings)
+    get_observer = partial(settings_api.get_observer_setting, settings)
     get_run = partial(settings_api.get_run_control_setting, settings)
     get_runtime = partial(settings_api.get_runtime_setting, settings)
     get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
@@ -1168,7 +1175,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "fsr_strength": float(get_runtime("fsr_strength", 0.0)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
-            "runtime.test_only.hostile_contact_impedance.active_mode",
+            "runtime.physical.contact_model.hostile_contact_impedance.active_mode",
             get_contact_model(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
             execution.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
         ),
@@ -1234,6 +1241,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "enabled": run_cfg["observer_enabled"],
         "bridge": observer_cfg["bridge"],
         "collapse_shadow": observer_cfg["collapse_shadow"],
+        "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
         "runtime_diag_enabled": False,
     }
 
@@ -1254,7 +1262,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
-            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]
@@ -1265,14 +1272,17 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_heading_relaxation_effective": float(
                 movement_cfg["v4a_heading_relaxation_effective"]
             ),
-            "v4a_battle_standoff_self_extent_weight_effective": float(
-                movement_cfg["v4a_battle_standoff_self_extent_weight_effective"]
-            ),
-            "v4a_battle_standoff_enemy_extent_weight_effective": float(
-                movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"]
-            ),
             "v4a_battle_standoff_hold_band_ratio_effective": float(
                 movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
+            ),
+            "v4a_battle_target_front_strip_gap_bias_effective": float(
+                movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"]
+            ),
+            "v4a_battle_hold_weight_strength_effective": float(
+                movement_cfg["v4a_battle_hold_weight_strength_effective"]
+            ),
+            "v4a_battle_relation_lead_ticks_effective": float(
+                movement_cfg["v4a_battle_relation_lead_ticks_effective"]
             ),
             "v4a_engaged_speed_scale_effective": float(
                 movement_cfg["v4a_engaged_speed_scale_effective"]
@@ -1303,6 +1313,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     )
     get_battlefield = partial(settings_api.get_battlefield_setting, settings)
     get_fixture = partial(settings_api.get_fixture_setting, settings)
+    get_observer = partial(settings_api.get_observer_setting, settings)
     get_run = partial(settings_api.get_run_control_setting, settings)
     get_runtime = partial(settings_api.get_runtime_setting, settings)
     get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
@@ -1468,6 +1479,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "sustain_ticks": execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT,
             "min_conditions": execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT,
         },
+        "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
         "runtime_diag_enabled": True,
     }
 
@@ -1487,7 +1499,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
-            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]
@@ -1498,14 +1509,17 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "v4a_heading_relaxation_effective": float(
                 movement_cfg["v4a_heading_relaxation_effective"]
             ),
-            "v4a_battle_standoff_self_extent_weight_effective": float(
-                movement_cfg["v4a_battle_standoff_self_extent_weight_effective"]
-            ),
-            "v4a_battle_standoff_enemy_extent_weight_effective": float(
-                movement_cfg["v4a_battle_standoff_enemy_extent_weight_effective"]
-            ),
             "v4a_battle_standoff_hold_band_ratio_effective": float(
                 movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
+            ),
+            "v4a_battle_target_front_strip_gap_bias_effective": float(
+                movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"]
+            ),
+            "v4a_battle_hold_weight_strength_effective": float(
+                movement_cfg["v4a_battle_hold_weight_strength_effective"]
+            ),
+            "v4a_battle_relation_lead_ticks_effective": float(
+                movement_cfg["v4a_battle_relation_lead_ticks_effective"]
             ),
             "v4a_engaged_speed_scale_effective": float(
                 movement_cfg["v4a_engaged_speed_scale_effective"]

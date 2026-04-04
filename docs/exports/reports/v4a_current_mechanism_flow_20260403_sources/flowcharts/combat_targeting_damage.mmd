@@ -1,0 +1,10 @@
+flowchart LR
+
+    U["Alive units snapshot"]:::shared -->|scan now| SEL["target selection in attack range"]:::D
+    SEL -->|write now| ENGAGED["engaged_target_id / engaged state"]:::D
+    ENGAGED -->|direct feed now| ANG["orientation vs target direction"]:::D
+    ANG -->|direct feed now| DMG["damage quality multiplier"]:::D
+    ENGAGED -->|direct feed now| HYS["contact hysteresis<br/>r_enter / r_exit"]:::D
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef D fill:#c7f9cc,stroke:#15803d,color:#111827,stroke-width:1px;

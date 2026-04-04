@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>v4a Current Mechanism Flow</title>
+  <style>
+    body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; margin: 24px auto; max-width: 1180px; line-height: 1.72; color: #1f2328; }
+    h1, h2, h3 { line-height: 1.28; }
+    h1 { margin-bottom: 8px; }
+    .sub { color: #57606a; margin-top: 0; }
+    code { background: #f6f8fa; padding: 2px 6px; border-radius: 4px; }
+    .card { border: 1px solid #d0d7de; border-radius: 10px; padding: 14px 16px; margin: 14px 0; background: #fff; }
+    .mermaid-box { border: 1px solid #d0d7de; border-radius: 10px; padding: 10px; margin: 14px 0; background: #fafbfc; }
+    table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+    th, td { border: 1px solid #d0d7de; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f6f8fa; }
+    .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+    .legend-item { border: 1px solid #d0d7de; border-radius: 8px; padding: 8px 10px; background: #fff; }
+    .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.16); }
+    .toc a { text-decoration: none; }
+  </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+  </script>
+</head>
+<body>
+  <h1>v4a Current Mechanism Flow</h1>
+  <p class="sub">现状流图，仅描述当前 PR #6 本地 <code>v4a</code> 机制表面；不评价对错，不包含修复建议。</p>
+
+  <div class="card toc">
+    <strong>目录</strong>
+    <ol>
+      <li><a href="#sec0">阅读说明</a></li>
+      <li><a href="#sec1">Top-Level v4a Flow</a></li>
+      <li><a href="#sec2">Battle-Side Flow Detail</a></li>
+      <li><a href="#sec3">Movement / Formation Realization</a></li>
+      <li><a href="#sec4">Combat / Targeting / Damage</a></li>
+      <li><a href="#sec5">Neutral Validation Surface</a></li>
+      <li><a href="#sec6">Active Observability Surface</a></li>
+    </ol>
+  </div>
+
+  <h2 id="sec0">0. Reading Guide</h2>
+  <div class="card">
+    <p>这份导出只描述当前 <code>v4a</code> 机制是怎样流动的：</p>
+    <ul>
+      <li>哪些层当前在拥有行为</li>
+      <li>信号如何在 battle / formation / combat / terminal 之间传递</li>
+      <li>当前 Human review 主要观察面是什么</li>
+    </ul>
+    <p>颜色编码使用当前五类 discontinuity 分类，但这里仅作为 <strong>分类图例</strong>，不是好坏评价。</p>
+    <div class="legend">
+      <div class="legend-item"><span class="swatch" style="background:#fde68a"></span>Class A: Owner / State</div>
+      <div class="legend-item"><span class="swatch" style="background:#bfdbfe"></span>Class B: Reference / Axis</div>
+      <div class="legend-item"><span class="swatch" style="background:#fecaca"></span>Class C: Force / Speed-Envelope</div>
+      <div class="legend-item"><span class="swatch" style="background:#c7f9cc"></span>Class D: Targeting / Combat</div>
+      <div class="legend-item"><span class="swatch" style="background:#ddd6fe"></span>Class E: Terminal / Settle</div>
+      <div class="legend-item"><span class="swatch" style="background:#f3f4f6"></span>Neutral gray: shared plumbing / handoff</div>
+    </div>
+    <p><strong>Arrow Legend</strong></p>
+    <ul>
+      <li><code>--&gt;|stage / calls|</code>: stage progression or same-tick function call order</li>
+      <li><code>--&gt;|write now / direct feed|</code>: direct state write or direct current-stage data feed</li>
+      <li><code>-.-&gt;|store / bias later|</code>: computed now, stored in bundle/state, consumed later by another stage</li>
+    </ul>
+  </div>
+
+  <h2 id="sec1">1. Top-Level v4a Flow</h2>
+  <div class="mermaid-box">
+    <div class="mermaid">
+flowchart TD
+
+    S["Layered settings + scenario prep<br/>test_run settings_accessor / scenario"]:::shared
+    I["Initial state + v4a reference bundle<br/>axis / extents / phases / battle bundle"]:::shared
+    T["Engine tick step"]:::shared
+
+    S -->|prepare| I -->|seed state| T
+
+    T -->|calls| C1["evaluate_cohesion"]:::shared
+    C1 -->|calls| C2["evaluate_target"]:::shared
+    C2 -->|calls| C3["integrate_movement"]:::shared
+    C3 -->|calls| C4["resolve_combat<br/>frozen runtime hot path"]:::D
+    C4 -->|produce| N["State(t+1)"]:::shared
+
+    C2 -->|battle branch| BATTLEA["Battle Layer A<br/>global enemy relation + d* + hold"]:::A
+    C2 -->|neutral branch| NEUTRALA["Neutral objective read<br/>same broad stop-chasing surface"]:::A
+
+    BATTLEA -->|compute now| BREF["reference_distance / desired_distance<br/>hold_weight / approach_scale"]:::C
+    BATTLEA -->|compute + store| BGEOM["effective_fire_axis<br/>engagement_geometry_active<br/>front_reorientation_weight"]:::B
+    NEUTRALA -->|compute now| NOBJ["objective direction / stop_radius arrival gain"]:::A
+
+    BREF -->|write now| TD["last_target_direction<br/>last_engagement_intensity"]:::B
+    NOBJ -->|write now| TD
+
+    BGEOM -.->|bias later| MAXIS["morphology_axis_current_xy<br/>movement_heading_current_xy"]:::B
+    TD -->|direct feed now| MAXIS
+    I -->|seed / carry bundle| MAXIS
+
+    MAXIS -->|write current| MSHAPE["forward/lateral extents<br/>material phases<br/>shape_err"]:::B
+    MSHAPE -->|produce| MREF["expected world positions<br/>reference surface"]:::B
+
+    TD -->|direct feed now| MSPEED["shape_vs_advance<br/>engaged speed envelope<br/>attack-direction speed scales"]:::C
+    MREF -->|direct feed now| MSPEED
+    MSPEED -->|write now| MMOVE["unit max_speed shaping + movement integration"]:::C
+
+    MMOVE -->|feeds combat snapshot| C4
+
+    C4 -->|compute now| TARGET["target selection in range<br/>engaged_target_id"]:::D
+    C4 -->|compute now| FIREQ["angle-based fire quality<br/>orientation vs target direction"]:::D
+    C4 -->|compute now| CONTACT["contact hysteresis / in_contact / damage events"]:::D
+
+    TARGET -->|write now| N
+    FIREQ -->|write now| N
+    CONTACT -->|write now| N
+
+    N -->|event only| TERM["objective_reached event<br/>no hard terminal latch path"]:::E
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;
+    classDef D fill:#c7f9cc,stroke:#15803d,color:#111827,stroke-width:1px;
+    classDef E fill:#ddd6fe,stroke:#7c3aed,color:#111827,stroke-width:1px;
+    </div>
+  </div>
+
+  <h2 id="sec2">2. Battle-Side Flow Detail</h2>
+  <div class="mermaid-box">
+    <div class="mermaid">
+flowchart LR
+
+    G["Enemy fleet relation<br/>fleet centroid to enemy centroid"]:::shared
+    DS["d* computation<br/>attack_range + own_extent + enemy_extent"]:::A
+    H["hold_weight<br/>battle_hold_weight_strength × hold band relation"]:::C
+    P["approach_scale = 1 - hold_weight"]:::C
+
+    EF["effective_fire_axis<br/>aggregate engaged attack directions"]:::B
+    EA["engagement_geometry_active"]:::A
+    FRW["front_reorientation_weight"]:::B
+    FA["morphology/front axis bias"]:::B
+
+    G -->|direct feed now| DS -->|write now| H -->|write now| P
+    EF -->|direct feed now| FRW
+    EA -->|direct feed now| FRW
+    FRW -->|store / bias later| FA
+
+    P -->|write now| TD["last_target_direction"]:::B
+    FA -.->|later bias front axis| TD
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;
+    </div>
+  </div>
+
+  <h2 id="sec3">3. Movement / Formation Realization Detail</h2>
+  <div class="mermaid-box">
+    <div class="mermaid">
+flowchart LR
+
+    TD["last_target_direction"]:::B -->|direct feed now| HEAD["movement_heading_current_xy"]:::B
+    AX["morphology_axis_current_xy"]:::B -->|direct feed now| REF["reference surface / expected world positions"]:::B
+    SH["shape_vs_advance"]:::C -->|direct feed now| SPD["transition speed shaping"]:::C
+    ENG["engaged speed envelope<br/>forward / lateral / backward scales"]:::C -->|direct feed now| SPD
+    REF -->|direct feed now| SPD
+    HEAD -->|direct feed now| SPD
+    SPD -->|write now| MOVE["integrate_movement"]:::C
+
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;
+    </div>
+  </div>
+
+  <h2 id="sec4">4. Combat / Targeting / Damage Detail</h2>
+  <div class="mermaid-box">
+    <div class="mermaid">
+flowchart LR
+
+    U["Alive units snapshot"]:::shared -->|scan now| SEL["target selection in attack range"]:::D
+    SEL -->|write now| ENGAGED["engaged_target_id / engaged state"]:::D
+    ENGAGED -->|direct feed now| ANG["orientation vs target direction"]:::D
+    ANG -->|direct feed now| DMG["damage quality multiplier"]:::D
+    ENGAGED -->|direct feed now| HYS["contact hysteresis<br/>r_enter / r_exit"]:::D
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef D fill:#c7f9cc,stroke:#15803d,color:#111827,stroke-width:1px;
+    </div>
+  </div>
+
+  <h2 id="sec5">5. Neutral Validation Surface</h2>
+  <div class="mermaid-box">
+    <div class="mermaid">
+flowchart LR
+
+    OBJ["Fixture objective anchor"]:::shared -->|direct feed now| ARR["arrival gain / stop_radius relation"]:::A
+    ARR -->|write now| TD["last_target_direction"]:::B
+    TD -->|direct feed now| AX["morphology axis / reference surface / movement shaping"]:::B
+    AX -->|event only| REACH["objective_reached event<br/>no hard terminal latch"]:::E
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef E fill:#ddd6fe,stroke:#7c3aed,color:#111827,stroke-width:1px;
+    </div>
+  </div>
+
+  <h2 id="sec6">6. Current Active Observability Surface</h2>
+  <div class="card">
+    <p>当前这一线最常用的人类观测面是：</p>
+    <ul>
+      <li><code>fleet-centroid trajectory</code></li>
+      <li><code>alive-unit body observation</code></li>
+      <li>3D HUD battle-focused rows:
+        <ul>
+          <li><code>Kinetics: v / h</code></li>
+          <li><code>eng_act</code></li>
+          <li><code>front_rw</code></li>
+          <li><code>fire_da</code></li>
+        </ul>
+      </li>
+    </ul>
+    <p>这些是观察面，不是 runtime owner。</p>
+    <p>配套源文件位于：</p>
+    <ul>
+      <li><code>docs/exports/reports/v4a_current_mechanism_flow_20260403_sources/flowcharts/</code></li>
+      <li><code>docs/exports/reports/v4a_current_mechanism_flow_20260403_sources/markdown/</code></li>
+    </ul>
+  </div>
+</body>
+</html>

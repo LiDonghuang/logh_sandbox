@@ -73,6 +73,7 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
 - current authoritative post-resolution hold surface is `test_run/test_run_v1_0.runtime.settings.json::run_control.post_resolution_hold_steps`
+- current local `20260404` snapshot retires several temporary `v4a` hold-smoothing knobs from the active public test-only surface; the local line should be read as incident / failure-audit state rather than stable mechanism surface
 
 ### 7. Documentation Layer
 
@@ -84,6 +85,8 @@ Authority: Reference only, not canonical semantics authority
   - active engineering workflow for direct-push vs branch + PR carrier review
 - `docs/engineering/Legality_First_Bounded_Baseline_Hardening_Working_Charter_v1.0.md`
   - active bounded working charter for legality baseline hardening iterations and evidence discipline
+- `analysis/engineering_reports/developments/20260404/step3_3d_pr6_formal_failure_audit_20260404.md`
+  - formal failure audit for the local `v4a` incident thread
 
 ### 8. Additive 3D Viewer Bootstrap Layer
 

@@ -51,7 +51,7 @@ STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
 HUD_BOTTOM_INSET = 0.05
 HUD_SIDE_INSET = 0.03
-HUD_TEXT_SCALE = 0.042
+HUD_TEXT_SCALE = 0.038
 CAMERA_TAKE_FORMAT = "viz3d_panda_camera_take"
 CAMERA_TAKE_FORMAT_VERSION = 1
 CAMERA_TAKE_RECORD_KEY = "k"
@@ -474,7 +474,7 @@ class FleetViewerApp(ShowBase):
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._direction_mode_replay_cache: dict[str, ReplayBundle] = {}
-        current_direction_mode = str(self._replay.metadata.get("vector_display_mode", "movement")).strip().lower()
+        current_direction_mode = str(self._replay.metadata.get("vector_display_mode", "posture")).strip().lower()
         self._direction_mode_replay_cache[current_direction_mode] = self._replay
         for cached_mode in PRIMARY_DIRECTION_MODE_CYCLE:
             if cached_mode in self._direction_mode_replay_cache:
@@ -777,7 +777,7 @@ class FleetViewerApp(ShowBase):
         self.go_to_frame(self._current_frame_index)
 
     def cycle_direction_mode(self) -> None:
-        current_mode = str(self._replay.metadata.get("vector_display_mode", "movement")).strip().lower()
+        current_mode = str(self._replay.metadata.get("vector_display_mode", "posture")).strip().lower()
         if current_mode not in PRIMARY_DIRECTION_MODE_CYCLE:
             next_mode = PRIMARY_DIRECTION_MODE_CYCLE[0]
         else:
@@ -1285,7 +1285,7 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         counts_text = _count_units_by_fleet(self._replay, self._current_frame_index)
         playback_label = "playing" if self._playing else "paused"
-        vector_display_mode = self._replay.metadata.get("vector_display_mode", "effective")
+        vector_display_mode = self._replay.metadata.get("vector_display_mode", "posture")
         fire_link_mode = self._unit_renderer.fire_link_mode
         smoothing_text = "on" if self._smoothing_enabled else "off"
         direction_text = f"dir_mode={vector_display_mode}"
@@ -1333,12 +1333,36 @@ class FleetViewerApp(ShowBase):
                 delta_x = current_centroid_x - previous_centroid_x
                 delta_y = current_centroid_y - previous_centroid_y
                 fleet_speeds[fleet_id] = math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
-        speed_parts = [
-            f"{fleet_id}={fleet_speeds.get(fleet_id, 0.0):.2f}"
-            for fleet_id in sorted(fleet_centroids)
-        ]
+        runtime_debug_frames = self._replay.metadata.get("runtime_debug_frames")
+        runtime_debug = {}
+        if (
+            isinstance(runtime_debug_frames, (list, tuple))
+            and 0 <= self._current_frame_index < len(runtime_debug_frames)
+            and isinstance(runtime_debug_frames[self._current_frame_index], dict)
+        ):
+            runtime_debug = runtime_debug_frames[self._current_frame_index]
+        focus_indicators = runtime_debug.get("focus_indicators", {}) if isinstance(runtime_debug, dict) else {}
+        kinetics_parts = []
+        fire_eff_parts = []
+        for fleet_id in sorted(fleet_centroids):
+            hold_value = float("nan")
+            fire_eff_value = float("nan")
+            if isinstance(focus_indicators, dict):
+                row = focus_indicators.get(str(fleet_id), {})
+                if isinstance(row, dict):
+                    hold_value = float(row.get("hold_weight", float("nan")))
+                    fire_eff_value = float(row.get("fire_eff", float("nan")))
+            hold_text = f"{hold_value:.2f}" if math.isfinite(hold_value) else "--"
+            fire_eff_text = f"{fire_eff_value:.2f}" if math.isfinite(fire_eff_value) else "--"
+            kinetics_parts.append(
+                f"{fleet_id}: v={fleet_speeds.get(fleet_id, 0.0):.2f} h={hold_text}"
+            )
+            fire_eff_parts.append(f"{fleet_id}: e={fire_eff_text}")
         status_lines.append(
-            f"speed/frame: {'  '.join(speed_parts)}" if speed_parts else "speed/frame=n/a"
+            f"Kinetics: {' | '.join(kinetics_parts)}" if kinetics_parts else "Kinetics: n/a"
+        )
+        status_lines.append(
+            f"FireEff: {' | '.join(fire_eff_parts)}" if fire_eff_parts else "FireEff: n/a"
         )
         status_tail = f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}"
         fixture_readout = self._replay.metadata.get("fixture_readout")
@@ -1350,44 +1374,37 @@ class FleetViewerApp(ShowBase):
                 f"{status_tail}  fixture={owner}/{objective_mode}/{no_enemy}"
             )
         status_lines.append(status_tail)
-        runtime_debug_frames = self._replay.metadata.get("runtime_debug_frames")
-        runtime_debug = {}
-        if (
-            isinstance(runtime_debug_frames, (list, tuple))
-            and 0 <= self._current_frame_index < len(runtime_debug_frames)
-            and isinstance(runtime_debug_frames[self._current_frame_index], dict)
-        ):
-            runtime_debug = runtime_debug_frames[self._current_frame_index]
-        focus_indicators = runtime_debug.get("focus_indicators", {}) if isinstance(runtime_debug, dict) else {}
         if isinstance(focus_indicators, dict) and focus_indicators:
             for fleet_id in sorted(focus_indicators):
                 row = focus_indicators.get(fleet_id, {})
                 if not isinstance(row, dict):
                     continue
-                status_lines.append(
-                    "focus "
-                    f"{fleet_id}: "
-                    f"td={float(row.get('td_norm', float('nan'))):.2f}  "
-                    f"adv={float(row.get('advance_share', float('nan'))):.2f}  "
-                    f"shape_err={float(row.get('shape_err', float('nan'))):.2f}  "
-                    f"fcur/afwd={float(row.get('forward_current', float('nan'))):.2f}/{float(row.get('actual_forward', float('nan'))):.2f}  "
-                    f"lcur/alat={float(row.get('lateral_current', float('nan'))):.2f}/{float(row.get('actual_lateral', float('nan'))):.2f}"
-                )
                 if any(
                     math.isfinite(float(row.get(key, float("nan"))))
                     for key in (
-                        "forward_neg_frac",
-                        "forward_pos_frac",
+                        "centroid_distance",
+                        "front_strip_gap",
+                    )
+                ):
+                    status_lines.append(
+                        "focus "
+                        f"{fleet_id}@:"
+                        f" strip_gap={float(row.get('front_strip_gap', float('nan'))):.2f}"
+                    )
+                if any(
+                    math.isfinite(float(row.get(key, float("nan"))))
+                    for key in (
+                        "engagement_geometry_active",
+                        "front_reorientation_weight",
+                        "front_axis_delta_deg",
                     )
                 ):
                     status_lines.append(
                         "focus "
                         f"{fleet_id}+: "
-                        f"ctr_fwd={float(row.get('center_forward_offset', float('nan'))):.2f}  "
-                        f"phase_fwd={float(row.get('phase_forward_mean', float('nan'))):.2f}  "
-                        f"fwd_align={float(row.get('forward_align', float('nan'))):.2f}  "
-                        f"fwd-={float(row.get('forward_neg_frac', float('nan'))):.2f}  "
-                        f"fwd+={float(row.get('forward_pos_frac', float('nan'))):.2f}"
+                        f"eng_act={float(row.get('engagement_geometry_active', float('nan'))):.2f}  "
+                        f"front_rw={float(row.get('front_reorientation_weight', float('nan'))):.2f}  "
+                        f"fire_da={float(row.get('front_axis_delta_deg', float('nan'))):.0f}\u00b0"
                     )
         self._status_text.setText("\n".join(status_lines))
         self._align_hud_block_to_bottom(self._status_text, line_count=len(status_lines), side="left")
@@ -1705,11 +1722,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--direction-mode",
         choices=VIEWER_DIRECTION_MODE_CHOICES,
-        default=VIEWER_DIRECTION_MODE_SETTINGS,
+        default="posture",
         help=(
-            "Viewer-local direction readout mode. 'settings' preserves the current layered "
-            "2D vector_display_mode; 'movement' shows smoothed travel direction and "
-            "'posture' shows a bounded maneuver-posture read."
+            "Viewer-local direction readout mode. Default is 'posture'; 'settings' preserves "
+            "the current layered 2D vector_display_mode; 'movement' shows smoothed travel "
+            "direction and 'posture' shows a bounded maneuver-posture read."
         ),
     )
     parser.add_argument(

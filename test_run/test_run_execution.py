@@ -1,4 +1,5 @@
 import math
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
@@ -103,9 +104,16 @@ V4A_CENTER_WING_DIFFERENTIAL_DEFAULT = 0.0
 V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT = 0.35
 V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT = 0.65
 V4A_HEADING_RELAXATION_DEFAULT = 0.18
-V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT = 0.15
-V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT = 0.15
 V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT = 0.10
+V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT = 0.0
+V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT = 0.5
+V4A_ENGAGEMENT_GEOMETRY_FULL_ENGAGED_FRACTION_DEFAULT = 0.08
+V4A_FRONT_REORIENTATION_MAX_WEIGHT_DEFAULT = 0.35
+V4A_ENGAGEMENT_GEOMETRY_RELAXATION_DEFAULT = 0.18
+V4A_EFFECTIVE_FIRE_AXIS_RELAXATION_DEFAULT = 0.16
+V4A_FIRE_AXIS_COHERENCE_RELAXATION_DEFAULT = 0.18
+V4A_FRONT_REORIENTATION_RELAXATION_DEFAULT = 0.18
+V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT = 18.0
 V4A_ENGAGED_SPEED_SCALE_DEFAULT = 0.70
 V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT = 0.65
 V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT = 0.35
@@ -123,6 +131,32 @@ def _clamp01(value: float) -> float:
     return min(1.0, max(0.0, value))
 
 
+def _direction_delta_degrees(
+    lhs_hat_xy: Sequence[float] | tuple[float, float],
+    rhs_hat_xy: Sequence[float] | tuple[float, float],
+) -> float:
+    if len(lhs_hat_xy) < 2 or len(rhs_hat_xy) < 2:
+        return float("nan")
+    lhs_dx = float(lhs_hat_xy[0])
+    lhs_dy = float(lhs_hat_xy[1])
+    rhs_dx = float(rhs_hat_xy[0])
+    rhs_dy = float(rhs_hat_xy[1])
+    lhs_norm = math.sqrt((lhs_dx * lhs_dx) + (lhs_dy * lhs_dy))
+    rhs_norm = math.sqrt((rhs_dx * rhs_dx) + (rhs_dy * rhs_dy))
+    if lhs_norm <= 1e-12 or rhs_norm <= 1e-12:
+        return float("nan")
+    dot_value = max(
+        -1.0,
+        min(
+            1.0,
+            ((lhs_dx * rhs_dx) + (lhs_dy * rhs_dy)) / max(lhs_norm * rhs_norm, 1e-12),
+        ),
+    )
+    return math.degrees(math.acos(dot_value))
+
+
+
+
 def _require_mapping(cfg: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     section = cfg.get(key)
     if not isinstance(section, Mapping):
@@ -136,6 +170,17 @@ def _sigmoid(value: float) -> float:
         return 1.0 / (1.0 + z)
     z = math.exp(value)
     return z / (1.0 + z)
+
+
+def _relax_scalar(current_value: float, target_value: float, weight: float) -> float:
+    current_f = float(current_value)
+    target_f = float(target_value)
+    if not math.isfinite(current_f):
+        return target_f
+    if not math.isfinite(target_f):
+        return current_f
+    blend = _clamp01(float(weight))
+    return current_f + ((target_f - current_f) * blend)
 
 
 def _resolve_reference_layout_target_aspect(layout_mode: str) -> float:
@@ -271,6 +316,43 @@ def _compute_projected_half_extents(
     return (float(max(0.0, forward_extent)), float(max(0.0, lateral_extent)))
 
 
+def _compute_front_strip_depth(
+    units: Sequence[UnitState],
+    primary_hat_xy: tuple[float, float],
+    *,
+    toward_positive: bool,
+    strip_fraction: float = 0.20,
+    min_count: int = 4,
+    max_count: int = 16,
+) -> float:
+    if not units:
+        return 0.0
+    primary_dx = float(primary_hat_xy[0])
+    primary_dy = float(primary_hat_xy[1])
+    primary_norm = math.sqrt((primary_dx * primary_dx) + (primary_dy * primary_dy))
+    if primary_norm <= 1e-12:
+        axis_hat_xy = (1.0, 0.0)
+    else:
+        axis_hat_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
+    centroid_x = sum(float(unit.position.x) for unit in units) / float(len(units))
+    centroid_y = sum(float(unit.position.y) for unit in units) / float(len(units))
+    signed_values: list[float] = []
+    sign = 1.0 if bool(toward_positive) else -1.0
+    for unit in units:
+        rel_x = float(unit.position.x) - centroid_x
+        rel_y = float(unit.position.y) - centroid_y
+        projected = (rel_x * float(axis_hat_xy[0])) + (rel_y * float(axis_hat_xy[1]))
+        signed_values.append(sign * float(projected))
+    if not signed_values:
+        return 0.0
+    sorted_values = sorted(signed_values, reverse=True)
+    strip_count = max(int(min_count), int(round(len(sorted_values) * float(strip_fraction))))
+    strip_count = min(int(max_count), min(int(len(sorted_values)), strip_count))
+    strip_slice = sorted_values[: max(1, strip_count)]
+    strip_mean = sum(float(value) for value in strip_slice) / float(len(strip_slice))
+    return float(max(0.0, strip_mean))
+
+
 def _compute_attack_direction_speed_scale(
     cos_theta: float,
     *,
@@ -283,6 +365,50 @@ def _compute_attack_direction_speed_scale(
     if cos_clamped >= 0.0:
         return float(lateral + ((1.0 - lateral) * cos_clamped))
     return float(lateral + ((lateral - backward) * cos_clamped))
+
+
+def _compute_fire_efficiency_series(
+    size_a: Sequence[float],
+    size_b: Sequence[float],
+    alive_a: Sequence[int | float],
+    alive_b: Sequence[int | float],
+    *,
+    per_unit_damage: float,
+) -> tuple[list[float], list[float]]:
+    n = max(len(size_a), len(size_b), len(alive_a), len(alive_b))
+    if n <= 0:
+        return ([], [])
+    out_a: list[float] = []
+    out_b: list[float] = []
+    damage_floor = max(0.0, float(per_unit_damage))
+    last_size_a = float(size_a[-1]) if size_a else 0.0
+    last_size_b = float(size_b[-1]) if size_b else 0.0
+    last_alive_a = float(alive_a[-1]) if alive_a else 0.0
+    last_alive_b = float(alive_b[-1]) if alive_b else 0.0
+    for idx in range(n):
+        curr_size_a = float(size_a[idx]) if idx < len(size_a) else last_size_a
+        curr_size_b = float(size_b[idx]) if idx < len(size_b) else last_size_b
+        curr_alive_a = float(alive_a[idx]) if idx < len(alive_a) else last_alive_a
+        curr_alive_b = float(alive_b[idx]) if idx < len(alive_b) else last_alive_b
+        if idx <= 0:
+            prev_size_a = curr_size_a
+            prev_size_b = curr_size_b
+            prev_alive_a = curr_alive_a
+            prev_alive_b = curr_alive_b
+        else:
+            prev_size_a = float(size_a[idx - 1]) if (idx - 1) < len(size_a) else curr_size_a
+            prev_size_b = float(size_b[idx - 1]) if (idx - 1) < len(size_b) else curr_size_b
+            prev_alive_a = float(alive_a[idx - 1]) if (idx - 1) < len(alive_a) else curr_alive_a
+            prev_alive_b = float(alive_b[idx - 1]) if (idx - 1) < len(alive_b) else curr_alive_b
+        actual_damage_by_a = max(0.0, prev_size_b - curr_size_b)
+        actual_damage_by_b = max(0.0, prev_size_a - curr_size_a)
+        max_damage_a = max(0.0, prev_alive_a) * damage_floor
+        max_damage_b = max(0.0, prev_alive_b) * damage_floor
+        eff_a = actual_damage_by_a / max_damage_a if max_damage_a > 0.0 else 0.0
+        eff_b = actual_damage_by_b / max_damage_b if max_damage_b > 0.0 else 0.0
+        out_a.append(_clamp01(float(eff_a)))
+        out_b.append(_clamp01(float(eff_b)))
+    return (out_a, out_b)
 
 
 def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[str, Any], tuple[float, float]]:
@@ -519,6 +645,15 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         desired_axis_hat = current_axis_hat
         if target_norm > 0.0:
             desired_axis_hat = target_forward_hat
+        effective_fire_axis = bundle.get("effective_fire_axis_xy", desired_axis_hat)
+        if not isinstance(effective_fire_axis, Sequence) or len(effective_fire_axis) < 2:
+            effective_fire_axis = desired_axis_hat
+        effective_fire_axis_hat, effective_fire_axis_norm = TestModeEngineTickSkeleton._normalize_direction(
+            float(effective_fire_axis[0]) if len(effective_fire_axis) >= 1 else float(desired_axis_hat[0]),
+            float(effective_fire_axis[1]) if len(effective_fire_axis) >= 2 else float(desired_axis_hat[1]),
+        )
+        if effective_fire_axis_norm <= 0.0:
+            effective_fire_axis_hat = desired_axis_hat
         if not hold_active and not terminal_active:
             current_axis_hat = TestModeEngineTickSkeleton._relax_direction(
                 current_axis_hat,
@@ -538,6 +673,9 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         elif terminal_active:
             current_axis_hat = terminal_axis_hat
         bundle["morphology_axis_current_xy"] = current_axis_hat
+        bundle["front_axis_delta_deg"] = float(
+            _direction_delta_degrees(current_axis_hat, effective_fire_axis_hat)
+        )
         resolved_forward_hat = current_axis_hat
         secondary_hat = (-resolved_forward_hat[1], resolved_forward_hat[0])
         current_center = bundle.get("morphology_center_current_xy", (centroid_x, centroid_y))
@@ -813,16 +951,17 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             intensity = 0.0
         else:
             centroid_x, centroid_y = self._compute_position_centroid(own_units)
-            normalized_direction, _ = self._normalize_direction(
-                float(objective_point_xy[0]) - centroid_x,
-                float(objective_point_xy[1]) - centroid_y,
-            )
             stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
-            if stop_radius > FIXTURE_LINEAR_ARRIVAL_GAIN_MIN_STOP_RADIUS:
+            if stop_radius > 0.0:
                 distance_to_objective = math.sqrt(
                     ((float(objective_point_xy[0]) - centroid_x) ** 2)
                     + ((float(objective_point_xy[1]) - centroid_y) ** 2)
                 )
+            normalized_direction, _ = self._normalize_direction(
+                float(objective_point_xy[0]) - centroid_x,
+                float(objective_point_xy[1]) - centroid_y,
+            )
+            if stop_radius > FIXTURE_LINEAR_ARRIVAL_GAIN_MIN_STOP_RADIUS:
                 arrival_gain = max(0.0, min(1.0, distance_to_objective / stop_radius))
             else:
                 arrival_gain = 1.0
@@ -880,7 +1019,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             reference_units: list[UnitState]
             if isinstance(battle_bundle, Mapping):
                 # v4a far-field battle target now reads as global enemy relation + d*.
-                # Local enemy semantics are intentionally deferred out of Layer A.
                 reference_units = list(enemy_units)
                 ref_x, ref_y = self._compute_position_centroid(reference_units)
             else:
@@ -973,39 +1111,240 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             reference_direction_hat, _ = self._normalize_direction(ref_dx, ref_dy)
             reference_distance = math.sqrt((ref_dx * ref_dx) + (ref_dy * ref_dy))
             if isinstance(battle_bundle, Mapping):
-                own_forward_extent, _ = _compute_projected_half_extents(own_units, reference_direction_hat)
-                enemy_forward_extent, _ = _compute_projected_half_extents(enemy_units, reference_direction_hat)
-                desired_distance = max(
-                    0.0,
-                    float(self.attack_range)
-                    + (
-                        float(battle_bundle.get("battle_standoff_self_extent_weight", 0.0))
-                        * float(own_forward_extent)
+                engaged_attack_vectors: list[tuple[float, float]] = []
+                for unit in own_units:
+                    engaged_target_id = (
+                        str(unit.engaged_target_id).strip()
+                        if unit.engaged_target_id is not None
+                        else ""
                     )
-                    + (
-                        float(battle_bundle.get("battle_standoff_enemy_extent_weight", 0.0))
-                        * float(enemy_forward_extent)
-                    ),
+                    if not bool(unit.engaged) or not engaged_target_id:
+                        continue
+                    target_unit = state.units.get(engaged_target_id)
+                    if target_unit is None or float(target_unit.hit_points) <= 0.0:
+                        continue
+                    attack_hat_xy, attack_norm = self._normalize_direction(
+                        float(target_unit.position.x) - float(unit.position.x),
+                        float(target_unit.position.y) - float(unit.position.y),
+                    )
+                    if attack_norm > 0.0:
+                        engaged_attack_vectors.append(
+                            (float(attack_hat_xy[0]), float(attack_hat_xy[1]))
+                        )
+                engaged_fraction = (
+                    float(len(engaged_attack_vectors)) / float(max(1, len(own_units)))
+                )
+                attack_sum_x = sum(float(vector[0]) for vector in engaged_attack_vectors)
+                attack_sum_y = sum(float(vector[1]) for vector in engaged_attack_vectors)
+                attack_sum_norm = math.sqrt((attack_sum_x * attack_sum_x) + (attack_sum_y * attack_sum_y))
+                effective_fire_axis_raw_hat = reference_direction_hat
+                fire_axis_coherence_raw = 0.0
+                if engaged_attack_vectors and attack_sum_norm > 1e-12:
+                    effective_fire_axis_raw_hat = (
+                        float(attack_sum_x) / float(attack_sum_norm),
+                        float(attack_sum_y) / float(attack_sum_norm),
+                    )
+                    fire_axis_coherence_raw = min(
+                        1.0,
+                        float(attack_sum_norm) / float(len(engaged_attack_vectors)),
+                    )
+                engagement_geometry_active_raw = _clamp01(
+                    float(engaged_fraction) / V4A_ENGAGEMENT_GEOMETRY_FULL_ENGAGED_FRACTION_DEFAULT
+                )
+                prior_engagement_geometry_active = float(
+                    battle_bundle.get(
+                        "engagement_geometry_active_current",
+                        battle_bundle.get("engagement_geometry_active", 0.0),
+                    )
+                )
+                engagement_geometry_active = _relax_scalar(
+                    prior_engagement_geometry_active,
+                    engagement_geometry_active_raw,
+                    V4A_ENGAGEMENT_GEOMETRY_RELAXATION_DEFAULT,
+                )
+                prior_fire_axis = battle_bundle.get(
+                    "effective_fire_axis_current_xy",
+                    battle_bundle.get("effective_fire_axis_xy", reference_direction_hat),
+                )
+                if not isinstance(prior_fire_axis, Sequence) or len(prior_fire_axis) < 2:
+                    prior_fire_axis = reference_direction_hat
+                prior_fire_axis_hat, prior_fire_axis_norm = self._normalize_direction(
+                    float(prior_fire_axis[0]) if len(prior_fire_axis) >= 1 else float(reference_direction_hat[0]),
+                    float(prior_fire_axis[1]) if len(prior_fire_axis) >= 2 else float(reference_direction_hat[1]),
+                )
+                if prior_fire_axis_norm <= 0.0:
+                    prior_fire_axis_hat = reference_direction_hat
+                effective_fire_axis_hat = self._relax_direction(
+                    prior_fire_axis_hat,
+                    effective_fire_axis_raw_hat,
+                    V4A_EFFECTIVE_FIRE_AXIS_RELAXATION_DEFAULT,
+                )
+                prior_fire_axis_coherence = float(
+                    battle_bundle.get(
+                        "effective_fire_axis_coherence_current",
+                        battle_bundle.get("effective_fire_axis_coherence", 0.0),
+                    )
+                )
+                fire_axis_coherence = _relax_scalar(
+                    prior_fire_axis_coherence,
+                    fire_axis_coherence_raw,
+                    V4A_FIRE_AXIS_COHERENCE_RELAXATION_DEFAULT,
+                )
+                front_reorientation_weight_raw = (
+                    V4A_FRONT_REORIENTATION_MAX_WEIGHT_DEFAULT
+                    * float(engagement_geometry_active)
+                    * float(fire_axis_coherence)
+                )
+                prior_front_reorientation_weight = float(
+                    battle_bundle.get(
+                        "front_reorientation_weight_current",
+                        battle_bundle.get("front_reorientation_weight", 0.0),
+                    )
+                )
+                front_reorientation_weight = _relax_scalar(
+                    prior_front_reorientation_weight,
+                    front_reorientation_weight_raw,
+                    V4A_FRONT_REORIENTATION_RELAXATION_DEFAULT,
+                )
+                own_front_strip_depth = _compute_front_strip_depth(
+                    own_units,
+                    reference_direction_hat,
+                    toward_positive=True,
+                )
+                enemy_front_strip_depth = _compute_front_strip_depth(
+                    enemy_units,
+                    reference_direction_hat,
+                    toward_positive=False,
+                )
+                fire_entry_margin = max(
+                    0.0,
+                    float(battle_bundle.get("expected_reference_spacing", self.separation_radius)),
+                )
+                target_front_strip_gap_base = max(
+                    0.0,
+                    float(self.attack_range) - float(fire_entry_margin),
+                )
+                target_front_strip_gap_bias = float(
+                    battle_bundle.get(
+                        "battle_target_front_strip_gap_bias",
+                        V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
+                    )
+                )
+                if not math.isfinite(target_front_strip_gap_bias):
+                    target_front_strip_gap_bias = V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT
+                target_front_strip_gap = max(
+                    0.0,
+                    float(target_front_strip_gap_base) + float(target_front_strip_gap_bias),
                 )
                 hold_band = max(
                     0.1,
                     float(self.attack_range)
                     * max(0.0, float(battle_bundle.get("battle_standoff_hold_band_ratio", 0.0))),
                 )
-                distance_gap = float(reference_distance) - float(desired_distance)
-                if distance_gap <= hold_band:
-                    direction = (0.0, 0.0)
-                    intensity = 0.0
+                hold_weight_strength = _clamp01(
+                    float(
+                        battle_bundle.get(
+                            "battle_hold_weight_strength",
+                            V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
+                        )
+                    )
+                )
+                current_front_strip_gap = float(reference_distance) - (
+                    float(own_front_strip_depth) + float(enemy_front_strip_depth)
+                )
+                distance_gap = float(current_front_strip_gap) - float(target_front_strip_gap)
+                reference_speed_values = [
+                    float(unit.max_speed)
+                    for unit in own_units
+                    if math.isfinite(float(unit.max_speed)) and float(unit.max_speed) > 0.0
+                ]
+                if reference_speed_values:
+                    relation_reference_speed = sum(reference_speed_values) / float(
+                        len(reference_speed_values)
+                    )
                 else:
-                    pressure = min(
-                        1.0,
-                        max(0.0, (distance_gap - hold_band) / max(hold_band, float(self.attack_range), 1e-9)),
+                    relation_reference_speed = 1.0
+                battle_relation_lead_ticks = float(
+                    battle_bundle.get(
+                        "battle_relation_lead_ticks",
+                        V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
                     )
-                    direction = (
-                        float(reference_direction_hat[0]) * pressure,
-                        float(reference_direction_hat[1]) * pressure,
+                )
+                if not math.isfinite(battle_relation_lead_ticks) or battle_relation_lead_ticks <= 0.0:
+                    battle_relation_lead_ticks = V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
+                relation_scale = max(
+                    float(relation_reference_speed) * battle_relation_lead_ticks,
+                    float(hold_band),
+                    1e-9,
+                )
+                relation_gap_raw = max(
+                    -1.0,
+                    min(1.0, float(distance_gap) / relation_scale),
+                )
+                relation_gap_current = float(relation_gap_raw)
+                close_drive_raw = _clamp01(-relation_gap_raw)
+                close_drive = float(close_drive_raw)
+                brake_drive_raw = hold_weight_strength * close_drive_raw
+                brake_drive = float(brake_drive_raw)
+                hold_weight_raw = hold_weight_strength * _clamp01(
+                    1.0 - min(1.0, abs(relation_gap_raw))
+                )
+                hold_weight = float(hold_weight_raw)
+                approach_drive_raw = _clamp01(relation_gap_raw)
+                approach_drive = float(approach_drive_raw)
+                if isinstance(battle_bundle, dict):
+                    battle_bundle["effective_fire_axis_raw_xy"] = (
+                        float(effective_fire_axis_raw_hat[0]),
+                        float(effective_fire_axis_raw_hat[1]),
                     )
-                    intensity = float(pressure)
+                    battle_bundle["effective_fire_axis_xy"] = (
+                        float(effective_fire_axis_hat[0]),
+                        float(effective_fire_axis_hat[1]),
+                    )
+                    battle_bundle["effective_fire_axis_current_xy"] = (
+                        float(effective_fire_axis_hat[0]),
+                        float(effective_fire_axis_hat[1]),
+                    )
+                    battle_bundle["engagement_geometry_active_raw"] = float(engagement_geometry_active_raw)
+                    battle_bundle["engagement_geometry_active"] = float(engagement_geometry_active)
+                    battle_bundle["engagement_geometry_active_current"] = float(engagement_geometry_active)
+                    battle_bundle["front_reorientation_weight_raw"] = float(front_reorientation_weight_raw)
+                    battle_bundle["front_reorientation_weight"] = float(front_reorientation_weight)
+                    battle_bundle["front_reorientation_weight_current"] = float(front_reorientation_weight)
+                    battle_bundle["effective_fire_axis_coherence_raw"] = float(
+                        fire_axis_coherence_raw
+                    )
+                    battle_bundle["effective_fire_axis_coherence"] = float(fire_axis_coherence)
+                    battle_bundle["effective_fire_axis_coherence_current"] = float(fire_axis_coherence)
+                    battle_bundle["battle_relation_gap_raw"] = float(relation_gap_raw)
+                    battle_bundle["battle_relation_gap_current"] = float(relation_gap_current)
+                    battle_bundle["battle_fire_entry_margin"] = float(fire_entry_margin)
+                    battle_bundle["battle_target_front_strip_gap_base"] = float(
+                        target_front_strip_gap_base
+                    )
+                    battle_bundle["battle_target_front_strip_gap_bias"] = float(
+                        target_front_strip_gap_bias
+                    )
+                    battle_bundle["battle_target_front_strip_gap"] = float(target_front_strip_gap)
+                    battle_bundle["battle_current_front_strip_gap"] = float(current_front_strip_gap)
+                    battle_bundle["battle_own_front_strip_depth"] = float(own_front_strip_depth)
+                    battle_bundle["battle_enemy_front_strip_depth"] = float(enemy_front_strip_depth)
+                    battle_bundle["battle_relation_scale"] = float(relation_scale)
+                    battle_bundle["battle_relation_lead_ticks"] = float(battle_relation_lead_ticks)
+                    battle_bundle["battle_close_drive_raw"] = float(close_drive_raw)
+                    battle_bundle["battle_close_drive_current"] = float(close_drive)
+                    battle_bundle["battle_brake_drive_raw"] = float(brake_drive_raw)
+                    battle_bundle["battle_brake_drive_current"] = float(brake_drive)
+                    battle_bundle["battle_hold_weight_raw"] = float(hold_weight_raw)
+                    battle_bundle["battle_hold_weight_current"] = float(hold_weight)
+                    battle_bundle["battle_approach_drive_raw"] = float(approach_drive_raw)
+                    battle_bundle["battle_approach_drive_current"] = float(approach_drive)
+                relation_drive = float(approach_drive - brake_drive)
+                direction = (
+                    float(reference_direction_hat[0]) * relation_drive,
+                    float(reference_direction_hat[1]) * relation_drive,
+                )
+                intensity = float(abs(relation_drive))
             else:
                 direction, intensity = reference_direction_hat, reference_distance
             last_target_direction[fleet_id] = direction
@@ -1104,15 +1443,21 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         movement_state = state
         terminal_active = bool(bundle.get("formation_terminal_active", False))
         hold_active = bool(bundle.get("formation_hold_active", False))
+        engagement_geometry_active_current = _clamp01(
+            float(bundle.get("engagement_geometry_active_current", 0.0))
+        )
         if not hold_active:
             if terminal_active:
                 raw_target_direction = (0.0, 0.0)
             else:
                 raw_target_direction = state.last_target_direction.get(lead_fleet_id, (0.0, 0.0))
+            raw_target_dx = float(raw_target_direction[0]) if len(raw_target_direction) >= 1 else 0.0
+            raw_target_dy = float(raw_target_direction[1]) if len(raw_target_direction) >= 2 else 0.0
             raw_target_hat, raw_target_norm = self._normalize_direction(
-                float(raw_target_direction[0]) if len(raw_target_direction) >= 1 else 0.0,
-                float(raw_target_direction[1]) if len(raw_target_direction) >= 2 else 0.0,
+                raw_target_dx,
+                raw_target_dy,
             )
+            raw_target_magnitude = math.sqrt((raw_target_dx * raw_target_dx) + (raw_target_dy * raw_target_dy))
             current_heading = bundle.get("movement_heading_current_xy", current_forward_hat_xy)
             if not isinstance(current_heading, Sequence) or len(current_heading) < 2:
                 current_heading = current_forward_hat_xy
@@ -1148,12 +1493,20 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 )
             else:
                 advance_share = 0.0
+            if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
+                advance_share = 1.0
             bundle["transition_advance_share"] = float(advance_share)
             updated_last_target_direction = dict(state.last_target_direction)
-            updated_last_target_direction[lead_fleet_id] = (
-                float(current_heading_hat[0]) * raw_target_norm * advance_share,
-                float(current_heading_hat[1]) * raw_target_norm * advance_share,
-            )
+            if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
+                updated_last_target_direction[lead_fleet_id] = (
+                    float(raw_target_dx) * advance_share,
+                    float(raw_target_dy) * advance_share,
+                )
+            else:
+                updated_last_target_direction[lead_fleet_id] = (
+                    float(current_heading_hat[0]) * raw_target_magnitude * advance_share,
+                    float(current_heading_hat[1]) * raw_target_magnitude * advance_share,
+                )
             updated_last_engagement_intensity = dict(state.last_engagement_intensity)
             updated_last_engagement_intensity[lead_fleet_id] = (
                 float(updated_last_engagement_intensity.get(lead_fleet_id, 0.0)) * advance_share
@@ -1239,8 +1592,16 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         (float(unit_heading_hat[0]) * float(current_heading_hat[0]))
                         + (float(unit_heading_hat[1]) * float(current_heading_hat[1])),
                     )
-                    turn_speed_scale = V4A_TURN_SPEED_FLOOR + (
+                    turn_speed_scale_raw = V4A_TURN_SPEED_FLOOR + (
                         (1.0 - V4A_TURN_SPEED_FLOOR) * heading_alignment
+                    )
+                    battle_hold_weight_current = _clamp01(
+                        float(bundle.get("battle_hold_weight_current", 0.0))
+                    )
+                    turn_speed_scale = _relax_scalar(
+                        1.0,
+                        turn_speed_scale_raw,
+                        engagement_geometry_active_current,
                     )
                     shape_speed_scale = max(
                         V4A_TRANSITION_IDLE_SPEED_FLOOR,
@@ -1287,13 +1648,25 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                                     backward_scale=attack_speed_backward_scale,
                                 )
                                 attack_speed_scale = float(engaged_speed_scale) * float(attack_direction_scale)
-                    transition_speed = (
+                    if engagement_geometry_active_current > 0.0:
+                        fleet_contact_speed_scale = _relax_scalar(
+                            1.0,
+                            float(engaged_speed_scale),
+                            engagement_geometry_active_current,
+                        )
+                        attack_speed_scale = _relax_scalar(
+                            attack_speed_scale,
+                            fleet_contact_speed_scale,
+                            engagement_geometry_active_current,
+                        )
+                    transition_speed_target = (
                         float(reference_speed)
                         * shape_speed_scale
                         * float(forward_transport_speed_scale)
                         * turn_speed_scale
                         * float(attack_speed_scale)
                     )
+                    transition_speed = float(transition_speed_target)
                     if abs(float(unit.max_speed) - transition_speed) <= 1e-9:
                         continue
                     updated_units[str(unit_id)] = replace(unit, max_speed=float(transition_speed))
@@ -2165,28 +2538,6 @@ def run_simulation(
             "run_simulation movement_cfg['v4a_heading_relaxation_effective'] must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
         )
-    v4a_battle_standoff_self_extent_weight = float(
-        movement_cfg.get(
-            "v4a_battle_standoff_self_extent_weight_effective",
-            V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
-        )
-    )
-    if v4a_battle_standoff_self_extent_weight < 0.0:
-        raise ValueError(
-            "run_simulation movement_cfg['v4a_battle_standoff_self_extent_weight_effective'] must be >= 0.0, "
-            f"got {v4a_battle_standoff_self_extent_weight}"
-        )
-    v4a_battle_standoff_enemy_extent_weight = float(
-        movement_cfg.get(
-            "v4a_battle_standoff_enemy_extent_weight_effective",
-            V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
-        )
-    )
-    if v4a_battle_standoff_enemy_extent_weight < 0.0:
-        raise ValueError(
-            "run_simulation movement_cfg['v4a_battle_standoff_enemy_extent_weight_effective'] must be >= 0.0, "
-            f"got {v4a_battle_standoff_enemy_extent_weight}"
-        )
     v4a_battle_standoff_hold_band_ratio = float(
         movement_cfg.get(
             "v4a_battle_standoff_hold_band_ratio_effective",
@@ -2197,6 +2548,39 @@ def run_simulation(
         raise ValueError(
             "run_simulation movement_cfg['v4a_battle_standoff_hold_band_ratio_effective'] must be within [0.0, 1.0], "
             f"got {v4a_battle_standoff_hold_band_ratio}"
+        )
+    v4a_battle_target_front_strip_gap_bias = float(
+        movement_cfg.get(
+            "v4a_battle_target_front_strip_gap_bias_effective",
+            V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
+        )
+    )
+    if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_target_front_strip_gap_bias_effective'] must be finite, "
+            f"got {v4a_battle_target_front_strip_gap_bias}"
+        )
+    v4a_battle_hold_weight_strength = float(
+        movement_cfg.get(
+            "v4a_battle_hold_weight_strength_effective",
+            V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
+        )
+    )
+    if not 0.0 <= v4a_battle_hold_weight_strength <= 1.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_hold_weight_strength_effective'] must be within [0.0, 1.0], "
+            f"got {v4a_battle_hold_weight_strength}"
+        )
+    v4a_battle_relation_lead_ticks = float(
+        movement_cfg.get(
+            "v4a_battle_relation_lead_ticks_effective",
+            V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
+        )
+    )
+    if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
+        raise ValueError(
+            "run_simulation movement_cfg['v4a_battle_relation_lead_ticks_effective'] must be finite and > 0, "
+            f"got {v4a_battle_relation_lead_ticks}"
         )
     v4a_engaged_speed_scale = float(
         movement_cfg.get("v4a_engaged_speed_scale_effective", V4A_ENGAGED_SPEED_SCALE_DEFAULT)
@@ -2274,6 +2658,7 @@ def run_simulation(
     include_target_lines = bool(execution_cfg["include_target_lines"])
     print_tick_summary = bool(execution_cfg["print_tick_summary"])
     observer_enabled = bool(observer_cfg["enabled"])
+    tick_timing_enabled = bool(observer_cfg.get("tick_timing_enabled", True))
     post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
     movement_model = str(runtime_cfg["movement_model"]).strip().lower() or "v3a"
     if movement_model not in {"v3a", "v4a"}:
@@ -2357,11 +2742,8 @@ def run_simulation(
     movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
     movement_surface["model"] = movement_model
     if movement_model == "v4a":
-        v4a_restore_strength = float(movement_cfg.get("v4a_restore_strength_effective", 1.0))
-        movement_surface["v3a_experiment"] = (
-            V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE if v4a_restore_strength < 1.0 else V3A_EXPERIMENT_BASE
-        )
-        movement_surface["centroid_probe_scale"] = v4a_restore_strength
+        movement_surface["v3a_experiment"] = V3A_EXPERIMENT_BASE
+        movement_surface["centroid_probe_scale"] = 1.0
     else:
         movement_surface["v3a_experiment"] = (
             str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
@@ -2433,25 +2815,52 @@ def run_simulation(
         ) / float(len(xs))
         return (centroid_x, centroid_y, math.sqrt(max(0.0, radius_sq_mean)))
 
+    v4a_bundle_profile = {
+        "shape": {
+            "expected_reference_spacing": float(
+                movement_cfg.get("expected_reference_spacing_effective", 1.0)
+            ),
+            "reference_layout_mode": str(
+                movement_cfg.get(
+                    "reference_layout_mode_effective",
+                    V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0,
+                )
+            ),
+            "reference_surface_mode": str(v4a_reference_surface_mode),
+            "soft_morphology_relaxation": float(v4a_soft_morphology_relaxation),
+            "shape_vs_advance_strength": float(v4a_shape_vs_advance_strength),
+            "heading_relaxation": float(v4a_heading_relaxation),
+        },
+        "battle": {
+            "battle_standoff_hold_band_ratio": float(
+                v4a_battle_standoff_hold_band_ratio
+            ),
+            "battle_target_front_strip_gap_bias": float(
+                v4a_battle_target_front_strip_gap_bias
+            ),
+            "battle_hold_weight_strength": float(v4a_battle_hold_weight_strength),
+            "battle_relation_lead_ticks": float(v4a_battle_relation_lead_ticks),
+        },
+        "motion": {
+            "engaged_speed_scale": float(v4a_engaged_speed_scale),
+            "attack_speed_lateral_scale": float(v4a_attack_speed_lateral_scale),
+            "attack_speed_backward_scale": float(v4a_attack_speed_backward_scale),
+        },
+    }
+
     def _build_fixture_expected_reference_bundle(
         position_map: Mapping[str, tuple[float, float]],
         objective_point_xy: tuple[float, float],
         *,
         ordered_unit_ids: Sequence[str] | None = None,
-        expected_reference_spacing: float,
-        reference_layout_mode: str,
+        v4a_profile: Mapping[str, Any],
         fallback_axis_xy: tuple[float, float] = (1.0, 0.0),
-        reference_surface_mode: str = V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS,
-        soft_morphology_relaxation: float = V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT,
-        shape_vs_advance_strength: float = V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT,
-        heading_relaxation: float = V4A_HEADING_RELAXATION_DEFAULT,
-        battle_standoff_self_extent_weight: float = V4A_BATTLE_STANDOFF_SELF_EXTENT_WEIGHT_DEFAULT,
-        battle_standoff_enemy_extent_weight: float = V4A_BATTLE_STANDOFF_ENEMY_EXTENT_WEIGHT_DEFAULT,
-        battle_standoff_hold_band_ratio: float = V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
-        engaged_speed_scale: float = V4A_ENGAGED_SPEED_SCALE_DEFAULT,
-        attack_speed_lateral_scale: float = V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
-        attack_speed_backward_scale: float = V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
     ) -> dict:
+        shape_cfg = _require_mapping(v4a_profile, "shape")
+        battle_cfg = _require_mapping(v4a_profile, "battle")
+        motion_cfg = _require_mapping(v4a_profile, "motion")
+        expected_reference_spacing = float(shape_cfg["expected_reference_spacing"])
+        reference_layout_mode = str(shape_cfg["reference_layout_mode"])
         centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
         if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
             raise ValueError("neutral_transit_v1 expected-position reference requires at least one alive unit")
@@ -2468,6 +2877,13 @@ def run_simulation(
         else:
             primary_axis_xy = (primary_dx / primary_norm, primary_dy / primary_norm)
         secondary_axis_xy = (-primary_axis_xy[1], primary_axis_xy[0])
+        actual_offsets_local: dict[str, tuple[float, float]] = {}
+        for unit_id, position in position_map.items():
+            rel_x = float(position[0]) - centroid_x
+            rel_y = float(position[1]) - centroid_y
+            forward_offset = (rel_x * primary_axis_xy[0]) + (rel_y * primary_axis_xy[1])
+            lateral_offset = (rel_x * secondary_axis_xy[0]) + (rel_y * secondary_axis_xy[1])
+            actual_offsets_local[str(unit_id)] = (float(forward_offset), float(lateral_offset))
         ordered_reference_unit_ids = [
             str(unit_id)
             for unit_id in (
@@ -2484,13 +2900,6 @@ def run_simulation(
             expected_reference_spacing=float(expected_reference_spacing),
             reference_layout_mode=str(reference_layout_mode),
         )
-        actual_offsets_local: dict[str, tuple[float, float]] = {}
-        for unit_id, position in position_map.items():
-            rel_x = float(position[0]) - centroid_x
-            rel_y = float(position[1]) - centroid_y
-            forward_offset = (rel_x * primary_axis_xy[0]) + (rel_y * primary_axis_xy[1])
-            lateral_offset = (rel_x * secondary_axis_xy[0]) + (rel_y * secondary_axis_xy[1])
-            actual_offsets_local[str(unit_id)] = (float(forward_offset), float(lateral_offset))
         initial_front_extent = max(
             (float(offset_local[0]) for offset_local in reference_offsets_local.values()),
             default=0.0,
@@ -2544,18 +2953,32 @@ def run_simulation(
             "formation_hold_forward_extent": None,
             "formation_hold_lateral_extent": None,
             "formation_hold_center_wing_differential": None,
-            "reference_surface_mode": str(reference_surface_mode),
-            "soft_morphology_relaxation": float(soft_morphology_relaxation),
-            "shape_vs_advance_strength": float(shape_vs_advance_strength),
-            "heading_relaxation": float(heading_relaxation),
-            "battle_standoff_self_extent_weight": float(battle_standoff_self_extent_weight),
-            "battle_standoff_enemy_extent_weight": float(battle_standoff_enemy_extent_weight),
-            "battle_standoff_hold_band_ratio": float(battle_standoff_hold_band_ratio),
-            "engaged_speed_scale": float(engaged_speed_scale),
-            "attack_speed_lateral_scale": float(attack_speed_lateral_scale),
-            "attack_speed_backward_scale": float(attack_speed_backward_scale),
-            "reference_layout_mode": str(reference_layout_mode),
-            "expected_reference_spacing": float(expected_reference_spacing),
+            **shape_cfg,
+            **battle_cfg,
+            "battle_relation_gap_raw": 1.0,
+            "battle_relation_gap_current": 1.0,
+            "battle_close_drive_raw": 0.0,
+            "battle_close_drive_current": 0.0,
+            "battle_brake_drive_raw": 0.0,
+            "battle_brake_drive_current": 0.0,
+            "battle_hold_weight_raw": 0.0,
+            "battle_hold_weight_current": 0.0,
+            "battle_approach_drive_raw": 0.0,
+            "battle_approach_drive_current": 0.0,
+            "effective_fire_axis_raw_xy": primary_axis_xy,
+            "effective_fire_axis_xy": primary_axis_xy,
+            "effective_fire_axis_current_xy": primary_axis_xy,
+            "engagement_geometry_active_raw": 0.0,
+            "engagement_geometry_active": 0.0,
+            "engagement_geometry_active_current": 0.0,
+            "front_reorientation_weight_raw": 0.0,
+            "front_reorientation_weight": 0.0,
+            "front_reorientation_weight_current": 0.0,
+            "effective_fire_axis_coherence_raw": 0.0,
+            "effective_fire_axis_coherence": 0.0,
+            "effective_fire_axis_coherence_current": 0.0,
+            "front_axis_delta_deg": 0.0,
+            **motion_cfg,
             "center_wing_differential_target": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
             "center_wing_differential_current": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
             "movement_heading_current_xy": primary_axis_xy,
@@ -2693,19 +3116,8 @@ def run_simulation(
                 fleet_positions,
                 objective_point_xy,
                 ordered_unit_ids=tuple(fleet.unit_ids),
-                expected_reference_spacing=float(movement_cfg.get("expected_reference_spacing_effective", 1.0)),
-                reference_layout_mode=str(movement_cfg.get("reference_layout_mode_effective", V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0)),
+                v4a_profile=v4a_bundle_profile,
                 fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
-                reference_surface_mode=v4a_reference_surface_mode,
-                soft_morphology_relaxation=v4a_soft_morphology_relaxation,
-                shape_vs_advance_strength=v4a_shape_vs_advance_strength,
-                heading_relaxation=v4a_heading_relaxation,
-                battle_standoff_self_extent_weight=v4a_battle_standoff_self_extent_weight,
-                battle_standoff_enemy_extent_weight=v4a_battle_standoff_enemy_extent_weight,
-                battle_standoff_hold_band_ratio=v4a_battle_standoff_hold_band_ratio,
-                engaged_speed_scale=v4a_engaged_speed_scale,
-                attack_speed_lateral_scale=v4a_attack_speed_lateral_scale,
-                attack_speed_backward_scale=v4a_attack_speed_backward_scale,
             )
             bundle["objective_point_xy"] = (
                 float(objective_point_xy[0]),
@@ -2733,6 +3145,7 @@ def run_simulation(
                 "front_curvature_index",
                 "center_wing_parallel_share",
                 "posture_persistence_time",
+                "fire_efficiency",
             )
         },
         "net_axis_push": {"net": []},
@@ -2743,6 +3156,8 @@ def run_simulation(
         "hostile_deep_intermix_ratio": [],
         "hostile_intermix_severity": [],
         "hostile_intermix_coverage": [],
+        "tick_timing_enabled": bool(tick_timing_enabled),
+        "tick_elapsed_ms": [],
     }
     if fixture_active:
         initial_positions = {
@@ -2765,19 +3180,8 @@ def run_simulation(
             initial_positions,
             fixture_objective_point_xy,
             ordered_unit_ids=tuple(initial_state.fleets[fixture_fleet_id].unit_ids),
-            expected_reference_spacing=float(movement_cfg.get("expected_reference_spacing_effective", 1.0)),
-            reference_layout_mode=str(movement_cfg.get("reference_layout_mode_effective", V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0)),
+            v4a_profile=v4a_bundle_profile,
             fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
-            reference_surface_mode=v4a_reference_surface_mode,
-            soft_morphology_relaxation=v4a_soft_morphology_relaxation,
-            shape_vs_advance_strength=v4a_shape_vs_advance_strength,
-            heading_relaxation=v4a_heading_relaxation,
-            battle_standoff_self_extent_weight=v4a_battle_standoff_self_extent_weight,
-            battle_standoff_enemy_extent_weight=v4a_battle_standoff_enemy_extent_weight,
-            battle_standoff_hold_band_ratio=v4a_battle_standoff_hold_band_ratio,
-            engaged_speed_scale=v4a_engaged_speed_scale,
-            attack_speed_lateral_scale=v4a_attack_speed_lateral_scale,
-            attack_speed_backward_scale=v4a_attack_speed_backward_scale,
         )
         fixture_reference_bundle["objective_point_xy"] = (
             float(fixture_objective_point_xy[0]),
@@ -2888,6 +3292,72 @@ def run_simulation(
                 for fleet_id, bundle in battle_bundles.items():
                     if isinstance(bundle, Mapping):
                         bundle_entries[str(fleet_id)] = bundle
+        fire_efficiency_current: dict[str, float] = {}
+        fire_eff_a_series, fire_eff_b_series = _compute_fire_efficiency_series(
+            fleet_size_trajectory.get("A", []),
+            fleet_size_trajectory.get("B", []),
+            alive_trajectory.get("A", []),
+            alive_trajectory.get("B", []),
+            per_unit_damage=float(contact_cfg.get("damage_per_tick", 0.0)),
+        )
+        fire_efficiency_current["A"] = float(fire_eff_a_series[-1]) if fire_eff_a_series else float("nan")
+        fire_efficiency_current["B"] = float(fire_eff_b_series[-1]) if fire_eff_b_series else float("nan")
+        battle_gap_metrics: dict[str, float] = {}
+        if (not fixture_active) and len(current_state.fleets) == 2:
+            fleet_ids_local = [str(fleet_id) for fleet_id in current_state.fleets.keys()]
+            if len(fleet_ids_local) == 2:
+                fleet_a_id, fleet_b_id = fleet_ids_local
+                units_a = [
+                    current_state.units[unit_id]
+                    for unit_id in current_state.fleets[fleet_a_id].unit_ids
+                    if unit_id in current_state.units and float(current_state.units[unit_id].hit_points) > 0.0
+                ]
+                units_b = [
+                    current_state.units[unit_id]
+                    for unit_id in current_state.fleets[fleet_b_id].unit_ids
+                    if unit_id in current_state.units and float(current_state.units[unit_id].hit_points) > 0.0
+                ]
+                if units_a and units_b:
+                    centroid_a_x, centroid_a_y, rms_a = _compute_centroid_and_rms_radius(
+                        {
+                            str(unit.unit_id): (float(unit.position.x), float(unit.position.y))
+                            for unit in units_a
+                        }
+                    )
+                    centroid_b_x, centroid_b_y, rms_b = _compute_centroid_and_rms_radius(
+                        {
+                            str(unit.unit_id): (float(unit.position.x), float(unit.position.y))
+                            for unit in units_b
+                        }
+                    )
+                    axis_dx = float(centroid_b_x) - float(centroid_a_x)
+                    axis_dy = float(centroid_b_y) - float(centroid_a_y)
+                    centroid_distance = math.sqrt((axis_dx * axis_dx) + (axis_dy * axis_dy))
+                    if centroid_distance > 0.0:
+                        axis_hat_xy = (
+                            float(axis_dx / centroid_distance),
+                            float(axis_dy / centroid_distance),
+                        )
+                        front_a, _ = _compute_projected_half_extents(units_a, axis_hat_xy)
+                        front_b, _ = _compute_projected_half_extents(units_b, axis_hat_xy)
+                        strip_a = _compute_front_strip_depth(
+                            units_a,
+                            axis_hat_xy,
+                            toward_positive=True,
+                        )
+                        strip_b = _compute_front_strip_depth(
+                            units_b,
+                            axis_hat_xy,
+                            toward_positive=False,
+                        )
+                        battle_gap_metrics = {
+                            "centroid_distance": float(centroid_distance),
+                            "rms_gap": float(centroid_distance - (float(rms_a) + float(rms_b))),
+                            "front_gap": float(centroid_distance - (float(front_a) + float(front_b))),
+                            "front_strip_gap": float(centroid_distance - (float(strip_a) + float(strip_b))),
+                            "front_strip_depth_a": float(strip_a),
+                            "front_strip_depth_b": float(strip_b),
+                        }
         for fleet_id, bundle in bundle_entries.items():
             target_direction = current_state.last_target_direction.get(str(fleet_id), (0.0, 0.0))
             td_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
@@ -2900,6 +3370,34 @@ def run_simulation(
                 "actual_lateral": float(bundle.get("actual_lateral_extent", float("nan"))),
                 "shape_err": float(bundle.get("shape_error_current", float("nan"))),
                 "advance_share": float(bundle.get("transition_advance_share", float("nan"))),
+                "relation_gap": float(bundle.get("battle_relation_gap_current", float("nan"))),
+                "approach_drive": float(bundle.get("battle_approach_drive_current", float("nan"))),
+                "close_drive": float(bundle.get("battle_close_drive_current", float("nan"))),
+                "brake_drive": float(bundle.get("battle_brake_drive_current", float("nan"))),
+                "hold_weight": float(bundle.get("battle_hold_weight_current", float("nan"))),
+                "hold_weight_raw": float(bundle.get("battle_hold_weight_raw", float("nan"))),
+                "engagement_geometry_active_raw": float(
+                    bundle.get("engagement_geometry_active_raw", float("nan"))
+                ),
+                "engagement_geometry_active": float(
+                    bundle.get("engagement_geometry_active", float("nan"))
+                ),
+                "effective_fire_axis_coherence": float(
+                    bundle.get("effective_fire_axis_coherence", float("nan"))
+                ),
+                "front_reorientation_weight": float(
+                    bundle.get("front_reorientation_weight", float("nan"))
+                ),
+                "front_axis_delta_deg": float(bundle.get("front_axis_delta_deg", float("nan"))),
+                "centroid_distance": float(
+                    battle_gap_metrics.get("centroid_distance", float("nan"))
+                ),
+                "rms_gap": float(battle_gap_metrics.get("rms_gap", float("nan"))),
+                "front_gap": float(battle_gap_metrics.get("front_gap", float("nan"))),
+                "front_strip_gap": float(battle_gap_metrics.get("front_strip_gap", float("nan"))),
+                "front_strip_depth_a": float(battle_gap_metrics.get("front_strip_depth_a", float("nan"))),
+                "front_strip_depth_b": float(battle_gap_metrics.get("front_strip_depth_b", float("nan"))),
+                "fire_eff": float(fire_efficiency_current.get(str(fleet_id), float("nan"))),
                 "center_forward_offset": float(bundle.get("center_delta_forward", float("nan"))),
                 "phase_forward_mean": float(bundle.get("phase_forward_delta_mean", float("nan"))),
                 "forward_align": float(
@@ -2981,7 +3479,10 @@ def run_simulation(
         post_elimination_stop_tick = None
 
     while state.tick < tick_limit:
+        tick_start_time = time.perf_counter() if tick_timing_enabled else None
         state = engine.step(state)
+        if tick_timing_enabled and tick_start_time is not None:
+            observer_telemetry["tick_elapsed_ms"].append((time.perf_counter() - tick_start_time) * 1000.0)
         combat_stats = getattr(engine, "debug_last_combat_stats", {})
         if not isinstance(combat_stats, dict):
             combat_stats = {}
@@ -3489,6 +3990,15 @@ def run_simulation(
         )
     observer_telemetry["center_wing_advance_gap_normalization_scale"] = center_wing_normalization_scale
     observer_telemetry["front_curvature_index_normalization_scale"] = front_curvature_normalization_scale
+    fire_efficiency_series_a, fire_efficiency_series_b = _compute_fire_efficiency_series(
+        fleet_size_trajectory.get("A", []),
+        fleet_size_trajectory.get("B", []),
+        alive_trajectory.get("A", []),
+        alive_trajectory.get("B", []),
+        per_unit_damage=float(contact_cfg.get("damage_per_tick", 0.0)),
+    )
+    observer_telemetry["fire_efficiency"]["A"] = fire_efficiency_series_a
+    observer_telemetry["fire_efficiency"]["B"] = fire_efficiency_series_b
 
     collapse_shadow_telemetry = compute_collapse_v2_shadow_telemetry(
         observer_enabled=diagnostics_enabled,

@@ -13,7 +13,7 @@ Authority: viewer-side reference only, not runtime doctrine
 This note records the meaning of the 3D viewer debug block.
 
 The block is intentionally allowed to change over time.
-The last one or two lines may be repurposed as "current focus indicators"
+The last one or two lines may be repurposed as current focus indicators
 for the mechanism currently under investigation.
 
 When indicators are added, removed, shown, or hidden, this document should be
@@ -37,7 +37,7 @@ The current layout rule is:
 
 - first build the full text content
 - then count lines
-- then place each block so its **bottom edge** respects `HUD_BOTTOM_INSET`
+- then place each block so its bottom edge respects `HUD_BOTTOM_INSET`
 
 The two blocks therefore share a bottom edge margin rather than a top edge margin.
 
@@ -65,12 +65,23 @@ The two blocks therefore share a bottom edge margin rather than a top edge margi
 
 ### Line 4
 
-- content: fleet centroid speed per frame
-- definition: absolute centroid displacement from frame `t-1` to frame `t`
-- example: `speed/frame: A=0.73  B=0.68`
+- content: fleet kinetics snapshot
+- definition:
+  - `v` = absolute fleet-centroid displacement from frame `t-1` to frame `t`
+  - `h` = current bounded battle-hold weight when available from runtime-debug focus indicators
+- example: `Kinetics: A: v=0.73 h=0.42 | B: v=0.68 h=0.39`
 - shown in HUD: yes
 
 ### Line 5
+
+- content: fleet fire efficiency
+- definition:
+  - `e` = current per-tick fire-efficiency read for each fleet
+  - formula: actual damage this tick / theoretical damage potential this tick
+- example: `FireEff: A: e=0.12 | B: e=0.09`
+- shown in HUD: yes
+
+### Line 6
 
 - content: viewer mode tail
 - current fields:
@@ -88,93 +99,91 @@ These lines are intentionally temporary/replaceable.
 They are the preferred place to expose the current mechanism-level indicators
 that Human and Engineering are actively using.
 
-### `focus <fleet_id>`
+The current HUD keeps only two replaceable focus groups:
 
-- shown in HUD: yes
+- near-contact relation
+- battle geometry
+
+Older transport / shaping diagnostics remain available in payload only.
+
+### `focus <fleet_id>@`
+
+- shown in HUD: yes when current battle gap indicators are finite
 - source: `runtime_debug.focus_indicators[<fleet_id>]`
 
-Current fields:
+Current field:
 
-- `td`
-  - source field: `td_norm`
-  - meaning: norm of the current fleet target-direction vector
-  - current read: remaining advance/target authority after current budgeting
-
-- `adv`
-  - source field: `advance_share`
-  - meaning: current transition advance share
-  - current read: how much forward advance authority remains after shape-vs-advance budgeting
-
-- `shape_err`
-  - source field: `shape_err`
-  - meaning: current mismatch between actual formation half-extents and target half-extents
-
-- `fcur`
-  - source field: `forward_current`
-  - meaning: current carrier-owned forward half-extent
-  - current read: what the formation-transition carrier thinks the forward size should be now
-
-- `afwd`
-  - source field: `actual_forward`
-  - meaning: actual live-unit forward half-extent measured on the current morphology axis
-
-- `lcur`
-  - source field: `lateral_current`
-  - meaning: current carrier-owned lateral half-extent
-
-- `alat`
-  - source field: `actual_lateral`
-  - meaning: actual live-unit lateral half-extent measured on the current morphology axis
-
-The viewer currently prints these as:
-
-- `fcur/afwd`
-- `lcur/alat`
-
-This makes the current target-vs-actual half-extents readable as pairs.
-
-Because both forward and lateral values are half-extents, the aspect-ratio read is unchanged:
-
-- target aspect ratio ≈ `lcur / fcur`
-- actual aspect ratio ≈ `alat / afwd`
+- `strip_gap`
+  - source field: `front_strip_gap`
+  - meaning: centroid distance minus the sum of both fleets' front-strip depths along the centroid axis
+  - front-strip depth is computed from the leading strip of alive units rather than the full body half-extent
+  - current harness read:
+    - leading strip = top 20 percent of alive units by forward projection
+    - clamped to 4..16 units
+  - current read:
+    - positive = battle bodies still separated under a front-line entry proxy
+    - near zero = front strips are approaching effective battle entry distance
+    - negative = front-strip overlap / pass-through proxy
 
 ### `focus <fleet_id>+`
 
-- shown in HUD: yes when any current focus transport indicators are finite
+- shown in HUD: yes when current battle engagement indicators are finite
 - source: `runtime_debug.focus_indicators[<fleet_id>]`
 
 Current fields:
 
-- `ctr_fwd`
-  - source field: `center_forward_offset`
-  - meaning: forward-axis difference between morphology center and live centroid
-  - current read: whether the whole formation reference body is being dragged ahead/behind the live body
-
-- `phase_fwd`
-  - source field: `phase_forward_mean`
-  - meaning: mean forward delta caused by phase/extent target alone, without center offset
-  - current read: whether phase ownership itself is pulling the fleet forward/backward on average
-
-- `fwd_align`
-  - source field: `forward_align`
-  - meaning: fraction of units whose forward transport sign is topologically aligned
+- `eng_act`
+  - source field: `engagement_geometry_active`
+  - meaning: how active the battle engagement-geometry owner currently is
   - current read:
-    - front-side units should tend to move backward when compressing
-    - rear-side units should tend to move forward when compressing
-    - higher value means the transport intent is more topologically consistent
+    - low = battle is still mostly far-field owned
+    - high = Layer B engagement geometry is now materially active
 
-- `fwd-`
-  - source field: `forward_neg_frac`
-  - meaning: fraction of units with negative forward transport delta
+- `front_rw`
+  - source field: `front_reorientation_weight`
+  - meaning: bounded fleet-level weight shifting front responsibility toward the effective fire axis
+  - current read:
+    - low = front still mostly owned by pre-contact geometry
+    - higher = front is being more strongly reoriented toward the current fire plane
 
-- `fwd+`
-  - source field: `forward_pos_frac`
-  - meaning: fraction of units with positive forward transport delta
+- `fire_da`
+  - source field: `front_axis_delta_deg`
+  - meaning: angle difference in degrees between current formation front and current effective fire axis
+  - current read:
+    - lower = formation front is closer to the active fire plane
+    - higher = formation front is still lagging or diverging
 
-`forward_delta_mean` is still available in the harness bundle as a local diagnostic,
-but it is **not** currently shown in the HUD.
-For the current investigation, the positive/negative split is easier to read than
-one signed mean, because the mean can hide a symmetric split.
+The underlying `effective_fire_axis_xy` vector is carried in the harness bundle,
+but it is not currently printed directly in the HUD.
+For Human review, the angle delta is easier to read than a raw vector pair.
+
+### Payload-Only Diagnostics
+
+The following indicators remain available in the harness payload for local
+debugging, but they are not currently shown in the HUD:
+
+- `td_norm`
+- `advance_share`
+- `shape_err`
+- `forward_current`
+- `actual_forward`
+- `lateral_current`
+- `actual_lateral`
+- `relation_gap`
+- `close_drive`
+- `brake_drive`
+- `centroid_distance`
+- `front_gap`
+- `rms_gap`
+- `center_forward_offset`
+- `phase_forward_mean`
+- `forward_align`
+- `forward_neg_frac`
+- `forward_pos_frac`
+- `forward_delta_mean`
+
+These remain useful for local analysis, but they currently add too much HUD noise
+for battle-first review.
 
 ---
 
@@ -185,21 +194,34 @@ one signed mean, because the mean can hide a symmetric split.
 | alive counts + playback state | yes | stable line |
 | frame / fps / gear | yes | stable line |
 | fleet centroids | yes | stable line |
-| centroid speed per frame | yes | stable line |
+| kinetics line (`v` + `h`) | yes | stable line |
+| fire-efficiency line (`e`) | yes | stable line |
 | direction / fire-links / smoothing / fixture tail | yes | stable line |
-| `td_norm` | yes | current focus line |
-| `advance_share` | yes | current focus line |
-| `shape_err` | yes | current focus line |
-| `forward_current` | yes | current focus line |
-| `actual_forward` | yes | current focus line |
-| `lateral_current` | yes | current focus line |
-| `actual_lateral` | yes | current focus line |
-| `center_forward_offset` | yes | current focus line |
-| `phase_forward_mean` | yes | current focus line |
-| `forward_align` | yes | current focus line |
-| `forward_neg_frac` | yes | current focus line |
-| `forward_pos_frac` | yes | current focus line |
-| `forward_delta_mean` | no | kept in harness payload only |
+| `fire_eff` | no | consumed by the stable fire-efficiency line instead |
+| `hold_weight` | no | consumed by the stable kinetics line instead |
+| `front_strip_gap` | yes | current near-contact relation focus line |
+| `engagement_geometry_active` | yes | current battle-geometry focus line |
+| `front_reorientation_weight` | yes | current battle-geometry focus line |
+| `front_axis_delta_deg` | yes | current battle-geometry focus line |
+| `td_norm` | no | payload-only |
+| `advance_share` | no | payload-only |
+| `shape_err` | no | payload-only |
+| `forward_current` | no | payload-only |
+| `actual_forward` | no | payload-only |
+| `lateral_current` | no | payload-only |
+| `actual_lateral` | no | payload-only |
+| `relation_gap` | no | payload-only |
+| `close_drive` | no | payload-only |
+| `brake_drive` | no | payload-only |
+| `centroid_distance` | no | payload-only |
+| `front_gap` | no | payload-only |
+| `rms_gap` | no | payload-only |
+| `center_forward_offset` | no | payload-only |
+| `phase_forward_mean` | no | payload-only |
+| `forward_align` | no | payload-only |
+| `forward_neg_frac` | no | payload-only |
+| `forward_pos_frac` | no | payload-only |
+| `forward_delta_mean` | no | payload-only |
 | additional future temporary indicators | maybe | must be added here when introduced |
 
 ---

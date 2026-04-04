@@ -21,50 +21,54 @@ RUNTIME_SETTING_PATHS = {
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
-    "v4a_restore_strength": ("movement", "v4a", "test_only", "restore_strength"),
-    "v4a_reference_surface_mode": ("movement", "v4a", "test_only", "reference_surface_mode"),
-    "v4a_soft_morphology_relaxation": ("movement", "v4a", "test_only", "soft_morphology_relaxation"),
-    "v4a_shape_vs_advance_strength": ("movement", "v4a", "test_only", "shape_vs_advance_strength"),
-    "v4a_heading_relaxation": ("movement", "v4a", "test_only", "heading_relaxation"),
-    "v4a_battle_standoff_self_extent_weight": (
-        "movement",
-        "v4a",
-        "test_only",
-        "battle_standoff_self_extent_weight",
-    ),
-    "v4a_battle_standoff_enemy_extent_weight": (
-        "movement",
-        "v4a",
-        "test_only",
-        "battle_standoff_enemy_extent_weight",
-    ),
+    "v4a_reference_surface_mode": ("movement", "v4a", "reference_surface_mode"),
+    "v4a_soft_morphology_relaxation": ("movement", "v4a", "soft_morphology_relaxation"),
+    "v4a_shape_vs_advance_strength": ("movement", "v4a", "shape_vs_advance_strength"),
+    "v4a_heading_relaxation": ("movement", "v4a", "heading_relaxation"),
     "v4a_battle_standoff_hold_band_ratio": (
         "movement",
         "v4a",
-        "test_only",
         "battle_standoff_hold_band_ratio",
     ),
-    "v4a_engaged_speed_scale": ("movement", "v4a", "test_only", "engaged_speed_scale"),
-    "v4a_attack_speed_lateral_scale": ("movement", "v4a", "test_only", "attack_speed_lateral_scale"),
-    "v4a_attack_speed_backward_scale": ("movement", "v4a", "test_only", "attack_speed_backward_scale"),
-    "movement_v3a_experiment": ("movement", "v3a", "test_only", "experiment"),
-    "centroid_probe_scale": ("movement", "v3a", "test_only", "centroid_probe_scale"),
-    "pre_tl_target_substrate": ("movement", "v3a", "test_only", "pre_tl_target_substrate"),
-    "odw_posture_bias_enabled": ("movement", "v3a", "test_only", "odw_posture_bias", "enabled"),
-    "odw_posture_bias_k": ("movement", "v3a", "test_only", "odw_posture_bias", "k"),
-    "odw_posture_bias_clip_delta": ("movement", "v3a", "test_only", "odw_posture_bias", "clip_delta"),
-    "symmetric_movement_sync_enabled": ("movement", "v3a", "test_only", "symmetric_movement_sync_enabled"),
-    "continuous_fr_shaping_enabled": ("movement", "v3a", "test_only", "continuous_fr_shaping", "enabled"),
-    "continuous_fr_shaping_mode": ("movement", "v3a", "test_only", "continuous_fr_shaping", "mode"),
-    "continuous_fr_shaping_a": ("movement", "v3a", "test_only", "continuous_fr_shaping", "a"),
-    "continuous_fr_shaping_sigma": ("movement", "v3a", "test_only", "continuous_fr_shaping", "sigma"),
-    "continuous_fr_shaping_p": ("movement", "v3a", "test_only", "continuous_fr_shaping", "p"),
-    "continuous_fr_shaping_q": ("movement", "v3a", "test_only", "continuous_fr_shaping", "q"),
-    "continuous_fr_shaping_beta": ("movement", "v3a", "test_only", "continuous_fr_shaping", "beta"),
-    "continuous_fr_shaping_gamma": ("movement", "v3a", "test_only", "continuous_fr_shaping", "gamma"),
+    "v4a_battle_target_front_strip_gap_bias": (
+        "movement",
+        "v4a",
+        "battle_target_front_strip_gap_bias",
+    ),
+    "v4a_battle_hold_weight_strength": (
+        "movement",
+        "v4a",
+        "battle_hold_weight_strength",
+    ),
+    "v4a_battle_relation_lead_ticks": (
+        "movement",
+        "v4a",
+        "battle_relation_lead_ticks",
+    ),
+    "v4a_engaged_speed_scale": ("movement", "v4a", "engaged_speed_scale"),
+    "v4a_attack_speed_lateral_scale": ("movement", "v4a", "attack_speed_lateral_scale"),
+    "v4a_attack_speed_backward_scale": ("movement", "v4a", "attack_speed_backward_scale"),
+    "movement_v3a_experiment": ("movement", "v3a", "experiment"),
+    "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
+    "pre_tl_target_substrate": ("movement", "v3a", "pre_tl_target_substrate"),
+    "odw_posture_bias_enabled": ("movement", "v3a", "odw_posture_bias", "enabled"),
+    "odw_posture_bias_k": ("movement", "v3a", "odw_posture_bias", "k"),
+    "odw_posture_bias_clip_delta": ("movement", "v3a", "odw_posture_bias", "clip_delta"),
+    "symmetric_movement_sync_enabled": ("movement", "v3a", "symmetric_movement_sync_enabled"),
+    "continuous_fr_shaping_enabled": ("movement", "v3a", "continuous_fr_shaping", "enabled"),
+    "continuous_fr_shaping_mode": ("movement", "v3a", "continuous_fr_shaping", "mode"),
+    "continuous_fr_shaping_a": ("movement", "v3a", "continuous_fr_shaping", "a"),
+    "continuous_fr_shaping_sigma": ("movement", "v3a", "continuous_fr_shaping", "sigma"),
+    "continuous_fr_shaping_p": ("movement", "v3a", "continuous_fr_shaping", "p"),
+    "continuous_fr_shaping_q": ("movement", "v3a", "continuous_fr_shaping", "q"),
+    "continuous_fr_shaping_beta": ("movement", "v3a", "continuous_fr_shaping", "beta"),
+    "continuous_fr_shaping_gamma": ("movement", "v3a", "continuous_fr_shaping", "gamma"),
 }
 
 OBSERVER_SETTING_PATHS = {
+    "runtime": {
+        "tick_timing_enabled": ("observer", "tick_timing_enabled"),
+    },
     "event_bridge": {
         "theta_split": ("observer", "event_bridge", "theta_split"),
         "theta_env": ("observer", "event_bridge", "theta_env"),
@@ -200,6 +204,17 @@ def get_event_bridge_setting(settings: dict, key: str, default):
     return default
 
 
+def get_observer_setting(settings: dict, key: str, default):
+    runtime_section = settings.get("runtime", {})
+    if isinstance(runtime_section, dict):
+        nested_path = OBSERVER_SETTING_PATHS["runtime"].get(key)
+        if nested_path is not None:
+            nested_value = get_nested_mapping_value(runtime_section, nested_path, MISSING)
+            if nested_value is not MISSING:
+                return nested_value
+    return default
+
+
 def get_collapse_shadow_setting(settings: dict, key: str, default):
     runtime_section = settings.get("runtime", {})
     if isinstance(runtime_section, dict):
@@ -257,7 +272,7 @@ def get_contact_model_test_setting(settings: dict, path: tuple[str, ...], defaul
     if isinstance(runtime_section, dict):
         nested_value = get_nested_mapping_value(
             runtime_section,
-            ("physical", "contact_model", "test_only", "hostile_contact_impedance", *path),
+            ("physical", "contact_model", "hostile_contact_impedance", *path),
             MISSING,
         )
         if nested_value is not MISSING:

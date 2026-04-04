@@ -1,0 +1,11 @@
+flowchart LR
+
+    OBJ["Fixture objective anchor"]:::shared -->|direct feed now| ARR["arrival gain / stop_radius relation"]:::A
+    ARR -->|write now| TD["last_target_direction"]:::B
+    TD -->|direct feed now| AX["morphology axis / reference surface / movement shaping"]:::B
+    AX -->|event only| REACH["objective_reached event<br/>no hard terminal latch"]:::E
+
+    classDef shared fill:#f3f4f6,stroke:#6b7280,color:#111827,stroke-width:1px;
+    classDef A fill:#fde68a,stroke:#b45309,color:#111827,stroke-width:1px;
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef E fill:#ddd6fe,stroke:#7c3aed,color:#111827,stroke-width:1px;

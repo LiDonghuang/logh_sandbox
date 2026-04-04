@@ -40,6 +40,14 @@ FIRE_LINK_BEAM_LAYOUTS = {
     4: ((-1.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (1.0, -1.0)),
     5: ((-1.0, 1.0), (-1.0, -1.0), (0.0, 0.0), (1.0, 1.0), (1.0, -1.0)),
 }
+
+# Unit dual-layer appearance, ordered near -> mid -> far.
+TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA = (0.02, 0.50, 0.90)
+CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA = (0.90, 0.50, 0.0)
+DUAL_LAYER_NEAR_DISTANCE_RATIO, DUAL_LAYER_MID_DISTANCE_RATIO, DUAL_LAYER_FAR_DISTANCE_RATIO = (0.11, 0.19, 0.28)
+DUAL_LAYER_NEAR_DISTANCE_FLOOR, DUAL_LAYER_MID_DISTANCE_FLOOR, DUAL_LAYER_FAR_DISTANCE_FLOOR = (18.0, 42.0, 70.0)
+
+# Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
     5: 1.28,
     4: 1.12,
@@ -47,14 +55,6 @@ HP_BUCKET_SCALES = {
     2: 0.80,
     1: 0.64,
 }
-TOKEN_ALPHA = 0.80
-TOKEN_NEAR_ALPHA = 0.03
-CLUSTER_NEAR_ALPHA = 0.92
-DUAL_LAYER_NEAR_DISTANCE_RATIO = 0.11
-DUAL_LAYER_FAR_DISTANCE_RATIO = 0.28
-DUAL_LAYER_NEAR_DISTANCE_FLOOR = 18.0
-DUAL_LAYER_FAR_DISTANCE_FLOOR = 70.0
-CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
 CLUSTER_VISIBLE_COUNT_BY_BUCKET = {
     5: 10,
     4: 8,
@@ -62,6 +62,20 @@ CLUSTER_VISIBLE_COUNT_BY_BUCKET = {
     2: 4,
     1: 2,
 }
+CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
+    5: (0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+    4: (2, 3, 4, 5, 6, 7, 8, 9),
+    3: (2, 3, 4, 6, 7, 8),
+    2: (2, 3, 4, 7),
+    1: (3, 7),
+}
+
+# Unit inner-cluster geometry.
+CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
+CLUSTER_SHIP_MODEL_UNIT = 0.040
+# length / width / height, with the ship's fore-aft axis running along +Y.
+CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.75, 1.0)
+CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
 CLUSTER_LAYOUT_OFFSETS = (
     (-0.10, 0.418, 0.108),
     (0.10, 0.398, -0.092),
@@ -74,13 +88,6 @@ CLUSTER_LAYOUT_OFFSETS = (
     (0.22, -0.282, -0.102),
     (0.40, -0.182, 0.098),
 )
-CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
-    5: (0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
-    4: (2, 3, 4, 5, 6, 7, 8, 9),
-    3: (2, 3, 4, 6, 7, 8),
-    2: (2, 3, 4, 7),
-    1: (3, 7),
-}
 OBJECTIVE_MARKER_HEIGHT = 0.14
 OBJECTIVE_MARKER_DOT_RADIUS = 1.45
 OBJECTIVE_MARKER_RING_ALPHA = 0.38
@@ -105,7 +112,7 @@ def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     red = int(normalized[0:2], 16) / 255.0
     green = int(normalized[2:4], 16) / 255.0
     blue = int(normalized[4:6], 16) / 255.0
-    return (red, green, blue, TOKEN_ALPHA)
+    return (red, green, blue, TOKEN_FAR_ALPHA)
 
 
 def _brighten_rgb(
@@ -274,20 +281,20 @@ def _build_wedge_template(name: str) -> NodePath:
     return NodePath(geom_node)
 
 
-def _build_cuboid_template(name: str, *, half_width: float, half_length: float, half_height: float) -> NodePath:
+def _build_box_template(name: str, *, half_x: float, half_y: float, half_z: float) -> NodePath:
     vertex_format = GeomVertexFormat.getV3()
     vertex_data = GeomVertexData(name, vertex_format, Geom.UHStatic)
     vertex_writer = GeomVertexWriter(vertex_data, "vertex")
 
     vertices = (
-        (-half_width, half_length, half_height),
-        (half_width, half_length, half_height),
-        (-half_width, half_length, -half_height),
-        (half_width, half_length, -half_height),
-        (-half_width, -half_length, half_height),
-        (half_width, -half_length, half_height),
-        (-half_width, -half_length, -half_height),
-        (half_width, -half_length, -half_height),
+        (-half_x, half_y, half_z),
+        (half_x, half_y, half_z),
+        (-half_x, half_y, -half_z),
+        (half_x, half_y, -half_z),
+        (-half_x, -half_y, half_z),
+        (half_x, -half_y, half_z),
+        (-half_x, -half_y, -half_z),
+        (half_x, -half_y, -half_z),
     )
     for x_value, y_value, z_value in vertices:
         vertex_writer.addData3(float(x_value), float(y_value), float(z_value))
@@ -317,6 +324,38 @@ def _build_cuboid_template(name: str, *, half_width: float, half_length: float, 
     return NodePath(geom_node)
 
 
+def _build_cluster_ship_template(name: str) -> NodePath:
+    model_unit = float(CLUSTER_SHIP_MODEL_UNIT)
+    front_half_x = 0.5 * float(CLUSTER_SHIP_FRONT_BOX_DIMS[1]) * model_unit
+    front_half_y = 0.5 * float(CLUSTER_SHIP_FRONT_BOX_DIMS[0]) * model_unit
+    front_half_z = 0.5 * float(CLUSTER_SHIP_FRONT_BOX_DIMS[2]) * model_unit
+    rear_half_x = 0.5 * float(CLUSTER_SHIP_REAR_BOX_DIMS[1]) * model_unit
+    rear_half_y = 0.5 * float(CLUSTER_SHIP_REAR_BOX_DIMS[0]) * model_unit
+    rear_half_z = 0.5 * float(CLUSTER_SHIP_REAR_BOX_DIMS[2]) * model_unit
+
+    ship_template = NodePath(name)
+
+    rear_box = _build_box_template(
+        f"{name}_rear",
+        half_x=rear_half_x,
+        half_y=rear_half_y,
+        half_z=rear_half_z,
+    )
+    rear_box.reparentTo(ship_template)
+    rear_box.setPos(0.0, -front_half_y, 0.0)
+
+    front_box = _build_box_template(
+        f"{name}_front",
+        half_x=front_half_x,
+        half_y=front_half_y,
+        half_z=front_half_z,
+    )
+    front_box.reparentTo(ship_template)
+    front_box.setPos(0.0, rear_half_y, rear_half_z - front_half_z)
+
+    return ship_template
+
+
 class UnitRenderer:
     def __init__(self, parent: NodePath, replay: ReplayBundle, *, fire_link_mode: str = "enabled") -> None:
         self._parent = parent.attachNewNode("unit_renderer")
@@ -344,6 +383,13 @@ class UnitRenderer:
         self._dual_layer_near_distance = max(
             DUAL_LAYER_NEAR_DISTANCE_FLOOR,
             float(self._replay.arena_size) * DUAL_LAYER_NEAR_DISTANCE_RATIO,
+        )
+        self._dual_layer_mid_distance = max(
+            self._dual_layer_near_distance,
+            max(
+                DUAL_LAYER_MID_DISTANCE_FLOOR,
+                float(self._replay.arena_size) * DUAL_LAYER_MID_DISTANCE_RATIO,
+            ),
         )
         self._dual_layer_far_distance = max(
             DUAL_LAYER_FAR_DISTANCE_FLOOR,
@@ -459,7 +505,7 @@ class UnitRenderer:
         template = NodePath(f"unit_template_{fleet_id}")
         token_np = _build_wedge_template(f"unit_token_{fleet_id}")
         token_np.setName("outer_token")
-        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), TOKEN_ALPHA)
+        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), TOKEN_FAR_ALPHA)
         token_np.setTransparency(TransparencyAttrib.MAlpha)
         token_np.setTwoSided(True)
         token_np.setBin("transparent", 0)
@@ -471,21 +517,16 @@ class UnitRenderer:
         cluster_np.setTwoSided(True)
         cluster_np.setBin("transparent", 10)
         cluster_np.setDepthWrite(False)
-        cuboid_template = _build_cuboid_template(
-            f"unit_cluster_ship_{fleet_id}",
-            half_width=0.020,
-            half_length=0.080,
-            half_height=0.020,
-        )
-        cuboid_template.setColor(*CLUSTER_SHIP_COLOR)
-        cuboid_template.setTransparency(TransparencyAttrib.MAlpha)
-        cuboid_template.setTwoSided(True)
-        cuboid_template.setDepthWrite(False)
+        ship_template = _build_cluster_ship_template(f"unit_cluster_ship_{fleet_id}")
+        ship_template.setColor(*CLUSTER_SHIP_COLOR)
+        ship_template.setTransparency(TransparencyAttrib.MAlpha)
+        ship_template.setTwoSided(True)
+        ship_template.setDepthWrite(False)
         for ship_index, (offset_x, offset_y, offset_z) in enumerate(CLUSTER_LAYOUT_OFFSETS):
-            ship_np = cuboid_template.copyTo(cluster_np)
+            ship_np = ship_template.copyTo(cluster_np)
             ship_np.setName(f"cluster_ship_{ship_index}")
             ship_np.setPos(float(offset_x), float(offset_y), float(offset_z))
-        cuboid_template.removeNode()
+        ship_template.removeNode()
 
         template.hide()
         template.reparentTo(self._parent)
@@ -495,6 +536,7 @@ class UnitRenderer:
     def update_view(self, camera_np: NodePath) -> None:
         camera_pos = camera_np.getPos(self._parent)
         near_distance = float(self._dual_layer_near_distance)
+        mid_distance = float(self._dual_layer_mid_distance)
         far_distance = float(self._dual_layer_far_distance)
         min_unit_distance: float | None = None
         for node_key, root_np in self._unit_nodes.items():
@@ -509,11 +551,24 @@ class UnitRenderer:
             distance = math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
             if min_unit_distance is None or distance < min_unit_distance:
                 min_unit_distance = distance
-            far_weight = _smoothstep(near_distance, far_distance, distance)
-            near_weight = 1.0 - far_weight
-            outer_alpha = TOKEN_NEAR_ALPHA + ((TOKEN_ALPHA - TOKEN_NEAR_ALPHA) * far_weight)
-            token_np.setColorScale(1.0, 1.0, 1.0, outer_alpha / TOKEN_ALPHA)
-            cluster_alpha = CLUSTER_NEAR_ALPHA * near_weight
+            if distance <= near_distance:
+                outer_alpha = TOKEN_NEAR_ALPHA
+                cluster_alpha = CLUSTER_NEAR_ALPHA
+            elif distance <= mid_distance:
+                mid_weight = _smoothstep(near_distance, mid_distance, distance)
+                outer_alpha = _lerp(TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, mid_weight)
+                cluster_alpha = _lerp(CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, mid_weight)
+            elif distance <= far_distance:
+                far_weight = _smoothstep(mid_distance, far_distance, distance)
+                outer_alpha = _lerp(TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA, far_weight)
+                cluster_alpha = _lerp(CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA, far_weight)
+            else:
+                outer_alpha = TOKEN_FAR_ALPHA
+                cluster_alpha = CLUSTER_FAR_ALPHA
+            token_alpha_scale = 1.0
+            if TOKEN_FAR_ALPHA > 1e-9:
+                token_alpha_scale = outer_alpha / TOKEN_FAR_ALPHA
+            token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
             if cluster_alpha > 1e-4:
                 cluster_np.show()
                 cluster_np.setColorScale(1.0, 1.0, 1.0, cluster_alpha)

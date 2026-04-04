@@ -19,37 +19,38 @@
   - Runtime values consumed by simulation.
   - Includes `run_control`, `battlefield`, `fleet`, `unit`, and `runtime` (without test-only mechanism branches).
   - `run_control.post_resolution_hold_steps` is the authoritative hold-window setting for both battle winner hold and neutral-transit objective-arrival hold.
+  - `runtime.observer.tick_timing_enabled` is the single observer-side switch for recording per-tick wall-clock elapsed time into telemetry; default is enabled and it does not change battle semantics.
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.
   - Current usage:
-    - `runtime.physical.contact_model.test_only.hostile_contact_impedance`
-    - `runtime.movement.v4a.test_only.expected_reference_spacing`
-    - `runtime.movement.v4a.test_only.reference_layout_mode`
-    - `runtime.movement.v4a.test_only.reference_surface_mode`
-    - `runtime.movement.v4a.test_only.soft_morphology_relaxation`
-    - `runtime.movement.v4a.test_only.shape_vs_advance_strength`
-    - `runtime.movement.v4a.test_only.heading_relaxation`
-    - `runtime.movement.v4a.test_only.battle_standoff_self_extent_weight`
-    - `runtime.movement.v4a.test_only.battle_standoff_enemy_extent_weight`
-    - `runtime.movement.v4a.test_only.battle_standoff_hold_band_ratio`
-    - `runtime.movement.v4a.test_only.engaged_speed_scale`
-    - `runtime.movement.v4a.test_only.attack_speed_lateral_scale`
-    - `runtime.movement.v4a.test_only.attack_speed_backward_scale`
-    - `runtime.movement.v4a.test_only.restore_strength`
+    - `runtime.physical.contact_model.hostile_contact_impedance`
+    - `runtime.movement.v4a.expected_reference_spacing`
+    - `runtime.movement.v4a.reference_layout_mode`
+    - `runtime.movement.v4a.reference_surface_mode`
+    - `runtime.movement.v4a.soft_morphology_relaxation`
+    - `runtime.movement.v4a.shape_vs_advance_strength`
+    - `runtime.movement.v4a.heading_relaxation`
+    - `runtime.movement.v4a.battle_standoff_hold_band_ratio`
+    - `runtime.movement.v4a.battle_target_front_strip_gap_bias`
+    - `runtime.movement.v4a.battle_relation_lead_ticks`
+    - `runtime.movement.v4a.engaged_speed_scale`
+    - `runtime.movement.v4a.attack_speed_lateral_scale`
+    - `runtime.movement.v4a.attack_speed_backward_scale`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
-    - `runtime.movement.v4a.test_only.expected_reference_spacing` carries the expected/reference formation spacing
-    - `runtime.movement.v4a.test_only.reference_layout_mode` now selects an explicit reference target aspect (`rect_centered_1.0` or `rect_centered_4.0`) distinct from the fleet's initial spawned aspect ratio
-    - `runtime.movement.v4a.test_only.reference_surface_mode` selects between the legacy rigid slot-map reference read and the bounded soft-morphology carrier
-    - `runtime.movement.v4a.test_only.soft_morphology_relaxation` controls fleet-level morphology relaxation for the bounded soft-morphology carrier
-    - `runtime.movement.v4a.test_only.shape_vs_advance_strength` controls how strongly large morphology error suppresses pure objective advance in favor of ongoing shape transition
-    - `runtime.movement.v4a.test_only.heading_relaxation` controls the minimal fleet-level heading realization seam used by the transition carrier
-    - `runtime.movement.v4a.test_only.battle_standoff_self_extent_weight` and `runtime.movement.v4a.test_only.battle_standoff_enemy_extent_weight` define the first bounded fleet-level desired engagement distance `d* = attack_range + self_weight * own_forward_extent + enemy_weight * enemy_forward_extent`
-    - `runtime.movement.v4a.test_only.battle_standoff_hold_band_ratio` defines the near-`d*` no-chase band used by the bounded battle standoff carrier
-    - `runtime.movement.v4a.test_only.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
-    - `runtime.movement.v4a.test_only.attack_speed_lateral_scale` and `runtime.movement.v4a.test_only.attack_speed_backward_scale` define the first bounded attack-direction-aware movement allowance for engaged units, aligned conceptually with the existing combat-angle cosine read
-    - `runtime.movement.v4a.test_only.restore_strength` weakens the current bounded restore response without changing public runtime semantics
+    - `runtime.movement.v4a.expected_reference_spacing` carries the expected/reference formation spacing
+    - `runtime.movement.v4a.reference_layout_mode` now selects an explicit reference target aspect (`rect_centered_1.0` or `rect_centered_4.0`) distinct from the fleet's initial spawned aspect ratio
+    - `runtime.movement.v4a.reference_surface_mode` selects between the legacy rigid slot-map reference read and the bounded soft-morphology carrier
+    - `runtime.movement.v4a.soft_morphology_relaxation` controls fleet-level morphology relaxation for the bounded soft-morphology carrier
+    - `runtime.movement.v4a.shape_vs_advance_strength` controls how strongly large morphology error suppresses pure objective advance in favor of ongoing shape transition
+    - `runtime.movement.v4a.heading_relaxation` controls the minimal fleet-level heading realization seam used by the transition carrier
+    - `runtime.movement.v4a.battle_standoff_hold_band_ratio` defines the near-`d*` no-chase band used by the bounded battle standoff carrier
+    - `runtime.movement.v4a.battle_target_front_strip_gap_bias` is the single active correction bias on the base front-strip target gap; it replaces the older two-weight extent buffer interface on the current local line
+    - `runtime.movement.v4a.battle_hold_weight_strength` defines how strongly the bounded near-`d*` hold state suppresses approach authority; the read is reversible, so if fleets are separated again, pre-contact-like approach can resume
+    - `runtime.movement.v4a.battle_relation_lead_ticks` defines the near-contact lead window in ticks for signed battle-relation slowdown
+    - `runtime.movement.v4a.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
+    - `runtime.movement.v4a.attack_speed_lateral_scale` and `runtime.movement.v4a.attack_speed_backward_scale` define the first bounded attack-direction-aware movement allowance for engaged units, aligned conceptually with the existing combat-angle cosine read
 
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.

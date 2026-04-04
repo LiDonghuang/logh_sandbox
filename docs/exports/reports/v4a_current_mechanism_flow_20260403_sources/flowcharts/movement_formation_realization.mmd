@@ -1,0 +1,12 @@
+flowchart LR
+
+    TD["last_target_direction"]:::B -->|direct feed now| HEAD["movement_heading_current_xy"]:::B
+    AX["morphology_axis_current_xy"]:::B -->|direct feed now| REF["reference surface / expected world positions"]:::B
+    SH["shape_vs_advance"]:::C -->|direct feed now| SPD["transition speed shaping"]:::C
+    ENG["engaged speed envelope<br/>forward / lateral / backward scales"]:::C -->|direct feed now| SPD
+    REF -->|direct feed now| SPD
+    HEAD -->|direct feed now| SPD
+    SPD -->|write now| MOVE["integrate_movement"]:::C
+
+    classDef B fill:#bfdbfe,stroke:#1d4ed8,color:#111827,stroke-width:1px;
+    classDef C fill:#fecaca,stroke:#b91c1c,color:#111827,stroke-width:1px;
