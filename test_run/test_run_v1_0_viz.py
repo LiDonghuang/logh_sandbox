@@ -1132,7 +1132,17 @@ def render_test_run(
         if not stem:
             return None
         suffixes = ("", ".bmp", ".png", ".jpg", ".jpeg", ".webp")
-        candidates = [avatar_dir / stem] if "." in stem else [avatar_dir / f"{stem}{suffix}" for suffix in suffixes[1:]]
+        if "." in stem:
+            candidates = [avatar_dir / stem]
+        else:
+            candidate_stems = [stem]
+            if stem.startswith("avatar_") and not stem.endswith(("_m", "_s")):
+                candidate_stems = [f"{stem}_m"]
+            candidates = [
+                avatar_dir / f"{candidate_stem}{suffix}"
+                for candidate_stem in candidate_stems
+                for suffix in suffixes[1:]
+            ]
         for path in candidates:
             if path.exists():
                 try:

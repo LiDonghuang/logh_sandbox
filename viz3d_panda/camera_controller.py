@@ -32,9 +32,6 @@ class OrbitCameraController:
         self._focus_margin = self._arena_size * 0.25
         self._default_distance = max(90.0, self._arena_size * 1.20)
         self._distance = self._default_distance
-        self._pan_speed = max(20.0, self._arena_size * 0.30)
-        self._orbit_speed = 70.0
-        self._pitch_speed = 45.0
         self._zoom_step = max(8.0, self._arena_size * 0.04)
         self._mouse_pan_scale = max(35.0, self._arena_size * 0.70)
         self._mouse_orbit_scale = 140.0
@@ -45,25 +42,12 @@ class OrbitCameraController:
         self._tracked_fleet_id: str | None = None
         self._tracked_focus_display_xy: tuple[float, float] | None = None
         self._playback_level_index = 0
-        self._keys = {
-            "w": False,
-            "s": False,
-            "a": False,
-            "d": False,
-            "q": False,
-            "e": False,
-            "r": False,
-            "f": False,
-        }
 
         self._focus_np = app.render.attachNewNode("camera_focus")
         self._yaw_np = self._focus_np.attachNewNode("camera_yaw")
         self._pitch_np = self._yaw_np.attachNewNode("camera_pitch")
         app.camera.reparentTo(self._pitch_np)
 
-        for key_name in self._keys:
-            app.accept(key_name, self._set_key_state, [key_name, True])
-            app.accept(f"{key_name}-up", self._set_key_state, [key_name, False])
         app.accept("mouse1", self._set_drag_state, ["pan", True])
         app.accept("mouse1-up", self._set_drag_state, ["pan", False])
         app.accept("mouse3", self._set_drag_state, ["orbit", True])
@@ -74,9 +58,6 @@ class OrbitCameraController:
             app.accept(event_name, self.reset)
 
         self.reset()
-
-    def _set_key_state(self, key_name: str, pressed: bool) -> None:
-        self._keys[key_name] = bool(pressed)
 
     def _mouse_pos(self) -> tuple[float, float] | None:
         watcher = getattr(self._app, "mouseWatcherNode", None)
@@ -397,6 +378,33 @@ class OrbitCameraController:
     def set_playback_level_index(self, playback_level_index: int) -> None:
         self._playback_level_index = max(0, int(playback_level_index))
 
+    def snapshot_state(self) -> dict[str, float | str | None]:
+        return {
+            "focus_x": float(self._focus_np.getX()),
+            "focus_y": float(self._focus_np.getY()),
+            "yaw_deg": float(self._yaw_np.getH()),
+            "pitch_deg": float(self._pitch_np.getP()),
+            "distance": float(self._distance),
+            "tracked_fleet_id": self._tracked_fleet_id,
+        }
+
+    def apply_state_snapshot(self, state: dict[str, float | str | None]) -> None:
+        tracked_fleet_id = state.get("tracked_fleet_id")
+        self._tracked_fleet_id = None if tracked_fleet_id is None else str(tracked_fleet_id)
+        self._tracked_focus_display_xy = None
+        self._set_view(
+            focus_x=float(state["focus_x"]),
+            focus_y=float(state["focus_y"]),
+            yaw_degrees=float(state["yaw_deg"]),
+            pitch_degrees=float(state["pitch_deg"]),
+            distance=float(state["distance"]),
+        )
+        if self._tracked_fleet_id is not None:
+            self._tracked_focus_display_xy = (
+                self._clamp_focus(float(state["focus_x"])),
+                self._clamp_focus(float(state["focus_y"])),
+            )
+
     def zoom(self, delta: float) -> None:
         distance_scale = 1.0
         if self._default_distance > 1e-9:
@@ -409,21 +417,3 @@ class OrbitCameraController:
 
     def update(self, dt: float) -> None:
         self._update_mouse_drag()
-        right_xy, forward_xy = self._ground_plane_basis()
-        pan_distance = self._pan_speed * dt * self._pan_distance_scale()
-        if self._keys["a"]:
-            self._translate_focus(-(pan_distance * right_xy[0]), -(pan_distance * right_xy[1]))
-        if self._keys["d"]:
-            self._translate_focus(pan_distance * right_xy[0], pan_distance * right_xy[1])
-        if self._keys["s"]:
-            self._translate_focus(-(pan_distance * forward_xy[0]), -(pan_distance * forward_xy[1]))
-        if self._keys["w"]:
-            self._translate_focus(pan_distance * forward_xy[0], pan_distance * forward_xy[1])
-        if self._keys["q"]:
-            self._yaw_np.setH(self._yaw_np.getH() + (self._orbit_speed * dt))
-        if self._keys["e"]:
-            self._yaw_np.setH(self._yaw_np.getH() - (self._orbit_speed * dt))
-        if self._keys["r"]:
-            self._pitch_np.setP(min(MAX_CAMERA_PITCH_DEGREES, self._pitch_np.getP() + (self._pitch_speed * dt)))
-        if self._keys["f"]:
-            self._pitch_np.setP(max(MIN_CAMERA_PITCH_DEGREES, self._pitch_np.getP() - (self._pitch_speed * dt)))

@@ -50,11 +50,28 @@
       "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
     },
     "movement": {
+      "v4a": {
+        "test_only": {
+          "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
+          "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
+          "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
+          "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
+          "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
+          "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
+          "battle_standoff_self_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies own current forward formation extent when building desired engagement distance d* on top of attack_range.",
+          "battle_standoff_enemy_extent_weight": "Fleet-level battle standoff seam for v4a. Multiplies enemy current forward formation extent when building desired engagement distance d* on top of attack_range.",
+          "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
+          "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
+          "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
+          "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale.",
+          "restore_strength": "Continuous v4a test-only restore-strength scale in [0.0, 1.0]. 1.0 keeps the current full bridge strength; smaller values weaken the current bounded restore response without opening a new public parameter surface."
+        }
+      },
       "v3a": {
         "test_only": {
           "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
           "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe. v4a currently reuses this direct-cohesion probe unchanged.",
-          "pre_tl_target_substrate": "Pre-TL fleet-level enemy-reference substrate used by test_run target evaluation. Supported end-state set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. This remains harness/test-only.",
+          "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
           "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
           "odw_posture_bias": {
             "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",
@@ -77,7 +94,7 @@
         "hard_enabled": "Enable hard boundary clamp only when enabled=true. true=hard clamp ON; false=soft-only boundary mode."
       },
       "movement_low_level": {
-        "min_unit_spacing": "Minimum initial physical spacing and movement separation radius. Recommended default=2.0; density stress mode=1.0.",
+        "min_unit_spacing": "Physical-layer minimum spacing used by local separation / projection / related low-level runtime behavior. This is distinct from any v4a test-only expected/reference formation spacing candidate.",
         "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
       },
       "fire_control": {
