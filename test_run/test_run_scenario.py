@@ -521,6 +521,12 @@ def _build_run_cfg(
 
 
 def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, test_mode: int) -> dict:
+    v4a_restore_strength = float(get_runtime("v4a_restore_strength", 0.25))
+    if not 0.0 <= v4a_restore_strength <= 1.0:
+        raise ValueError(
+            "runtime.movement.v4a.restore_strength must be within [0.0, 1.0], "
+            f"got {v4a_restore_strength}"
+        )
     v4a_reference_surface_mode = _require_choice(
         "runtime.movement.v4a.reference_surface_mode",
         get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
@@ -674,6 +680,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             if runtime_decision_source_effective == "v3_test"
             else 1.0
         ),
+        "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
         "v4a_shape_vs_advance_strength": v4a_shape_vs_advance_strength,
@@ -717,6 +724,11 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         movement_cfg["odw_posture_bias"]["clip_delta"]
         if movement_cfg["odw_posture_bias"]["enabled_effective"]
         else 0.2
+    )
+    movement_cfg["v4a_restore_strength_effective"] = (
+        movement_cfg["v4a_restore_strength"]
+        if movement_cfg["model_effective"] == "v4a"
+        else 1.0
     )
     movement_cfg["v4a_reference_surface_mode_effective"] = (
         movement_cfg["v4a_reference_surface_mode"]
@@ -1262,6 +1274,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
+            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]
@@ -1499,6 +1512,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
+            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
             "v4a_soft_morphology_relaxation_effective": float(
                 movement_cfg["v4a_soft_morphology_relaxation_effective"]

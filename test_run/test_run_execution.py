@@ -1598,11 +1598,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     battle_hold_weight_current = _clamp01(
                         float(bundle.get("battle_hold_weight_current", 0.0))
                     )
-                    turn_speed_scale = _relax_scalar(
-                        1.0,
-                        turn_speed_scale_raw,
-                        engagement_geometry_active_current,
-                    )
+                    turn_speed_scale = turn_speed_scale_raw
                     shape_speed_scale = max(
                         V4A_TRANSITION_IDLE_SPEED_FLOOR,
                         max(advance_share, shape_need),
@@ -2742,8 +2738,13 @@ def run_simulation(
     movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
     movement_surface["model"] = movement_model
     if movement_model == "v4a":
-        movement_surface["v3a_experiment"] = V3A_EXPERIMENT_BASE
-        movement_surface["centroid_probe_scale"] = 1.0
+        v4a_restore_strength = float(movement_cfg.get("v4a_restore_strength_effective", 0.25))
+        movement_surface["v3a_experiment"] = (
+            V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
+            if v4a_restore_strength < 1.0
+            else V3A_EXPERIMENT_BASE
+        )
+        movement_surface["centroid_probe_scale"] = v4a_restore_strength
     else:
         movement_surface["v3a_experiment"] = (
             str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"

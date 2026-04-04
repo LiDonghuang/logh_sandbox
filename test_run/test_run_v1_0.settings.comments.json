@@ -51,6 +51,7 @@
     },
     "movement": {
       "v4a": {
+        "restore_strength": "Active v4a restore/cohesion bridge strength in [0.0, 1.0]. This surface reuses the runtime v3_test centroid-probe carrier inside v4a. 1.0 disables the bridge-specific attenuation and falls back to the base read; values below 1.0 enable exp_precontact_centroid_probe with the given scale.",
         "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
         "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
         "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",

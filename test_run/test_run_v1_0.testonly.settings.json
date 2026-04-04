@@ -23,6 +23,7 @@
     },
     "movement": {
       "v4a": {
+        "restore_strength": 0.25,
         "expected_reference_spacing": 2.0,
         "reference_layout_mode": "rect_centered_4.0",
         "reference_surface_mode": "soft_morphology_v1",

@@ -21,6 +21,7 @@ RUNTIME_SETTING_PATHS = {
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
+    "v4a_restore_strength": ("movement", "v4a", "restore_strength"),
     "v4a_reference_surface_mode": ("movement", "v4a", "reference_surface_mode"),
     "v4a_soft_morphology_relaxation": ("movement", "v4a", "soft_morphology_relaxation"),
     "v4a_shape_vs_advance_strength": ("movement", "v4a", "shape_vs_advance_strength"),

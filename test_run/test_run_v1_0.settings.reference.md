@@ -25,6 +25,7 @@
   - Test-only mechanism switches and prototype parameters.
   - Current usage:
     - `runtime.physical.contact_model.hostile_contact_impedance`
+    - `runtime.movement.v4a.restore_strength`
     - `runtime.movement.v4a.expected_reference_spacing`
     - `runtime.movement.v4a.reference_layout_mode`
     - `runtime.movement.v4a.reference_surface_mode`
@@ -39,6 +40,7 @@
     - `runtime.movement.v4a.attack_speed_backward_scale`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
+    - `runtime.movement.v4a.restore_strength` is the active v4a reuse of the runtime `v3_test` centroid-probe carrier; values below `1.0` enable the bounded bridge attenuation and values at `1.0` fall back to the base read
     - `runtime.movement.v4a.expected_reference_spacing` carries the expected/reference formation spacing
     - `runtime.movement.v4a.reference_layout_mode` now selects an explicit reference target aspect (`rect_centered_1.0` or `rect_centered_4.0`) distinct from the fleet's initial spawned aspect ratio
     - `runtime.movement.v4a.reference_surface_mode` selects between the legacy rigid slot-map reference read and the bounded soft-morphology carrier
