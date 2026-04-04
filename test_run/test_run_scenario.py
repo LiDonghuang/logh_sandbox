@@ -1251,6 +1251,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "attack_range": unit_cfg["attack_range"],
         "damage_per_tick": unit_cfg["damage_per_tick"],
         "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
+        "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
         "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
         "fsr_strength": float(get_runtime("fsr_strength", 0.0)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
@@ -1275,6 +1276,11 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             }.items()
         },
     }
+    if not 0.0 <= contact_cfg["fire_optimal_range_ratio"] <= 1.0:
+        raise ValueError(
+            "runtime.physical.fire_control.fire_optimal_range_ratio must be within [0.0, 1.0], "
+            f"got {contact_cfg['fire_optimal_range_ratio']}"
+        )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
     contact_cfg["fsr_enabled"] = contact_cfg["fsr_strength"] > 0.0
 
@@ -1391,6 +1397,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
             "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
+            "fire_optimal_range_ratio_effective": float(contact_cfg["fire_optimal_range_ratio"]),
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
             "export_battle_report": False,
@@ -1537,6 +1544,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "attack_range": unit_cfg["attack_range"],
             "damage_per_tick": unit_cfg["damage_per_tick"],
             "fire_quality_alpha": 0.0,
+            "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
             "contact_hysteresis_h": 0.0,
             "fsr_strength": 0.0,
             "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
@@ -1640,6 +1648,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
             "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
+            "fire_optimal_range_ratio_effective": float(simulation_runtime_cfg["contact"]["fire_optimal_range_ratio"]),
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
             "export_battle_report": False,

@@ -20,6 +20,7 @@
   - Includes `run_control`, `battlefield`, `fleet`, `unit`, and `runtime` (without test-only mechanism branches).
   - `run_control.post_resolution_hold_steps` is the authoritative hold-window setting for both battle winner hold and neutral-transit objective-arrival hold.
   - `runtime.observer.tick_timing_enabled` is the single observer-side switch for recording per-tick wall-clock elapsed time into telemetry; default is enabled and it does not change battle semantics.
+  - `runtime.physical.fire_control.fire_optimal_range_ratio` is the bounded range-quality carrier for the current targeting candidate; `attack_range` remains max range, while the ratio defines the full-quality inner band.
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.

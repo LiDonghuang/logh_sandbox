@@ -31,6 +31,7 @@ Authority: Reference only, not canonical semantics authority
   - movement pair pruning with preserved original pair ordering
   - cohesion connectivity / largest connected component search
 - Current merged baseline exposes one first bounded legality seam inside `integrate_movement`: mapping-produced reference-position intake, legality-owned middle-stage tracing, and feasible-position handoff
+- Current `dev_v2.1` local runtime line also adds a first bounded expected-damage targeting candidate inside `resolve_combat()`: score selection can now blend low-HP preference with bounded angle/range-based expected damage, and realized damage shares the same angle/range quality carrier
 
 ### 3. Maintained Harness Spine
 
@@ -79,6 +80,7 @@ Authority: Reference only, not canonical semantics authority
   - `battle_approach_drive_relaxation`
   - `battle_near_contact_internal_stability_blend`
   - `battle_near_contact_speed_relaxation`
+- the same local line now also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the bounded optimal-range carrier for the expected-damage targeting candidate
 
 ### 7. Documentation Layer
 

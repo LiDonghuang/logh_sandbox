@@ -2926,6 +2926,7 @@ def run_simulation(
     if not isinstance(combat_surface, dict):
         raise TypeError("EngineTickSkeleton._combat_surface missing or invalid")
     combat_surface["fire_quality_alpha"] = float(contact_cfg["fire_quality_alpha"])
+    combat_surface["fire_optimal_range_ratio"] = float(contact_cfg["fire_optimal_range_ratio"])
     combat_surface["contact_hysteresis_h"] = float(contact_cfg["contact_hysteresis_h"])
     combat_surface["ch_enabled"] = bool(contact_cfg["ch_enabled"])
 

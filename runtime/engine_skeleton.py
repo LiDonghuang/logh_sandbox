@@ -23,6 +23,7 @@ class EngineTickSkeleton:
             "ch_enabled": True,
             "contact_hysteresis_h": 0.10,
             "fire_quality_alpha": 0.0,
+            "fire_optimal_range_ratio": 1.0,
         }
 
         self._boundary_surface = {
@@ -1798,7 +1799,6 @@ class EngineTickSkeleton:
         diag_surface = self._diag_surface
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
-        attack_range_sq_inv = (1.0 / attack_range_sq) if attack_range_sq > 0.0 else 0.0
         geom_gamma = 0.3
         CH_ENABLED = bool(combat_surface["ch_enabled"])
         h_raw = float(combat_surface["contact_hysteresis_h"])
@@ -1809,12 +1809,44 @@ class EngineTickSkeleton:
         r_enter_sq = r_enter * r_enter
         alpha_raw = float(combat_surface["fire_quality_alpha"])
         fire_quality_alpha = min(0.2, max(0.0, alpha_raw))
+        optimal_range_ratio_raw = float(combat_surface.get("fire_optimal_range_ratio", 1.0))
+        fire_optimal_range_ratio = min(1.0, max(0.0, optimal_range_ratio_raw))
+        optimal_range = self.attack_range * fire_optimal_range_ratio
         diag_enabled = bool(diag_surface["fsr_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
+
+        def _compute_angle_quality(attacker, ux: float, uy: float) -> float:
+            if fire_quality_alpha <= 0.0:
+                return 1.0
+            orient = attacker.orientation_vector
+            ox = orient.x
+            oy = orient.y
+            o_norm_sq = (ox * ox) + (oy * oy)
+            if o_norm_sq <= 0.0:
+                return 1.0
+            o_norm = math.sqrt(o_norm_sq)
+            nox = ox / o_norm
+            noy = oy / o_norm
+            cos_theta = max(-1.0, min(1.0, (nox * ux) + (noy * uy)))
+            return max(0.0, 1.0 + (fire_quality_alpha * cos_theta))
+
+        def _compute_range_quality(distance: float) -> float:
+            if self.attack_range <= 0.0:
+                return 0.0
+            if optimal_range >= (self.attack_range - 1e-12):
+                return 1.0
+            if distance <= optimal_range:
+                return 1.0
+            denom = max(self.attack_range - optimal_range, 1e-12)
+            return max(0.0, min(1.0, (self.attack_range - distance) / denom))
 
         snapshot_positions = {}
         alive_units = {}
         alive_by_fleet = {}
+        targeting_logic_by_fleet = {
+            fleet_id: fleet.parameters.normalized().get("targeting_logic", 0.5)
+            for fleet_id, fleet in state.fleets.items()
+        }
         for unit_id, unit in state.units.items():
             if unit.hit_points <= 0.0:
                 continue
@@ -1859,12 +1891,14 @@ class EngineTickSkeleton:
         attackers_by_fleet = {}
 
         # Snapshot target assignment (no HP writeback dependence).
-        w_hp = 1.0
-        w_dist = 1e-12
         assigned_target = {}
         orientation_override = {}
         for attacker_id, attacker in alive_units.items():
             attacker_pos_x, attacker_pos_y = snapshot_positions[attacker_id]
+            targeting_logic_strength = min(
+                1.0,
+                max(0.0, float(targeting_logic_by_fleet.get(attacker.fleet_id, 0.5))),
+            )
 
             best_enemy_id = None
             best_score = 0.0
@@ -1873,6 +1907,9 @@ class EngineTickSkeleton:
             best_dx = 0.0
             best_dy = 0.0
             best_scan_order = 0
+            best_angle_quality = 1.0
+            best_range_quality = 1.0
+            best_expected_damage_ratio = 1.0
             for enemy_x, enemy_y, scan_order, enemy_id, enemy_fleet_id, normalized_hp, rank in self._iter_spatial_hash_neighbors(
                 combat_scan_hash,
                 attacker_pos_x,
@@ -1886,8 +1923,18 @@ class EngineTickSkeleton:
                 distance_sq = (dx * dx) + (dy * dy)
                 if distance_sq > (attack_range_sq - combat_cmp_eps):
                     continue
-                normalized_distance = distance_sq * attack_range_sq_inv
-                score = (w_hp * normalized_hp) + (w_dist * normalized_distance)
+                distance = math.sqrt(distance_sq)
+                ux = dx / max(distance, 1e-12)
+                uy = dy / max(distance, 1e-12)
+                angle_quality = _compute_angle_quality(attacker, ux, uy)
+                range_quality = _compute_range_quality(distance)
+                expected_damage_ratio = max(1e-6, angle_quality * range_quality)
+                hp_only_score = float(normalized_hp)
+                expected_damage_score = float(normalized_hp) / expected_damage_ratio
+                score = (
+                    ((1.0 - targeting_logic_strength) * hp_only_score)
+                    + (targeting_logic_strength * expected_damage_score)
+                )
 
                 if best_enemy_id is None:
                     best_enemy_id = enemy_id
@@ -1897,6 +1944,9 @@ class EngineTickSkeleton:
                     best_dx = dx
                     best_dy = dy
                     best_scan_order = scan_order
+                    best_angle_quality = angle_quality
+                    best_range_quality = range_quality
+                    best_expected_damage_ratio = expected_damage_ratio
                     continue
                 if score < (best_score - combat_cmp_eps):
                     best_enemy_id = enemy_id
@@ -1906,6 +1956,9 @@ class EngineTickSkeleton:
                     best_dx = dx
                     best_dy = dy
                     best_scan_order = scan_order
+                    best_angle_quality = angle_quality
+                    best_range_quality = range_quality
+                    best_expected_damage_ratio = expected_damage_ratio
                     continue
                 if abs(score - best_score) <= combat_cmp_eps:
                     if distance_sq < (best_dist_sq - combat_cmp_eps):
@@ -1916,6 +1969,9 @@ class EngineTickSkeleton:
                         best_dx = dx
                         best_dy = dy
                         best_scan_order = scan_order
+                        best_angle_quality = angle_quality
+                        best_range_quality = range_quality
+                        best_expected_damage_ratio = expected_damage_ratio
                         continue
                     if abs(distance_sq - best_dist_sq) <= combat_cmp_eps:
                         if rank < best_rank or (rank == best_rank and scan_order < best_scan_order):
@@ -1926,10 +1982,21 @@ class EngineTickSkeleton:
                             best_dx = dx
                             best_dy = dy
                             best_scan_order = scan_order
+                            best_angle_quality = angle_quality
+                            best_range_quality = range_quality
+                            best_expected_damage_ratio = expected_damage_ratio
             if best_enemy_id is None:
                 assigned_target[attacker_id] = None
             else:
-                assigned_target[attacker_id] = (best_enemy_id, best_dx, best_dy, best_dist_sq)
+                assigned_target[attacker_id] = (
+                    best_enemy_id,
+                    best_dx,
+                    best_dy,
+                    best_dist_sq,
+                    best_angle_quality,
+                    best_range_quality,
+                    best_expected_damage_ratio,
+                )
             if best_enemy_id is not None:
                 attacker_fleet = alive_units[attacker_id].fleet_id
                 attackers_by_fleet[attacker_fleet] = attackers_by_fleet.get(attacker_fleet, 0) + 1
@@ -1946,7 +2013,15 @@ class EngineTickSkeleton:
             if target_payload is None:
                 engaged_updates[attacker_id] = (False, None)
                 continue
-            target_id, dx_contact, dy_contact, d_sq = target_payload
+            (
+                target_id,
+                dx_contact,
+                dy_contact,
+                d_sq,
+                angle_quality_assigned,
+                range_quality_assigned,
+                expected_damage_ratio_assigned,
+            ) = target_payload
             prev_engaged = attacker.engaged
             prev_target_id = attacker.engaged_target_id
 
@@ -1975,25 +2050,9 @@ class EngineTickSkeleton:
             p_target = participation_by_fleet.get(target.fleet_id, 0.0)
             coupling = 1.0 + (geom_gamma * (p_attacker - p_target))
 
-            q = 1.0
-            if fire_quality_alpha > 0.0 and d_sq > 0.0:
-                v_norm = math.sqrt(d_sq)
-                ux = dx_contact / v_norm
-                uy = dy_contact / v_norm
-
-                orient = attacker.orientation_vector
-                ox = orient.x
-                oy = orient.y
-                o_norm_sq = (ox * ox) + (oy * oy)
-                if o_norm_sq > 0.0:
-                    o_norm = math.sqrt(o_norm_sq)
-                    nox = ox / o_norm
-                    noy = oy / o_norm
-                    cos_theta = max(-1.0, min(1.0, (nox * ux) + (noy * uy)))
-                    q = 1.0 + (fire_quality_alpha * cos_theta)
-                q = max(0.0, q)
-
-            event_damage = self.damage_per_tick * coupling * q
+            q = max(0.0, float(angle_quality_assigned))
+            range_quality = max(0.0, min(1.0, float(range_quality_assigned)))
+            event_damage = self.damage_per_tick * coupling * q * range_quality
             incoming_damage[target_id] += event_damage
             damage_events_count += 1
             if sample_contact_debug is None:
@@ -2003,6 +2062,9 @@ class EngineTickSkeleton:
                     "distance_sq": d_sq,
                     "r_enter_sq": r_enter_sq,
                     "r_exit_sq": r_exit_sq,
+                    "angle_quality": q,
+                    "range_quality": range_quality,
+                    "expected_damage_ratio": float(expected_damage_ratio_assigned),
                     "damage": event_damage,
                 }
 

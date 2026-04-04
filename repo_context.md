@@ -67,6 +67,7 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
   - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
   - current hot-path cleanup includes local spatial-hash use for combat candidate generation, movement pair pruning with preserved pair order, and cohesion connectivity search
   - current merged baseline now exposes one first bounded legality seam after mapping-produced reference positions are available and before downstream feasible-position consumption
+  - current `dev_v2.1` line also carries a first local expected-damage targeting candidate in `resolve_combat()`: target selection now considers bounded angle/range-derived expected damage, while `attack_range` remains max range and `fire_optimal_range_ratio` defines a local optimal-range carrier
 
 ## Test Harness Paths
 
@@ -165,6 +166,7 @@ Current availability status:
 - `test_run/test_run_v1_0.runtime.settings.json`
   - runtime values
   - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and `neutral_transit_v1` objective-arrival continuation
+  - current `dev_v2.1` local runtime line also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the first bounded range-quality carrier for the new targeting candidate
 - `test_run/test_run_v1_0.testonly.settings.json`
   - test-only harness controls
   - active PR #6 / `dev_v2.1` local movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`; `v4a.restore_strength` is active again as the runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`, and the first near-contact smoothing group (`battle_hold_relaxation`, `battle_approach_drive_relaxation`, `battle_near_contact_internal_stability_blend`, `battle_near_contact_speed_relaxation`) is also active again on the local `v4a` line

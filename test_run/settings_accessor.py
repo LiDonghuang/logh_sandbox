@@ -13,6 +13,7 @@ RUNTIME_SETTING_PATHS = {
     "v3_connect_radius_multiplier": ("semantics", "collapse_signal", "v3_connect_radius_multiplier"),
     "v3_r_ref_radius_multiplier": ("semantics", "collapse_signal", "v3_r_ref_radius_multiplier"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
+    "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
     "contact_hysteresis_h": ("physical", "contact_model", "contact_hysteresis_h"),
     "fsr_strength": ("physical", "contact_model", "fsr_strength"),
