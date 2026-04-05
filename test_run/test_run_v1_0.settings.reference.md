@@ -20,7 +20,13 @@
   - Includes `run_control`, `battlefield`, `fleet`, `unit`, and `runtime` (without test-only mechanism branches).
   - `run_control.post_resolution_hold_steps` is the authoritative hold-window setting for both battle winner hold and neutral-transit objective-arrival hold.
   - `runtime.observer.tick_timing_enabled` is the single observer-side switch for recording per-tick wall-clock elapsed time into telemetry; default is enabled and it does not change battle semantics.
-  - `runtime.physical.fire_control.fire_optimal_range_ratio` is the bounded range-quality carrier for the current targeting candidate; `attack_range` remains max range, while the ratio defines the full-quality inner band.
+  - The current targeting candidate consumes:
+    - `runtime.physical.fire_control.fire_quality_alpha`
+    - `runtime.physical.fire_control.fire_optimal_range_ratio`
+  - `attack_range` remains max range; `fire_optimal_range_ratio` defines the full-quality inner band and `fire_quality_alpha` defines the directional fire-quality modifier.
+  - Current read:
+    - `angle_quality = max(0, 1 + fire_quality_alpha * cos(theta))`
+    - `range_quality = 1.0` inside the inner optimal band, then linearly decays to `0.0` at `attack_range`
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.
@@ -35,10 +41,17 @@
     - `runtime.movement.v4a.heading_relaxation`
     - `runtime.movement.v4a.battle_standoff_hold_band_ratio`
     - `runtime.movement.v4a.battle_target_front_strip_gap_bias`
+    - `runtime.movement.v4a.battle_hold_weight_strength`
     - `runtime.movement.v4a.battle_relation_lead_ticks`
+    - `runtime.movement.v4a.battle_hold_relaxation`
+    - `runtime.movement.v4a.battle_approach_drive_relaxation`
+    - `runtime.movement.v4a.battle_near_contact_internal_stability_blend`
+    - `runtime.movement.v4a.battle_near_contact_speed_relaxation`
     - `runtime.movement.v4a.engaged_speed_scale`
     - `runtime.movement.v4a.attack_speed_lateral_scale`
     - `runtime.movement.v4a.attack_speed_backward_scale`
+    - `runtime.movement.v3a.experiment`
+    - `runtime.movement.v3a.centroid_probe_scale`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
     - `runtime.movement.v4a.restore_strength` is the active v4a reuse of the runtime `v3_test` centroid-probe carrier; values below `1.0` enable the bounded bridge attenuation and values at `1.0` fall back to the base read
@@ -58,6 +71,7 @@
     - `runtime.movement.v4a.battle_near_contact_speed_relaxation` defines the restored per-unit max-speed smoothing seam used after near-contact internal stabilization adjusts unit-local speed targets
     - `runtime.movement.v4a.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
     - `runtime.movement.v4a.attack_speed_lateral_scale` and `runtime.movement.v4a.attack_speed_backward_scale` define the first bounded attack-direction-aware movement allowance for engaged units, aligned conceptually with the existing combat-angle cosine read
+    - `runtime.movement.v3a.experiment` and `runtime.movement.v3a.centroid_probe_scale` remain live only as transitional `v3a` / `v3_test` support surfaces; they should not be treated as active `v4a` knobs
 
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.
