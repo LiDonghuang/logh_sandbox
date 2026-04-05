@@ -51,7 +51,7 @@
     },
     "movement": {
       "v4a": {
-        "restore_strength": "Active v4a restore/cohesion bridge strength in [0.0, 1.0]. This surface reuses the runtime v3_test centroid-probe carrier inside v4a. 1.0 disables the bridge-specific attenuation and falls back to the base read; values below 1.0 enable exp_precontact_centroid_probe with the given scale.",
+        "restore_strength": "Active v4a native restore/cohesion-strength seam in [0.0, 1.0]. This surface now feeds a dedicated native v4a runtime movement scalar. 1.0 keeps the full v4a restore/cohesion contribution; values below 1.0 attenuate that v4a restore term directly without reusing the old v3_test centroid-probe carrier.",
         "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
         "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
         "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
@@ -72,8 +72,7 @@
       },
       "v3a": {
         "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
-        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe on the v3a line. v4a no longer reads this setting directly; current v4a restore behavior instead uses its own restore_strength surface while still reusing the same underlying runtime carrier under v3_test.",
-        "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
+        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe on the v3a line. Active v4a restore_strength no longer reuses this carrier.",
         "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
         "odw_posture_bias": {
           "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",

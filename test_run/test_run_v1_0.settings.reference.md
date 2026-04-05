@@ -54,7 +54,7 @@
     - `runtime.movement.v3a.centroid_probe_scale`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
-    - `runtime.movement.v4a.restore_strength` is the active v4a reuse of the runtime `v3_test` centroid-probe carrier; values below `1.0` enable the bounded bridge attenuation and values at `1.0` fall back to the base read
+    - `runtime.movement.v4a.restore_strength` is the active native v4a restore/cohesion-strength seam; values below `1.0` attenuate the v4a restore term directly and values at `1.0` keep the full base read
     - `runtime.movement.v4a.expected_reference_spacing` carries the expected/reference formation spacing
     - `runtime.movement.v4a.reference_layout_mode` now selects an explicit reference target aspect (`rect_centered_1.0` or `rect_centered_4.0`) distinct from the fleet's initial spawned aspect ratio
     - `runtime.movement.v4a.reference_surface_mode` selects between the legacy rigid slot-map reference read and the bounded soft-morphology carrier
@@ -71,7 +71,7 @@
     - `runtime.movement.v4a.battle_near_contact_speed_relaxation` defines the restored per-unit max-speed smoothing seam used after near-contact internal stabilization adjusts unit-local speed targets
     - `runtime.movement.v4a.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
     - `runtime.movement.v4a.attack_speed_lateral_scale` and `runtime.movement.v4a.attack_speed_backward_scale` define the first bounded attack-direction-aware movement allowance for engaged units, aligned conceptually with the existing combat-angle cosine read
-    - `runtime.movement.v3a.experiment` and `runtime.movement.v3a.centroid_probe_scale` remain live only as transitional `v3a` / `v3_test` support surfaces; they should not be treated as active `v4a` knobs
+    - `runtime.movement.v3a.experiment` and `runtime.movement.v3a.centroid_probe_scale` remain live only as `v3a` support surfaces; they should not be treated as active `v4a` knobs
 
 - `test_run_v1_0.viz.settings.json`
   - Rendering/export/layout controls.

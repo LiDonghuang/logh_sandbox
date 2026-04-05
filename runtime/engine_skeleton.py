@@ -42,6 +42,7 @@ class EngineTickSkeleton:
         self._movement_surface = {
             "alpha_sep": 0.6,
             "model": "v3a",
+            "v4a_restore_strength": 1.0,
             "v3a_experiment": "base",
             "centroid_probe_scale": 1.0,
             "odw_posture_bias_enabled": False,
@@ -898,6 +899,7 @@ class EngineTickSkeleton:
         allowed_v3a_experiments = {"base", "exp_precontact_centroid_probe"}
         if movement_v3a_experiment not in allowed_v3a_experiments:
             movement_v3a_experiment = "base"
+        v4a_restore_strength = min(1.0, max(0.0, float(movement_surface.get("v4a_restore_strength", 1.0))))
         centroid_probe_scale = min(1.0, max(0.0, float(movement_surface["centroid_probe_scale"])))
         odw_posture_bias_fleet_enabled = bool(movement_surface["odw_posture_bias_enabled"])
         odw_posture_bias_k_fleet = max(0.0, float(movement_surface["odw_posture_bias_k"]))
@@ -1332,7 +1334,10 @@ class EngineTickSkeleton:
                 cohesion_scale = 1.0 + (0.40 * anti_stretch)
                 cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
                 cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
-                if movement_v3a_experiment == "exp_precontact_centroid_probe":
+                if v4a_active:
+                    cohesion_x *= v4a_restore_strength
+                    cohesion_y *= v4a_restore_strength
+                elif movement_v3a_experiment == "exp_precontact_centroid_probe":
                     # A-line causal probe: only scale centroid restoration term.
                     cohesion_x *= centroid_probe_scale
                     cohesion_y *= centroid_probe_scale
@@ -1808,7 +1813,7 @@ class EngineTickSkeleton:
         r_exit_sq = r_exit * r_exit
         r_enter_sq = r_enter * r_enter
         alpha_raw = float(combat_surface["fire_quality_alpha"])
-        fire_quality_alpha = min(0.2, max(0.0, alpha_raw))
+        fire_quality_alpha = min(1.0, max(0.0, alpha_raw))
         optimal_range_ratio_raw = float(combat_surface.get("fire_optimal_range_ratio", 1.0))
         fire_optimal_range_ratio = min(1.0, max(0.0, optimal_range_ratio_raw))
         optimal_range = self.attack_range * fire_optimal_range_ratio
@@ -1843,10 +1848,6 @@ class EngineTickSkeleton:
         snapshot_positions = {}
         alive_units = {}
         alive_by_fleet = {}
-        targeting_logic_by_fleet = {
-            fleet_id: fleet.parameters.normalized().get("targeting_logic", 0.5)
-            for fleet_id, fleet in state.fleets.items()
-        }
         for unit_id, unit in state.units.items():
             if unit.hit_points <= 0.0:
                 continue
@@ -1895,10 +1896,6 @@ class EngineTickSkeleton:
         orientation_override = {}
         for attacker_id, attacker in alive_units.items():
             attacker_pos_x, attacker_pos_y = snapshot_positions[attacker_id]
-            targeting_logic_strength = min(
-                1.0,
-                max(0.0, float(targeting_logic_by_fleet.get(attacker.fleet_id, 0.5))),
-            )
 
             best_enemy_id = None
             best_score = 0.0
@@ -1929,12 +1926,7 @@ class EngineTickSkeleton:
                 angle_quality = _compute_angle_quality(attacker, ux, uy)
                 range_quality = _compute_range_quality(distance)
                 expected_damage_ratio = max(1e-6, angle_quality * range_quality)
-                hp_only_score = float(normalized_hp)
-                expected_damage_score = float(normalized_hp) / expected_damage_ratio
-                score = (
-                    ((1.0 - targeting_logic_strength) * hp_only_score)
-                    + (targeting_logic_strength * expected_damage_score)
-                )
+                score = float(normalized_hp) / expected_damage_ratio
 
                 if best_enemy_id is None:
                     best_enemy_id = enemy_id

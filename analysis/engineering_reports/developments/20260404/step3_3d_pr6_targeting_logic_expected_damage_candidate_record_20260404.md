@@ -37,20 +37,20 @@ Read:
 
 Current default on this line:
 
+- `fire_quality_alpha = 0.33`
 - `fire_optimal_range_ratio = 0.5`
 
 ## Target Selection Candidate
 
-Current target score is a bounded personality blend:
+Current target score is:
 
-- `hp_only_score = normalized_hp`
-- `expected_damage_score = normalized_hp / expected_damage_ratio`
-- `score = (1 - targeting_logic_strength) * hp_only_score + targeting_logic_strength * expected_damage_score`
+- `score = normalized_hp / expected_damage_ratio`
 
 Where:
 
-- `targeting_logic_strength` comes from normalized fleet `targeting_logic`
 - `expected_damage_ratio = angle_quality * range_quality`
+- `angle_quality = max(0, 1 + fire_quality_alpha * cos(theta))`
+- `range_quality = 1.0` inside the optimal band and then linearly decays to `0.0` at `attack_range`
 
 This is intentionally a first bounded candidate only.
 

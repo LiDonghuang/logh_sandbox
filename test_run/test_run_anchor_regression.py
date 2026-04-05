@@ -29,7 +29,6 @@ ROUTINE_RANDOM_SEED = 12345
 ROUTINE_BACKGROUND_SEED = 24680
 ROUTINE_MOVEMENT_EXPERIMENT = "exp_precontact_centroid_probe"
 ROUTINE_CENTROID_PROBE_SCALE = 0.5
-ROUTINE_PRE_TL_TARGET_SUBSTRATE = "nearest5_centroid"
 ROUTINE_MIN_UNIT_SPACING = 2.0
 ROUTINE_METRICS = (
     "final_tick",
@@ -135,7 +134,6 @@ def _build_routine_settings(base_settings: dict, fixture: dict, steps: int, cont
     movement_v3a = runtime.setdefault("movement", {}).setdefault("v3a", {}).setdefault("test_only", {})
     movement_v3a["experiment"] = ROUTINE_MOVEMENT_EXPERIMENT
     movement_v3a["centroid_probe_scale"] = ROUTINE_CENTROID_PROBE_SCALE
-    movement_v3a["pre_tl_target_substrate"] = ROUTINE_PRE_TL_TARGET_SUBSTRATE
     movement_v3a["symmetric_movement_sync_enabled"] = True
     movement_v3a.setdefault("odw_posture_bias", {})["enabled"] = True
     movement_v3a["odw_posture_bias"]["k"] = 0.5

@@ -72,19 +72,10 @@ RUNTIME_SETTING_PATHS = {
     "v4a_attack_speed_backward_scale": ("movement", "v4a", "attack_speed_backward_scale"),
     "movement_v3a_experiment": ("movement", "v3a", "experiment"),
     "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
-    "pre_tl_target_substrate": ("movement", "v3a", "pre_tl_target_substrate"),
     "odw_posture_bias_enabled": ("movement", "v3a", "odw_posture_bias", "enabled"),
     "odw_posture_bias_k": ("movement", "v3a", "odw_posture_bias", "k"),
     "odw_posture_bias_clip_delta": ("movement", "v3a", "odw_posture_bias", "clip_delta"),
     "symmetric_movement_sync_enabled": ("movement", "v3a", "symmetric_movement_sync_enabled"),
-    "continuous_fr_shaping_enabled": ("movement", "v3a", "continuous_fr_shaping", "enabled"),
-    "continuous_fr_shaping_mode": ("movement", "v3a", "continuous_fr_shaping", "mode"),
-    "continuous_fr_shaping_a": ("movement", "v3a", "continuous_fr_shaping", "a"),
-    "continuous_fr_shaping_sigma": ("movement", "v3a", "continuous_fr_shaping", "sigma"),
-    "continuous_fr_shaping_p": ("movement", "v3a", "continuous_fr_shaping", "p"),
-    "continuous_fr_shaping_q": ("movement", "v3a", "continuous_fr_shaping", "q"),
-    "continuous_fr_shaping_beta": ("movement", "v3a", "continuous_fr_shaping", "beta"),
-    "continuous_fr_shaping_gamma": ("movement", "v3a", "continuous_fr_shaping", "gamma"),
 }
 
 OBSERVER_SETTING_PATHS = {

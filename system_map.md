@@ -74,13 +74,14 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
 - current authoritative post-resolution hold surface is `test_run/test_run_v1_0.runtime.settings.json::run_control.post_resolution_hold_steps`
-- current local `20260404` / `dev_v2.1` line restores `v4a.restore_strength` as an explicit active runtime-facing centroid-probe bridge under `runtime_decision_source = v3_test`
+- current local cleanup line carries `v4a.restore_strength` as an explicit native `v4a` runtime seam rather than the old centroid-probe bridge
 - the same local line also restores the first bounded near-contact smoothing/stability group on the public `v4a` test-only surface:
   - `battle_hold_relaxation`
   - `battle_approach_drive_relaxation`
   - `battle_near_contact_internal_stability_blend`
   - `battle_near_contact_speed_relaxation`
 - the same local line now also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the bounded optimal-range carrier for the expected-damage targeting candidate
+- the same local cleanup line narrows old-family public settings surface by retiring `continuous_fr_shaping` and `pre_tl_target_substrate`; retained `v3a` support knobs are now more explicitly legacy/fallback material
 
 ### 7. Documentation Layer
 
@@ -155,7 +156,7 @@ Current availability:
 - a new `20260329` two-layer spacing opening package now records the structural opening scope plus a second bounded comparison path; current engineering read is that the decoupling result remains strong across more than one bounded path, and governance is also being asked whether `v4a` should be reviewed as a possible shared neutral+battle default candidate while keeping `v3a` retained
 - the `20260329` package now also includes a two-layer spacing implementation-prep discussion note and a `v4a` shared default-review discussion note; current read remains discussion-only, with spacing implementation and default switching still closed
 - the `20260329` package now also includes one bounded battle-path-relevant two-layer spacing evidence pack; current read is that the spacing split remains a major amplifier outside the earlier neutral-transit fixture frame, but the line still remains pre-implementation
-- the active `eng/two-layer-spacing-first-bounded-impl` PR branch now adds a first bounded two-layer spacing implementation candidate inside `test_run/`; current branch-only read is now split more clearly by the PR #6 follow-up package plus the latest restore-surface reactivation: neutral-transit shows a semantically real but still too-rigid formation substrate candidate, battle contact still surfaces the old hostile-penetration problem as a secondary future line, and the active `v4a.restore_strength` seam is again recognized as a real runtime-facing carrier under `runtime_decision_source = v3_test`
+- the post-PR6 cleanup line keeps the first bounded two-layer spacing implementation candidate inside `test_run/`; current read is now split more clearly by the cleanup package: neutral-transit still shows a semantically real but too-rigid formation substrate candidate, battle contact still surfaces the old hostile-penetration problem as a future line, and `v4a.restore_strength` is now carried by a native `v4a` seam while old-family harness surfaces are being retired one group at a time
 - the same PR #6 branch now also adds a bounded `soft_morphology_v1` reference-surface carrier inside `test_run/`; current branch-only read is that expected/reference spacing, physical minimum spacing, and restore remain semantically real, while the new carrier replaces rigid dead-slot continuation with a planar-first soft morphology surface plus stable broad-band ownership, yet neutral-transit still reads too tight for merge discussion
 - the same PR #6 branch now also adds a bounded transition-movement package inside `test_run/`; current branch-only read is that `shape_vs_advance_strength`, `heading_relaxation`, and continuous material-phase transport materially reduce the previous non-arrival bug, while the harness-only morphology-level terminal/hold stage has since been disabled locally after Human read judged its arrival regularization too discrete
 - the same PR #6 branch now also adds a Round 1 / Round 2 formation-transition package and new `v4a test_only` battle seams in `test_run/`; current branch-only read is that battle can now be read through a bounded fleet-level standoff distance plus a unit-level attack-direction-aware speed envelope, while Human read says these seams are basically correct and now expose the next visible battle issue more clearly: drifting fire-plane alignment, wing-localized engagement, and rotation around a local contact junction

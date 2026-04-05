@@ -291,14 +291,6 @@ def _render_run_configuration_section(
             f"`{run_config_snapshot.get('collapse_decision_source_effective', 'legacy_v2')}`",
         ),
         ("movement_model_effective", f"`{run_config_snapshot.get('movement_model_effective', 'v3a')}`"),
-        (
-            "movement_v3a_experiment_effective",
-            f"`{run_config_snapshot.get('movement_v3a_experiment_effective', 'base')}`",
-        ),
-        (
-            "centroid_probe_scale_effective",
-            f"`{run_config_snapshot.get('centroid_probe_scale_effective', 'N/A')}`",
-        ),
         ("random_seed_effective", f"`{run_config_snapshot.get('random_seed_effective', 'N/A')}`"),
         (
             "background_map_seed_effective",
@@ -333,6 +325,20 @@ def _render_run_configuration_section(
         ("alpha_sep", f"`{run_config_snapshot.get('alpha_sep', 0.6)}`"),
         ("overrides_applied", "none"),
     ]
+    if "movement_v3a_experiment_effective" in run_config_snapshot:
+        rows.append(
+            (
+                "movement_v3a_experiment_effective",
+                f"`{run_config_snapshot['movement_v3a_experiment_effective']}`",
+            )
+        )
+    if "centroid_probe_scale_effective" in run_config_snapshot:
+        rows.append(
+            (
+                "centroid_probe_scale_effective",
+                f"`{run_config_snapshot['centroid_probe_scale_effective']}`",
+            )
+        )
     return ["## 0. Run Configuration Snapshot", *[f"- {label}: {value}" for label, value in rows], ""]
 
 

@@ -101,8 +101,8 @@ Artifact output conventions:
 - Density stress mode:
   - `runtime.physical.movement_low_level.min_unit_spacing = 1.0`
 - Fire quality anisotropy defaults (documented freeze):
-  - `runtime.physical.fire_control.fire_quality_alpha = 0.1`
-  - `runtime.physical.fire_control.alpha_safe_max = 0.15` (documentation-level bound)
+  - `runtime.physical.fire_control.fire_quality_alpha = 0.33`
+  - `runtime.physical.fire_control.alpha_safe_max = 1.0` (documentation-level current runtime clamp)
 - Runtime feature toggles (canonical):
   - `runtime.physical.contact_model.contact_hysteresis_h <= 0` => CH disabled
   - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled

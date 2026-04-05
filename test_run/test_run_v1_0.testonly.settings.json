@@ -45,7 +45,6 @@
       "v3a": {
         "experiment": "exp_precontact_centroid_probe",
         "centroid_probe_scale": 0.5,
-        "pre_tl_target_substrate": "nearest5_centroid",
         "symmetric_movement_sync_enabled": true,
         "odw_posture_bias": {
           "enabled": true,

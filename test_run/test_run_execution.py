@@ -5,7 +5,7 @@ from dataclasses import replace
 from typing import Any
 
 from runtime.engine_skeleton import EngineTickSkeleton
-from runtime.runtime_v0_1 import BattleState, PersonalityParameters, UnitState, Vec2
+from runtime.runtime_v0_1 import BattleState, UnitState, Vec2
 
 from test_run.test_run_telemetry import (
     compute_bridge_metrics_per_side,
@@ -25,19 +25,6 @@ V3A_EXPERIMENT_LABELS = {
     V3A_EXPERIMENT_BASE,
     V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE,
 }
-PRE_TL_TARGET_SUBSTRATE_NEAREST5 = "nearest5_centroid"
-PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL = "weighted_local"
-PRE_TL_TARGET_SUBSTRATE_LOCAL_CLUSTER = "local_cluster"
-PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED = "soft_local_weighted"
-PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT = "soft_local_weighted_tight"
-PRE_TL_TARGET_SUBSTRATE_LABELS = {
-    PRE_TL_TARGET_SUBSTRATE_NEAREST5,
-    PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL,
-    PRE_TL_TARGET_SUBSTRATE_LOCAL_CLUSTER,
-    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
-    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
-}
-PRE_TL_TARGET_SUBSTRATE_DEFAULT = "nearest5_centroid"
 HOSTILE_CONTACT_IMPEDANCE_MODE_OFF = "off"
 HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 = "hybrid_v2"
 HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1 = "intent_unified_spacing_v1"
@@ -52,16 +39,6 @@ HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT = 0.20
 HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT = 0.50
 HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT = 1.00
 HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT = 1.00
-CONTINUOUS_FR_SHAPING_OFF = "off"
-CONTINUOUS_FR_SHAPING_CANDIDATE_A = "candidate_a"
-CONTINUOUS_FR_SHAPING_CANDIDATE_B = "candidate_b"
-CONTINUOUS_FR_SHAPING_CANDIDATE_C = "candidate_c"
-CONTINUOUS_FR_SHAPING_LABELS = {
-    CONTINUOUS_FR_SHAPING_OFF,
-    CONTINUOUS_FR_SHAPING_CANDIDATE_A,
-    CONTINUOUS_FR_SHAPING_CANDIDATE_B,
-    CONTINUOUS_FR_SHAPING_CANDIDATE_C,
-}
 BRIDGE_THETA_SPLIT_DEFAULT = 1.715
 BRIDGE_THETA_ENV_DEFAULT = 0.583
 BRIDGE_SUSTAIN_TICKS_DEFAULT = 20
@@ -166,14 +143,6 @@ def _require_mapping(cfg: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     if not isinstance(section, Mapping):
         raise TypeError(f"run_simulation requires '{key}' to be a mapping, got {type(section).__name__}")
     return section
-
-
-def _sigmoid(value: float) -> float:
-    if value >= 0.0:
-        z = math.exp(-value)
-        return 1.0 / (1.0 + z)
-    z = math.exp(value)
-    return z / (1.0 + z)
 
 
 def _relax_scalar(current_value: float, target_value: float, weight: float) -> float:
@@ -464,86 +433,6 @@ def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[st
         float(normalized_contract["anchor_point_xyz"][0]),
         float(normalized_contract["anchor_point_xyz"][1]),
     )
-
-
-def _continuous_fr_midband_gate(kappa: float, sigma: float) -> float:
-    sigma_eff = max(1e-6, float(sigma))
-    delta = float(kappa) - 0.5
-    exponent = -((delta * delta) / (2.0 * sigma_eff * sigma_eff))
-    return math.exp(exponent)
-
-
-def _compute_continuous_fr_shaping(
-    *,
-    mode: str,
-    kappa: float,
-    pd_norm: float,
-    engaged_fraction: float,
-    mobility_raw: float,
-    a: float,
-    sigma: float,
-    p: float,
-    q: float,
-    beta: float,
-    gamma: float,
-) -> dict[str, float | bool | str]:
-    mode_effective = str(mode).strip().lower()
-    kappa_base = _clamp01(float(kappa))
-    pd_norm_base = _clamp01(float(pd_norm))
-    engaged_fraction_base = _clamp01(float(engaged_fraction))
-    precontact_gate = _clamp01(1.0 - engaged_fraction_base)
-    influence = 0.0
-    midband_gate = _continuous_fr_midband_gate(kappa_base, sigma)
-    pd_factor = pd_norm_base ** max(0.0, float(p))
-    precontact_factor = precontact_gate ** max(0.0, float(q))
-    mb_taper = 1.0
-    pd_shoulder = pd_factor
-
-    if mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_A:
-        influence = float(a) * midband_gate * pd_factor * precontact_factor
-    elif mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_B:
-        mb_taper = 1.0 / (1.0 + math.exp(max(0.0, float(beta)) * (float(mobility_raw) - 5.0)))
-        influence = float(a) * midband_gate * pd_factor * precontact_factor * mb_taper
-    elif mode_effective == CONTINUOUS_FR_SHAPING_CANDIDATE_C:
-        mb_taper = 1.0 / (1.0 + math.exp(max(0.0, float(beta)) * (float(mobility_raw) - 5.0)))
-        pd_shoulder = _sigmoid(max(0.0, float(gamma)) * (pd_norm_base - 0.5))
-        influence = float(a) * midband_gate * pd_shoulder * precontact_factor * mb_taper
-
-    influence = _clamp01(influence)
-    attenuation = _clamp01(1.0 - influence)
-    return {
-        "mode": mode_effective,
-        "active": mode_effective in CONTINUOUS_FR_SHAPING_LABELS and mode_effective != CONTINUOUS_FR_SHAPING_OFF,
-        "kappa_base": kappa_base,
-        "kappa_eff": kappa_base * attenuation,
-        "attenuation": attenuation,
-        "influence": influence,
-        "midband_gate": midband_gate,
-        "pd_factor": pd_factor,
-        "pd_shoulder": pd_shoulder,
-        "precontact_factor": precontact_factor,
-        "mb_taper": mb_taper,
-        "engaged_fraction": engaged_fraction_base,
-        "pd_norm": pd_norm_base,
-        "mobility_raw": float(mobility_raw),
-    }
-
-
-class FormationRigidityFirstReadProxy:
-    def __init__(self, base_parameters: PersonalityParameters, kappa_eff: float) -> None:
-        self._base_parameters = base_parameters
-        self._kappa_eff = _clamp01(float(kappa_eff))
-        self._first_normalized_pending = True
-
-    def normalized(self) -> dict[str, float]:
-        normalized = dict(self._base_parameters.normalized())
-        if self._first_normalized_pending:
-            normalized["formation_rigidity"] = self._kappa_eff
-            self._first_normalized_pending = False
-        return normalized
-
-    def __getattr__(self, name: str):
-        return getattr(self._base_parameters, name)
 
 
 class TestModeEngineTickSkeleton(EngineTickSkeleton):
@@ -981,12 +870,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
 
     def _evaluate_target_with_pre_tl_substrate(self, state: BattleState) -> BattleState:
-        substrate = str(
-            getattr(self, "PRE_TL_TARGET_SUBSTRATE", PRE_TL_TARGET_SUBSTRATE_DEFAULT)
-        ).strip().lower()
-        if substrate not in PRE_TL_TARGET_SUBSTRATE_LABELS:
-            substrate = PRE_TL_TARGET_SUBSTRATE_DEFAULT
-
         last_target_direction = {}
         last_engagement_intensity = {}
 
@@ -1027,88 +910,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 ref_x, ref_y = self._compute_position_centroid(reference_units)
             else:
                 sorted_enemy_units = sorted(enemy_units, key=_distance_sq)
-                if substrate == PRE_TL_TARGET_SUBSTRATE_NEAREST5:
-                    reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
-                    ref_x, ref_y = self._compute_position_centroid(reference_units)
-                elif substrate in {
-                    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED,
-                    PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT,
-                    }:
-                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                    if not local_units:
-                        local_units = sorted_enemy_units[:1]
-                    reference_units = list(local_units)
-                    distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
-                    local_scale = max(1.0, sum(distances) / float(len(distances)))
-                    boundary_index = min(4, len(distances) - 1)
-                    boundary_distance = max(1e-9, distances[boundary_index])
-                    envelope_factor = (
-                        0.20 if substrate == PRE_TL_TARGET_SUBSTRATE_SOFT_LOCAL_WEIGHTED_TIGHT else 0.35
-                    )
-                    envelope_width = max(0.5, local_scale * envelope_factor)
-                    weight_sum = 0.0
-                    ref_x = 0.0
-                    ref_y = 0.0
-                    for unit, distance in zip(local_units, distances, strict=False):
-                        radial_weight = math.exp(-((distance / local_scale) ** 2))
-                        envelope_weight = 1.0 / (
-                            1.0 + math.exp((distance - boundary_distance) / envelope_width)
-                        )
-                        weight = radial_weight * envelope_weight
-                        ref_x += unit.position.x * weight
-                        ref_y += unit.position.y * weight
-                        weight_sum += weight
-                    if weight_sum > 0.0:
-                        ref_x /= weight_sum
-                        ref_y /= weight_sum
-                    else:
-                        ref_x, ref_y = self._compute_position_centroid(local_units)
-                elif substrate == PRE_TL_TARGET_SUBSTRATE_WEIGHTED_LOCAL:
-                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                    if not local_units:
-                        local_units = sorted_enemy_units[:1]
-                    reference_units = list(local_units)
-                    distances = [math.sqrt(max(0.0, _distance_sq(unit))) for unit in local_units]
-                    local_scale = max(1.0, sum(distances) / float(len(distances)))
-                    weight_sum = 0.0
-                    ref_x = 0.0
-                    ref_y = 0.0
-                    for unit, distance in zip(local_units, distances, strict=False):
-                        weight = math.exp(-((distance / local_scale) ** 2))
-                        ref_x += unit.position.x * weight
-                        ref_y += unit.position.y * weight
-                        weight_sum += weight
-                    if weight_sum > 0.0:
-                        ref_x /= weight_sum
-                        ref_y /= weight_sum
-                    else:
-                        ref_x, ref_y = self._compute_position_centroid(local_units)
-                else:
-                    local_units = sorted_enemy_units[: min(8, len(sorted_enemy_units))]
-                    if not local_units:
-                        local_units = sorted_enemy_units[:1]
-                    cluster_size = min(3, len(local_units))
-                    best_cluster_score = None
-                    best_cluster_units = local_units[:cluster_size]
-                    for anchor in local_units:
-                        cluster_units = sorted(
-                            local_units,
-                            key=lambda candidate: (
-                                (candidate.position.x - anchor.position.x) ** 2
-                                + (candidate.position.y - anchor.position.y) ** 2
-                            ),
-                        )[:cluster_size]
-                        cluster_centroid_x, cluster_centroid_y = self._compute_position_centroid(cluster_units)
-                        cluster_score = sum(
-                            ((unit.position.x - cluster_centroid_x) ** 2)
-                            + ((unit.position.y - cluster_centroid_y) ** 2)
-                            for unit in cluster_units
-                        ) / float(cluster_size)
-                        if best_cluster_score is None or cluster_score < best_cluster_score:
-                            best_cluster_score = cluster_score
-                            best_cluster_units = cluster_units
-                    reference_units = list(best_cluster_units)
-                    ref_x, ref_y = self._compute_position_centroid(best_cluster_units)
+                reference_units = sorted_enemy_units[: min(5, len(sorted_enemy_units))]
+                ref_x, ref_y = self._compute_position_centroid(reference_units)
 
             ref_dx = float(ref_x) - float(centroid_x)
             ref_dy = float(ref_y) - float(centroid_y)
@@ -2263,82 +2066,17 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             return moved_state
         return self._apply_hostile_contact_impedance_v2(pre_state, moved_state, mode=mode)
 
-    def _build_continuous_fr_proxy_state(
-        self, state: BattleState
-    ) -> tuple[BattleState, dict[str, dict[str, float | bool | str]]]:
-        movement_surface = getattr(self, "_movement_surface", {})
-        movement_v3a_experiment = str(movement_surface.get("v3a_experiment", "base")).strip().lower()
-        shaping_enabled = bool(getattr(self, "CONTINUOUS_FR_SHAPING_ENABLED", False))
-        shaping_mode = str(
-            getattr(self, "CONTINUOUS_FR_SHAPING_MODE", CONTINUOUS_FR_SHAPING_OFF)
-        ).strip().lower()
-        if (
-            not shaping_enabled
-            or movement_v3a_experiment != V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-            or shaping_mode not in CONTINUOUS_FR_SHAPING_LABELS
-            or shaping_mode == CONTINUOUS_FR_SHAPING_OFF
-        ):
-            return state, {}
-
-        shaping_a = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_A", 0.0)))
-        shaping_sigma = max(1e-6, float(getattr(self, "CONTINUOUS_FR_SHAPING_SIGMA", 0.15)))
-        shaping_p = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_P", 1.0)))
-        shaping_q = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_Q", 1.0)))
-        shaping_beta = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_BETA", 0.0)))
-        shaping_gamma = max(0.0, float(getattr(self, "CONTINUOUS_FR_SHAPING_GAMMA", 0.0)))
-
-        proxy_fleets = {}
-        debug_payload = {}
-        proxy_active = False
-        for fleet_id, fleet in state.fleets.items():
-            alive_count = 0
-            engaged_alive_count = 0
-            for unit_id in fleet.unit_ids:
-                unit = state.units.get(unit_id)
-                if unit is None or float(unit.hit_points) <= 0.0:
-                    continue
-                alive_count += 1
-                if bool(unit.engaged):
-                    engaged_alive_count += 1
-            engaged_fraction = (engaged_alive_count / float(alive_count)) if alive_count > 0 else 0.0
-
-            normalized = fleet.parameters.normalized()
-            shaping = _compute_continuous_fr_shaping(
-                mode=shaping_mode,
-                kappa=float(normalized.get("formation_rigidity", 0.0)),
-                pd_norm=float(normalized.get("pursuit_drive", 0.5)),
-                engaged_fraction=engaged_fraction,
-                mobility_raw=float(fleet.parameters.mobility_bias),
-                a=shaping_a,
-                sigma=shaping_sigma,
-                p=shaping_p,
-                q=shaping_q,
-                beta=shaping_beta,
-                gamma=shaping_gamma,
-            )
-            debug_payload[fleet_id] = shaping
-            proxy_parameters = FormationRigidityFirstReadProxy(fleet.parameters, float(shaping["kappa_eff"]))
-            proxy_fleets[fleet_id] = replace(fleet, parameters=proxy_parameters)
-            proxy_active = True
-
-        if not proxy_active:
-            return state, debug_payload
-        return replace(state, fleets=proxy_fleets), debug_payload
-
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
         next_state = self.evaluate_cohesion(snapshot)
         next_state = self.evaluate_target(next_state)
         next_state = self.evaluate_utility(next_state)
-        proxy_state, proxy_debug = self._build_continuous_fr_proxy_state(next_state)
-        movement_input_state = self._apply_hostile_intent_penetration_bias(proxy_state)
+        movement_input_state = self._apply_hostile_intent_penetration_bias(next_state)
         if bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
             moved_state = self._integrate_movement_symmetric_merge(movement_input_state)
         else:
             moved_state = self.integrate_movement(movement_input_state)
-        if proxy_state is not next_state:
-            moved_state = replace(moved_state, fleets=next_state.fleets)
-        moved_state = self._restore_intent_penetration_bias_units(proxy_state, moved_state)
+        moved_state = self._restore_intent_penetration_bias_units(next_state, moved_state)
         moved_state = self._apply_hostile_contact_impedance(next_state, moved_state)
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         if isinstance(fixture_cfg, dict) and str(fixture_cfg.get("active_mode", "")).strip().lower() == FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
@@ -2410,7 +2148,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                             row["late_clamp_overshoot"] = float(late_clamp_overshoot)
                             row["late_clamp_dx"] = float(late_clamp_dx)
                             row["late_clamp_dy"] = float(late_clamp_dy)
-        self.debug_last_continuous_fr_shaping = proxy_debug
         return self.resolve_combat(moved_state)
 
     def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
@@ -2800,9 +2537,6 @@ def run_simulation(
                 "neutral_transit_v1 execution_cfg['fixture']['stop_radius'] must be >= 0, "
                 f"got {fixture_stop_radius}"
             )
-    continuous_fr_shaping_cfg = movement_cfg.get("continuous_fr_shaping", {})
-    if not isinstance(continuous_fr_shaping_cfg, Mapping):
-        continuous_fr_shaping_cfg = {}
     odw_posture_bias_cfg = movement_cfg.get("odw_posture_bias", {})
     if not isinstance(odw_posture_bias_cfg, Mapping):
         odw_posture_bias_cfg = {}
@@ -2827,8 +2561,6 @@ def run_simulation(
             "test_run maintained path only supports runtime_cfg['movement_model'] in {'v3a', 'v4a'}, "
             f"got {runtime_cfg['movement_model']!r}"
         )
-    battle_restore_bridge_active = (not fixture_active) and movement_model == "v4a"
-
     engine = engine_cls(
         attack_range=float(contact_cfg["attack_range"]),
         damage_per_tick=float(contact_cfg["damage_per_tick"]),
@@ -2842,11 +2574,6 @@ def run_simulation(
             "stop_radius": fixture_stop_radius,
         }
     for attr, value in (
-        (
-            "PRE_TL_TARGET_SUBSTRATE",
-            str(movement_cfg.get("pre_tl_target_substrate", PRE_TL_TARGET_SUBSTRATE_DEFAULT)).strip().lower()
-            or PRE_TL_TARGET_SUBSTRATE_DEFAULT,
-        ),
         ("SYMMETRIC_MOVEMENT_SYNC_ENABLED", bool(movement_cfg.get("symmetric_movement_sync_enabled", True))),
         (
             "HOSTILE_CONTACT_IMPEDANCE_MODE",
@@ -2878,18 +2605,6 @@ def run_simulation(
             "HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH",
             _clamp01(float(intent_unified_spacing_cfg.get("strength", HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT))),
         ),
-        ("CONTINUOUS_FR_SHAPING_ENABLED", bool(continuous_fr_shaping_cfg.get("effective", False))),
-        (
-            "CONTINUOUS_FR_SHAPING_MODE",
-            str(continuous_fr_shaping_cfg.get("mode_effective", CONTINUOUS_FR_SHAPING_OFF)).strip().lower()
-            or CONTINUOUS_FR_SHAPING_OFF,
-        ),
-        ("CONTINUOUS_FR_SHAPING_A", max(0.0, float(continuous_fr_shaping_cfg.get("a", 0.0)))),
-        ("CONTINUOUS_FR_SHAPING_SIGMA", max(1e-6, float(continuous_fr_shaping_cfg.get("sigma", 0.15)))),
-        ("CONTINUOUS_FR_SHAPING_P", max(0.0, float(continuous_fr_shaping_cfg.get("p", 1.0)))),
-        ("CONTINUOUS_FR_SHAPING_Q", max(0.0, float(continuous_fr_shaping_cfg.get("q", 1.0)))),
-        ("CONTINUOUS_FR_SHAPING_BETA", max(0.0, float(continuous_fr_shaping_cfg.get("beta", 0.0)))),
-        ("CONTINUOUS_FR_SHAPING_GAMMA", max(0.0, float(continuous_fr_shaping_cfg.get("gamma", 0.0)))),
         ("V2_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v2_connect_radius_multiplier", 1.0)))),
         ("V3_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_connect_radius_multiplier_effective", 1.0)))),
         ("V3_R_REF_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_r_ref_radius_multiplier_effective", 1.0)))),
@@ -2904,13 +2619,11 @@ def run_simulation(
     movement_surface["model"] = movement_model
     if movement_model == "v4a":
         v4a_restore_strength = float(movement_cfg.get("v4a_restore_strength_effective", 0.25))
-        movement_surface["v3a_experiment"] = (
-            V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-            if v4a_restore_strength < 1.0
-            else V3A_EXPERIMENT_BASE
-        )
-        movement_surface["centroid_probe_scale"] = v4a_restore_strength
+        movement_surface["v4a_restore_strength"] = v4a_restore_strength
+        movement_surface["v3a_experiment"] = V3A_EXPERIMENT_BASE
+        movement_surface["centroid_probe_scale"] = 1.0
     else:
+        movement_surface["v4a_restore_strength"] = 1.0
         movement_surface["v3a_experiment"] = (
             str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
         )

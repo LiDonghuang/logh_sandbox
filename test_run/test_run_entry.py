@@ -604,17 +604,15 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
         "test_mode_label": summary["test_mode_name"],
         "movement_model_effective": summary["movement_model_effective"],
         "cohesion_decision_source_effective": summary["runtime_decision_source_effective"],
-        "pre_tl_target_substrate": movement_cfg["pre_tl_target_substrate"],
         "symmetric_movement_sync_enabled": movement_cfg["symmetric_movement_sync_enabled"],
-        "continuous_fr_shaping_effective": movement_cfg["continuous_fr_shaping"]["effective"],
-        "continuous_fr_shaping_mode_effective": movement_cfg["continuous_fr_shaping"]["mode_effective"],
-        "odw_posture_bias_enabled_effective": movement_cfg["odw_posture_bias"]["enabled_effective"],
-        "odw_posture_bias_k_effective": movement_cfg["odw_posture_bias"]["k_effective"],
-        "odw_posture_bias_clip_delta_effective": movement_cfg["odw_posture_bias"]["clip_delta_effective"],
         "v3_connect_radius_multiplier_effective": movement_cfg["v3_connect_radius_multiplier_effective"],
         "plot_smoothing_ticks": viz_cfg["plot_smoothing_ticks"],
         "fixture_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
     }
+    if movement_cfg["model_effective"] == "v3a":
+        render_debug_context["odw_posture_bias_enabled_effective"] = movement_cfg["odw_posture_bias"]["enabled_effective"]
+        render_debug_context["odw_posture_bias_k_effective"] = movement_cfg["odw_posture_bias"]["k_effective"]
+        render_debug_context["odw_posture_bias_clip_delta_effective"] = movement_cfg["odw_posture_bias"]["clip_delta_effective"]
     _render_animation(
         render_context=render_context,
         combat_telemetry=result["combat_telemetry"],
@@ -745,8 +743,6 @@ def main() -> None:
         "max_time_steps_effective": int(result["final_state"].tick),
         "unit_speed": float(next(iter(initial_state.units.values())).max_speed),
         "min_unit_spacing": float(contact_cfg["separation_radius"]),
-        "movement_v3a_experiment_effective": movement_cfg["experiment_effective"],
-        "centroid_probe_scale_effective": movement_cfg["centroid_probe_scale_effective"],
         "attack_range": float(contact_cfg["attack_range"]),
         "damage_per_tick": float(contact_cfg["damage_per_tick"]),
         "ch_enabled": bool(contact_cfg["ch_enabled"]),
@@ -759,6 +755,9 @@ def main() -> None:
         "boundary_hard_enabled": bool(boundary_cfg["hard_enabled"]),
         "boundary_hard_enabled_effective": bool(boundary_cfg["enabled"]) and bool(boundary_cfg["hard_enabled"]),
     }
+    if movement_cfg["model_effective"] == "v3a":
+        run_config_snapshot["movement_v3a_experiment_effective"] = movement_cfg["experiment_effective"]
+        run_config_snapshot["centroid_probe_scale_effective"] = movement_cfg["centroid_probe_scale_effective"]
     _maybe_export_battle_report(
         export_battle_report=export_battle_report,
         final_state=result["final_state"],
@@ -821,16 +820,14 @@ def main() -> None:
         "test_mode_label": prepared_summary["test_mode_name"],
         "movement_model_effective": prepared_summary["movement_model_effective"],
         "cohesion_decision_source_effective": prepared_summary["runtime_decision_source_effective"],
-        "pre_tl_target_substrate": movement_cfg["pre_tl_target_substrate"],
         "symmetric_movement_sync_enabled": movement_cfg["symmetric_movement_sync_enabled"],
-        "continuous_fr_shaping_effective": movement_cfg["continuous_fr_shaping"]["effective"],
-        "continuous_fr_shaping_mode_effective": movement_cfg["continuous_fr_shaping"]["mode_effective"],
-        "odw_posture_bias_enabled_effective": movement_cfg["odw_posture_bias"]["enabled_effective"],
-        "odw_posture_bias_k_effective": movement_cfg["odw_posture_bias"]["k_effective"],
-        "odw_posture_bias_clip_delta_effective": movement_cfg["odw_posture_bias"]["clip_delta_effective"],
         "v3_connect_radius_multiplier_effective": movement_cfg["v3_connect_radius_multiplier_effective"],
         "plot_smoothing_ticks": viz_cfg["plot_smoothing_ticks"],
     }
+    if movement_cfg["model_effective"] == "v3a":
+        render_debug_context["odw_posture_bias_enabled_effective"] = movement_cfg["odw_posture_bias"]["enabled_effective"]
+        render_debug_context["odw_posture_bias_k_effective"] = movement_cfg["odw_posture_bias"]["k_effective"]
+        render_debug_context["odw_posture_bias_clip_delta_effective"] = movement_cfg["odw_posture_bias"]["clip_delta_effective"]
     _render_animation(
         render_context=render_context,
         combat_telemetry=result["combat_telemetry"],

@@ -675,39 +675,21 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             f"[0.0, attack_speed_lateral_scale], got backward={v4a_attack_speed_backward_scale}, "
             f"lateral={v4a_attack_speed_lateral_scale}"
         )
-    movement_cfg = {
-        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
-        "experiment_effective": _require_choice(
+    movement_model_effective = resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1]
+    raw_v3a_experiment = _require_choice(
             "runtime.movement_v3a_experiment",
             get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
             execution.V3A_EXPERIMENT_LABELS,
+        )
+    movement_cfg = {
+        "model_effective": movement_model_effective,
+        "experiment_effective": (
+            raw_v3a_experiment
+            if movement_model_effective == "v3a"
+            else execution.V3A_EXPERIMENT_BASE
         ),
         "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
-        "pre_tl_target_substrate": _require_choice(
-            "runtime.pre_tl_target_substrate",
-            get_runtime("pre_tl_target_substrate", execution.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
-            execution.PRE_TL_TARGET_SUBSTRATE_LABELS,
-        ),
         "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
-        "continuous_fr_shaping": {
-            "enabled": bool(get_runtime("continuous_fr_shaping_enabled", False)),
-            "mode": _require_choice(
-                "runtime.continuous_fr_shaping_mode",
-                get_runtime("continuous_fr_shaping_mode", execution.CONTINUOUS_FR_SHAPING_OFF),
-                execution.CONTINUOUS_FR_SHAPING_LABELS,
-            ),
-            **{
-                key: float(get_runtime(f"continuous_fr_shaping_{key}", default))
-                for key, default in {
-                    "a": 0.0,
-                    "sigma": 0.15,
-                    "p": 1.0,
-                    "q": 1.0,
-                    "beta": 0.0,
-                    "gamma": 0.0,
-                }.items()
-            },
-        },
         "odw_posture_bias": {
             "enabled": bool(get_runtime("odw_posture_bias_enabled", False)),
             "k": float(get_runtime("odw_posture_bias_k", 0.3)),
@@ -743,21 +725,9 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     }
     movement_cfg["centroid_probe_scale_effective"] = (
         movement_cfg["centroid_probe_scale"]
-        if movement_cfg["model_effective"] in {"v3a", "v4a"}
+        if movement_cfg["model_effective"] == "v3a"
         and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
         else 1.0
-    )
-    movement_cfg["continuous_fr_shaping"]["effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        and movement_cfg["continuous_fr_shaping"]["enabled"]
-        and movement_cfg["continuous_fr_shaping"]["mode"] != execution.CONTINUOUS_FR_SHAPING_OFF
-        and movement_cfg["continuous_fr_shaping"]["a"] > 0.0
-    )
-    movement_cfg["continuous_fr_shaping"]["mode_effective"] = (
-        movement_cfg["continuous_fr_shaping"]["mode"]
-        if movement_cfg["continuous_fr_shaping"]["effective"]
-        else execution.CONTINUOUS_FR_SHAPING_OFF
     )
     movement_cfg["odw_posture_bias"]["enabled_effective"] = (
         movement_cfg["model_effective"] == "v3a"
@@ -1175,7 +1145,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     )
     movement_cfg["expected_reference_spacing_effective"] = float(v4a_reference_cfg["expected_reference_spacing"])
     movement_cfg["reference_layout_mode_effective"] = str(v4a_reference_cfg["reference_layout_mode"])
-    battle_restore_bridge_active = movement_cfg["model_effective"] == "v4a"
     spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
         settings,
@@ -1392,11 +1361,11 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_attack_speed_backward_scale_effective": float(
                 movement_cfg["v4a_attack_speed_backward_scale_effective"]
             ),
-            "battle_restore_bridge_active": bool(battle_restore_bridge_active),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
             "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
+            "fire_quality_alpha_effective": float(contact_cfg["fire_quality_alpha"]),
             "fire_optimal_range_ratio_effective": float(contact_cfg["fire_optimal_range_ratio"]),
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
@@ -1648,6 +1617,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
             "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
             "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
+            "fire_quality_alpha_effective": float(simulation_runtime_cfg["contact"]["fire_quality_alpha"]),
             "fire_optimal_range_ratio_effective": float(simulation_runtime_cfg["contact"]["fire_optimal_range_ratio"]),
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
