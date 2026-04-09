@@ -28,16 +28,7 @@
     "initial_fleet_b_facing_angle_deg": "Fleet B initial facing angle in degrees. 0=+X, 90=+Y."
   },
   "visualization": {
-    "display_language": "Label language for plot names: 'EN' or 'ZH'.",
-    "animate": "Enable battlefield animation and frame capture.",
-    "plot_profile": "Plot selector: auto | baseline | extended. auto follows the effective cohesion source: v3_test => v3 plots, v2 => v2 plots. Explicit extended is only valid when the effective source is v3_test.",
-    "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
-    "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
-    "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
-    "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
-    "plot_smoothing_ticks": "Display-only smoothing window for non-Alive plots. Default 5 ticks. Raw telemetry/export values remain unchanged.",
-    "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
-    "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
+    "display_language": "Display language for human-facing fleet/commander names used by the maintained 3D replay path. Supported values: EN | ZH.",
     "print_tick_summary": "Print per-tick summary logs to console."
   },
   "runtime": {
@@ -46,8 +37,7 @@
       "random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to run_control.random_seed. If -1, use true randomness."
     },
     "selectors": {
-      "movement_model": "Runtime movement selector: baseline | v3a | v4a. baseline remains the maintained baseline (currently v3a). v4a is the bounded subtractive experimental line and should only be used when test_mode=2; current testonly layer may set it as the explicit test-mode default without changing the baseline.",
-      "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection. On the current v4a line this selector no longer owns v4a movement restore/pursuit behavior; it remains live for legacy/non-v4a paths and cohesion-observer surfaces."
+      "movement_model": "Runtime movement selector: baseline | v4a. baseline is the maintained movement baseline and currently resolves to v4a. The maintained test_run mainline no longer accepts v3a as a live movement execution path."
     },
     "movement": {
       "v4a": {
@@ -69,22 +59,6 @@
         "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
         "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
         "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale."
-      },
-      "v3a": {
-        "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
-        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe on the v3a line. Active v4a restore_strength no longer reuses this carrier.",
-        "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
-        "odw_posture_bias": {
-          "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",
-          "k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when enabled=true and movement_model=v3a.",
-          "clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when enabled=true and movement_model=v3a."
-        }
-      }
-    },
-    "semantics": {
-      "collapse_signal": {
-        "v3_connect_radius_multiplier": "Semantic connectivity-radius multiplier for runtime source v3_test. Current baseline-confirmed working value is 1.1.",
-        "v3_r_ref_radius_multiplier": "Scale-reference multiplier for runtime source v3_test. Keep at 1.0 unless a dedicated semantics review explicitly opens this second-stage variable."
       }
     },
     "physical": {
@@ -120,34 +94,15 @@
       }
     },
     "observer": {
-      "tick_timing_enabled": "Observer telemetry toggle for per-tick wall-clock elapsed time recording inside test_run. true records tick_elapsed_ms for each simulation tick; false skips timing capture. This is harness/runtime-observation only and does not change battle semantics.",
-      "event_bridge": {
-        "theta_split": "Tier-2 Formation Cut bridge threshold on split_separation (Channel-T condition).",
-        "theta_env": "Tier-2 Pocket Formation bridge threshold on angle_coverage (Channel-T condition).",
-        "sustain_ticks": "Sustain ticks required for Tier-2 bridge events (both cut/pocket)."
-      },
-      "collapse_shadow": {
-        "theta_conn_default": "Fallback theta_conn default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_coh_default": "Fallback theta_coh default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_force_default": "Fallback theta_force default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_attr_default": "Fallback theta_attr default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "attrition_window": "Collapse_v2_shadow AttritionMomentum window W (ticks).",
-        "sustain_ticks": "Collapse_v2_shadow sustain S (ticks).",
-        "min_conditions": "Collapse_v2_shadow pressure condition threshold: minimum true conditions among 4 signals."
-      },
-      "report_inference": {
-        "strategic_inflection_sustain_ticks": "Sustain ticks for strategic inflection detection in BRF narrative (HP-size lead).",
-        "tactical_swing_sustain_ticks": "Sustain ticks for tactical swing clustering in BRF narrative (alive lead).",
-        "tactical_swing_min_amplitude": "Minimum absolute alive-lead amplitude for tactical swing clustering.",
-        "tactical_swing_min_gap_ticks": "Minimum tick gap used to merge nearby tactical swing crossings into one cluster."
-      }
+      "tick_timing_enabled": "Observer telemetry toggle for per-tick wall-clock elapsed time recording inside test_run. true records tick_elapsed_ms for each simulation tick; false skips timing capture. This is the single maintained runtime.observer switch and does not change battle semantics."
     }
   },
   "run_control": {
     "max_time_steps": "Maximum simulation ticks. If <=0, run until the first resolved stop condition (battle elimination or fixture objective arrival), then keep running for run_control.post_resolution_hold_steps more ticks, capped at 999 ticks.",
     "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral objective-arrival hold. Must be >= 0.",
     "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
-    "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted."
+    "symmetric_movement_sync_enabled": "Harness-side symmetric movement merge switch. This is a run-level execution control that removes cross-fleet sequential-update bias without touching frozen runtime.",
+    "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + maintained observer telemetry. 2/test: explicit legacy/experimental selectors still permitted where those maintained test-only surfaces remain."
   },
   "battlefield": {
     "arena_size": "Square battlefield size (0..arena_size).",

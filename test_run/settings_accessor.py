@@ -9,9 +9,6 @@ DEFAULT_TEST_RUN_TESTONLY_SETTINGS_PATH = "test_run/test_run_v1_0.testonly.setti
 
 RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
-    "cohesion_decision_source": ("selectors", "cohesion_decision_source"),
-    "v3_connect_radius_multiplier": ("semantics", "collapse_signal", "v3_connect_radius_multiplier"),
-    "v3_r_ref_radius_multiplier": ("semantics", "collapse_signal", "v3_r_ref_radius_multiplier"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
     "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
@@ -70,37 +67,11 @@ RUNTIME_SETTING_PATHS = {
     "v4a_engaged_speed_scale": ("movement", "v4a", "engaged_speed_scale"),
     "v4a_attack_speed_lateral_scale": ("movement", "v4a", "attack_speed_lateral_scale"),
     "v4a_attack_speed_backward_scale": ("movement", "v4a", "attack_speed_backward_scale"),
-    "movement_v3a_experiment": ("movement", "v3a", "experiment"),
-    "centroid_probe_scale": ("movement", "v3a", "centroid_probe_scale"),
-    "odw_posture_bias_enabled": ("movement", "v3a", "odw_posture_bias", "enabled"),
-    "odw_posture_bias_k": ("movement", "v3a", "odw_posture_bias", "k"),
-    "odw_posture_bias_clip_delta": ("movement", "v3a", "odw_posture_bias", "clip_delta"),
-    "symmetric_movement_sync_enabled": ("movement", "v3a", "symmetric_movement_sync_enabled"),
 }
 
 OBSERVER_SETTING_PATHS = {
     "runtime": {
         "tick_timing_enabled": ("observer", "tick_timing_enabled"),
-    },
-    "event_bridge": {
-        "theta_split": ("observer", "event_bridge", "theta_split"),
-        "theta_env": ("observer", "event_bridge", "theta_env"),
-        "sustain_ticks": ("observer", "event_bridge", "sustain_ticks"),
-    },
-    "collapse_shadow": {
-        "theta_conn_default": ("observer", "collapse_shadow", "theta_conn_default"),
-        "theta_coh_default": ("observer", "collapse_shadow", "theta_coh_default"),
-        "theta_force_default": ("observer", "collapse_shadow", "theta_force_default"),
-        "theta_attr_default": ("observer", "collapse_shadow", "theta_attr_default"),
-        "attrition_window": ("observer", "collapse_shadow", "attrition_window"),
-        "sustain_ticks": ("observer", "collapse_shadow", "sustain_ticks"),
-        "min_conditions": ("observer", "collapse_shadow", "min_conditions"),
-    },
-    "report_inference": {
-        "strategic_inflection_sustain_ticks": ("observer", "report_inference", "strategic_inflection_sustain_ticks"),
-        "tactical_swing_sustain_ticks": ("observer", "report_inference", "tactical_swing_sustain_ticks"),
-        "tactical_swing_min_amplitude": ("observer", "report_inference", "tactical_swing_min_amplitude"),
-        "tactical_swing_min_gap_ticks": ("observer", "report_inference", "tactical_swing_min_gap_ticks"),
     },
 }
 
@@ -206,43 +177,10 @@ def get_runtime_setting(settings: dict, key: str, default):
     return get_section_setting(settings, "runtime", key, default)
 
 
-def get_event_bridge_setting(settings: dict, key: str, default):
-    runtime_section = settings.get("runtime", {})
-    if isinstance(runtime_section, dict):
-        nested_path = OBSERVER_SETTING_PATHS["event_bridge"].get(key)
-        if nested_path is not None:
-            nested_value = get_nested_mapping_value(runtime_section, nested_path, MISSING)
-            if nested_value is not MISSING:
-                return nested_value
-    return default
-
-
 def get_observer_setting(settings: dict, key: str, default):
     runtime_section = settings.get("runtime", {})
     if isinstance(runtime_section, dict):
         nested_path = OBSERVER_SETTING_PATHS["runtime"].get(key)
-        if nested_path is not None:
-            nested_value = get_nested_mapping_value(runtime_section, nested_path, MISSING)
-            if nested_value is not MISSING:
-                return nested_value
-    return default
-
-
-def get_collapse_shadow_setting(settings: dict, key: str, default):
-    runtime_section = settings.get("runtime", {})
-    if isinstance(runtime_section, dict):
-        nested_path = OBSERVER_SETTING_PATHS["collapse_shadow"].get(key)
-        if nested_path is not None:
-            nested_value = get_nested_mapping_value(runtime_section, nested_path, MISSING)
-            if nested_value is not MISSING:
-                return nested_value
-    return default
-
-
-def get_report_inference_setting(settings: dict, key: str, default):
-    runtime_section = settings.get("runtime", {})
-    if isinstance(runtime_section, dict):
-        nested_path = OBSERVER_SETTING_PATHS["report_inference"].get(key)
         if nested_path is not None:
             nested_value = get_nested_mapping_value(runtime_section, nested_path, MISSING)
             if nested_value is not MISSING:

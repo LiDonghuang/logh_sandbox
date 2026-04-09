@@ -44,7 +44,7 @@ FIRE_LINK_BEAM_LAYOUTS = {
 # Unit dual-layer appearance, ordered level 1 -> level 5.
 TOKEN_ALPHA_BY_LEVEL = (0.01, 0.10, 0.25, 0.50, 0.90)
 CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.25, 0.0, 0.0, 0.0)
-DUAL_LAYER_DISTANCE_BY_LEVEL = (30.0, 48.0, 64.0, 76.0, 112.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (25.0, 50.0, 75.0, 100.0, 125.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {

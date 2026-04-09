@@ -39,12 +39,6 @@ TEST_MODE_LABELS = {
     1: "observe",
     2: "test",
 }
-COHESION_DECISION_SOURCE_LABELS = {
-    "baseline": "baseline",
-    "v2": "v2",
-    "v3_test": "v3_test",
-}
-BASELINE_COHESION_DECISION_SOURCE = "v3_test"
 PERSONALITY_PARAM_KEYS = (
     "force_concentration_ratio",
     "mobility_bias",
@@ -347,39 +341,25 @@ def test_mode_label(mode_code: int) -> str:
     return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
 
 
-def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str]:
-    requested = str(raw_value).strip().lower()
-    if requested not in COHESION_DECISION_SOURCE_LABELS:
-        requested = "baseline"
-    baseline_source = BASELINE_COHESION_DECISION_SOURCE
-    effective = baseline_source if requested == "baseline" else requested
-    if int(test_mode) < 2 and effective != baseline_source:
-        print(
-            f"[mode] cohesion_decision_source={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_source}"
-        )
-        effective = baseline_source
-    return requested, effective
-
-
 def resolve_movement_model(raw_value, test_mode: int) -> tuple[str, str]:
     requested = str(raw_value).strip().lower()
     if requested == "v1":
-        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline, v3a, or v4a")
-    if requested not in {"baseline", "v3a", "v4a"}:
-        allowed_text = ", ".join(sorted({"baseline", "v3a", "v4a"}))
+        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline or v4a")
+    if requested == "v3a":
+        raise ValueError(
+            "runtime.selectors.movement_model=v3a has been retired from the maintained test_run mainline; "
+            "use baseline or v4a"
+        )
+    if requested not in {"baseline", "v4a"}:
+        allowed_text = ", ".join(sorted({"baseline", "v4a"}))
         raise ValueError(
             f"runtime.selectors.movement_model must be one of {{{allowed_text}}}, got {raw_value!r}"
         )
-    baseline_model = "v3a"
+    baseline_model = "v4a"
     if requested == "baseline":
         effective = baseline_model
     else:
         effective = requested
-    if int(test_mode) < 2 and effective != baseline_model:
-        print(
-            f"[mode] movement_model={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_model}"
-        )
-        effective = baseline_model
     return requested, effective
 
 
@@ -484,16 +464,11 @@ def _build_unit_cfg(get_unit, get_runtime) -> dict:
 
 def _build_run_cfg(
     get_run,
-    get_runtime,
     *,
     max_time_steps_override: int | None = None,
     test_mode_name_override: str | None = None,
 ) -> dict:
     test_mode = parse_test_mode(get_run("test_mode", 0))
-    runtime_decision_source_requested, runtime_decision_source_effective = resolve_runtime_decision_source(
-        get_runtime("cohesion_decision_source", "baseline"),
-        test_mode,
-    )
     post_resolution_hold_steps = int(get_run("post_resolution_hold_steps", DEFAULT_POST_RESOLUTION_HOLD_STEPS))
     if post_resolution_hold_steps < 0:
         raise ValueError(
@@ -515,12 +490,10 @@ def _build_run_cfg(
         ),
         "observer_enabled": test_mode >= 1,
         "export_battle_report": False,
-        "runtime_decision_source_requested": runtime_decision_source_requested,
-        "runtime_decision_source_effective": runtime_decision_source_effective,
     }
 
 
-def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, test_mode: int) -> dict:
+def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     v4a_restore_strength = float(get_runtime("v4a_restore_strength", 0.25))
     if not 0.0 <= v4a_restore_strength <= 1.0:
         raise ValueError(
@@ -676,36 +649,9 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
             f"lateral={v4a_attack_speed_lateral_scale}"
         )
     movement_model_effective = resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1]
-    raw_v3a_experiment = _require_choice(
-            "runtime.movement_v3a_experiment",
-            get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
-            execution.V3A_EXPERIMENT_LABELS,
-        )
     movement_cfg = {
         "model_effective": movement_model_effective,
-        "experiment_effective": (
-            raw_v3a_experiment
-            if movement_model_effective == "v3a"
-            else execution.V3A_EXPERIMENT_BASE
-        ),
-        "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
-        "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
-        "odw_posture_bias": {
-            "enabled": bool(get_runtime("odw_posture_bias_enabled", False)),
-            "k": float(get_runtime("odw_posture_bias_k", 0.3)),
-            "clip_delta": float(get_runtime("odw_posture_bias_clip_delta", 0.2)),
-        },
-        "v2_connect_radius_multiplier": 1.0,
-        "v3_connect_radius_multiplier_effective": (
-            float(get_runtime("v3_connect_radius_multiplier", execution.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
-            if runtime_decision_source_effective == "v3_test"
-            else 1.0
-        ),
-        "v3_r_ref_radius_multiplier_effective": (
-            float(get_runtime("v3_r_ref_radius_multiplier", execution.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
-            if runtime_decision_source_effective == "v3_test"
-            else 1.0
-        ),
+        "symmetric_movement_sync_enabled": bool(get_run("symmetric_movement_sync_enabled", True)),
         "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
@@ -723,26 +669,6 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
         "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
     }
-    movement_cfg["centroid_probe_scale_effective"] = (
-        movement_cfg["centroid_probe_scale"]
-        if movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        else 1.0
-    )
-    movement_cfg["odw_posture_bias"]["enabled_effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["odw_posture_bias"]["enabled"]
-    )
-    movement_cfg["odw_posture_bias"]["k_effective"] = (
-        movement_cfg["odw_posture_bias"]["k"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.0
-    )
-    movement_cfg["odw_posture_bias"]["clip_delta_effective"] = (
-        movement_cfg["odw_posture_bias"]["clip_delta"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.2
-    )
     movement_cfg["v4a_restore_strength_effective"] = (
         movement_cfg["v4a_restore_strength"]
         if movement_cfg["model_effective"] == "v4a"
@@ -1091,9 +1017,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         else settings_api.load_layered_test_run_settings(base_dir)
     )
     get_battlefield = partial(settings_api.get_battlefield_setting, settings)
-    get_collapse_shadow = partial(settings_api.get_collapse_shadow_setting, settings)
     get_contact_model = partial(settings_api.get_contact_model_test_setting, settings)
-    get_event_bridge = partial(settings_api.get_event_bridge_setting, settings)
     get_fleet = partial(settings_api.get_fleet_setting, settings)
     get_observer = partial(settings_api.get_observer_setting, settings)
     get_run = partial(settings_api.get_run_control_setting, settings)
@@ -1131,10 +1055,10 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     fleet_b_params = to_personality_parameters(fleet_b_data)
 
     battlefield_cfg = common_context["battlefield_cfg"]
-    run_cfg = _build_run_cfg(get_run, get_runtime)
+    run_cfg = _build_run_cfg(get_run)
     movement_cfg = _build_movement_cfg(
         get_runtime,
-        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+        get_run,
         test_mode=run_cfg["test_mode"],
     )
     boundary_cfg = _build_boundary_cfg(get_runtime)
@@ -1256,26 +1180,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         and movement_cfg["model_effective"] != "v4a"
     )
 
-    observer_cfg = {
-        "bridge": {
-            "theta_split": float(get_event_bridge("theta_split", execution.BRIDGE_THETA_SPLIT_DEFAULT)),
-            "theta_env": float(get_event_bridge("theta_env", execution.BRIDGE_THETA_ENV_DEFAULT)),
-            "sustain_ticks": int(get_event_bridge("sustain_ticks", execution.BRIDGE_SUSTAIN_TICKS_DEFAULT)),
-        },
-        "collapse_shadow": {
-            key: cast(get_collapse_shadow(key, default))
-            for key, (cast, default) in {
-                "theta_conn_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT),
-                "theta_coh_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT),
-                "theta_force_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT),
-                "theta_attr_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT),
-                "attrition_window": (int, execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT),
-                "sustain_ticks": (int, execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT),
-                "min_conditions": (int, execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT),
-            }.items()
-        },
-    }
-
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
         "capture_positions": False,
@@ -1286,7 +1190,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
     }
     simulation_runtime_cfg = {
-        "decision_source": run_cfg["runtime_decision_source_effective"],
         "movement_model": movement_cfg["model_effective"],
         "movement": movement_cfg,
         "contact": {
@@ -1297,8 +1200,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     }
     simulation_observer_cfg = {
         "enabled": run_cfg["observer_enabled"],
-        "bridge": observer_cfg["bridge"],
-        "collapse_shadow": observer_cfg["collapse_shadow"],
         "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
         "runtime_diag_enabled": False,
     }
@@ -1317,8 +1218,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "effective_background_map_seed": effective_background_map_seed,
             "test_mode": run_cfg["test_mode"],
             "test_mode_name": run_cfg["test_mode_name"],
-            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
-            "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
@@ -1370,9 +1269,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
             "fire_quality_alpha_effective": float(contact_cfg["fire_quality_alpha"]),
             "fire_optimal_range_ratio_effective": float(contact_cfg["fire_optimal_range_ratio"]),
-            "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
-            "export_battle_report": False,
         },
     }
 
@@ -1448,14 +1345,10 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     if stop_radius < 0.0:
         raise ValueError(f"fixture.neutral.stop_radius must be >= 0, got {stop_radius}")
 
-    run_cfg = _build_run_cfg(
-        get_run,
-        get_runtime,
-        test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL,
-    )
+    run_cfg = _build_run_cfg(get_run, test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL)
     movement_cfg = _build_movement_cfg(
         get_runtime,
-        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
+        get_run,
         test_mode=run_cfg["test_mode"],
     )
     v4a_reference_cfg = _resolve_v4a_reference_cfg(
@@ -1509,7 +1402,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         },
     }
     simulation_runtime_cfg = {
-        "decision_source": run_cfg["runtime_decision_source_effective"],
         "movement_model": movement_cfg["model_effective"],
         "movement": movement_cfg,
         "contact": {
@@ -1538,20 +1430,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     }
     simulation_observer_cfg = {
         "enabled": run_cfg["observer_enabled"],
-        "bridge": {
-            "theta_split": execution.BRIDGE_THETA_SPLIT_DEFAULT,
-            "theta_env": execution.BRIDGE_THETA_ENV_DEFAULT,
-            "sustain_ticks": execution.BRIDGE_SUSTAIN_TICKS_DEFAULT,
-        },
-        "collapse_shadow": {
-            "theta_conn_default": execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT,
-            "theta_coh_default": execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT,
-            "theta_force_default": execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT,
-            "theta_attr_default": execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT,
-            "attrition_window": execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT,
-            "sustain_ticks": execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT,
-            "min_conditions": execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT,
-        },
         "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
         "runtime_diag_enabled": True,
     }
@@ -1569,8 +1447,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "effective_background_map_seed": effective_background_map_seed,
             "test_mode": run_cfg["test_mode"],
             "test_mode_name": execution.FIXTURE_MODE_NEUTRAL,
-            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
-            "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
@@ -1622,9 +1498,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
             "fire_quality_alpha_effective": float(simulation_runtime_cfg["contact"]["fire_quality_alpha"]),
             "fire_optimal_range_ratio_effective": float(simulation_runtime_cfg["contact"]["fire_optimal_range_ratio"]),
-            "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
-            "export_battle_report": False,
             "active_mode": execution.FIXTURE_MODE_NEUTRAL,
         },
     }

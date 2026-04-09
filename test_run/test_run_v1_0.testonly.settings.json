@@ -41,16 +41,6 @@
         "engaged_speed_scale": 0.7,
         "attack_speed_lateral_scale": 0.65,
         "attack_speed_backward_scale": 0.35
-      },
-      "v3a": {
-        "experiment": "exp_precontact_centroid_probe",
-        "centroid_probe_scale": 0.5,
-        "symmetric_movement_sync_enabled": true,
-        "odw_posture_bias": {
-          "enabled": true,
-          "k": 0.5,
-          "clip_delta": 0.4
-        }
       }
     },
     "physical": {

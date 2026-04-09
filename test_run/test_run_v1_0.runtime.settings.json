@@ -3,6 +3,7 @@
     "max_time_steps": 500,
     "post_resolution_hold_steps": 20,
     "random_seed": -1,
+    "symmetric_movement_sync_enabled": true,
     "test_mode": 2
   },
   "battlefield": {
@@ -39,14 +40,7 @@
       "random_seed": -1
     },
     "selectors": {
-      "movement_model": "baseline",
-      "cohesion_decision_source": "baseline"
-    },
-    "semantics": {
-      "collapse_signal": {
-        "v3_connect_radius_multiplier": 1.1,
-        "v3_r_ref_radius_multiplier": 1.0
-      }
+      "movement_model": "baseline"
     },
     "physical": {
       "boundary": {
@@ -69,27 +63,7 @@
       }
     },
     "observer": {
-      "tick_timing_enabled": true,
-      "event_bridge": {
-        "theta_split": 1.7,
-        "theta_env": 0.5,
-        "sustain_ticks": 20
-      },
-      "collapse_shadow": {
-        "theta_conn_default": 0.1,
-        "theta_coh_default": 0.98,
-        "theta_force_default": 0.95,
-        "theta_attr_default": 0.1,
-        "attrition_window": 20,
-        "sustain_ticks": 10,
-        "min_conditions": 2
-      },
-      "report_inference": {
-        "strategic_inflection_sustain_ticks": 12,
-        "tactical_swing_sustain_ticks": 8,
-        "tactical_swing_min_amplitude": 2.0,
-        "tactical_swing_min_gap_ticks": 10
-      }
+      "tick_timing_enabled": true
     }
   }
 }

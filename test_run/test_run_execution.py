@@ -8,23 +8,12 @@ from runtime.engine_skeleton import EngineTickSkeleton
 from runtime.runtime_v0_1 import BattleState, UnitState, Vec2
 
 from test_run.test_run_telemetry import (
-    compute_bridge_metrics_per_side,
-    compute_collapse_v2_shadow_telemetry,
-    compute_formation_snapshot_metrics,
     compute_hostile_intermix_metrics,
     extract_runtime_debug_payload,
 )
 
 
 DEFAULT_FRAME_STRIDE = 1
-BASELINE_V3_CONNECT_RADIUS_MULTIPLIER = 1.1
-BASELINE_V3_R_REF_RADIUS_MULTIPLIER = 1.0
-V3A_EXPERIMENT_BASE = "base"
-V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE = "exp_precontact_centroid_probe"
-V3A_EXPERIMENT_LABELS = {
-    V3A_EXPERIMENT_BASE,
-    V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE,
-}
 HOSTILE_CONTACT_IMPEDANCE_MODE_OFF = "off"
 HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 = "hybrid_v2"
 HOSTILE_CONTACT_IMPEDANCE_MODE_INTENT_UNIFIED_SPACING_V1 = "intent_unified_spacing_v1"
@@ -39,17 +28,6 @@ HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT = 0.20
 HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT = 0.50
 HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT = 1.00
 HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT = 1.00
-BRIDGE_THETA_SPLIT_DEFAULT = 1.715
-BRIDGE_THETA_ENV_DEFAULT = 0.583
-BRIDGE_SUSTAIN_TICKS_DEFAULT = 20
-COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT = 20
-COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT = 10
-COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT = 2
-COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT = 0.10
-COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT = 0.98
-COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT = 0.95
-COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT = 0.10
-
 SimulationExecutionConfig = dict
 SimulationMovementConfig = dict
 SimulationContactConfig = dict
@@ -860,7 +838,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 last_engagement_intensity={fleet_id: 0.0},
             )
         movement_surface = getattr(self, "_movement_surface", {})
-        movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
+        movement_model = str(movement_surface.get("model", "v4a")).strip().lower()
         if movement_model == "v4a":
             return None
         if not own_units:
@@ -1328,8 +1306,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             if first_debug_snapshot is None:
                 first_debug_snapshot = {
                     "debug_diag_last_tick": getattr(self, "debug_diag_last_tick", None),
-                    "debug_last_cohesion_v3": getattr(self, "debug_last_cohesion_v3", None),
-                    "debug_last_cohesion_v3_components": getattr(self, "debug_last_cohesion_v3_components", None),
                 }
             for unit_id in base_fleets[lead_fleet_id].unit_ids:
                 moved_unit = moved_variant.units.get(unit_id)
@@ -1341,8 +1317,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 merged_last_engagement_intensity[lead_fleet_id] = moved_variant.last_engagement_intensity[lead_fleet_id]
         if first_debug_snapshot is not None:
             self.debug_diag_last_tick = first_debug_snapshot["debug_diag_last_tick"]
-            self.debug_last_cohesion_v3 = first_debug_snapshot["debug_last_cohesion_v3"]
-            self.debug_last_cohesion_v3_components = first_debug_snapshot["debug_last_cohesion_v3_components"]
         return replace(
             state,
             units=merged_units,
@@ -1352,7 +1326,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
 
     def integrate_movement(self, state: BattleState) -> BattleState:
         movement_surface = getattr(self, "_movement_surface", {})
-        movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
+        movement_model = str(movement_surface.get("model", "v4a")).strip().lower()
         if movement_model != "v4a" or len(state.fleets) <= 0:
             return super().integrate_movement(state)
         if len(state.fleets) > 1 and not bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
@@ -2197,185 +2171,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                             row["late_clamp_dy"] = float(late_clamp_dy)
         return self.resolve_combat(moved_state)
 
-    def _compute_cohesion_v2_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
-        eps = 1e-12
-        fleet = state.fleets.get(fleet_id)
-        if fleet is None:
-            return 1.0, {
-                "n_alive": 0,
-                "centroid_x": 0.0,
-                "centroid_y": 0.0,
-                "fragmentation": 0.0,
-                "dispersion": 0.0,
-                "outlier_mass": 0.0,
-                "elongation": 0.0,
-                "exploitability": 0.0,
-                "cohesion_v2": 1.0,
-                "lcc_ratio": 1.0,
-                "dispersion_ratio_q90_q50": 1.0,
-                "outlier_count": 0,
-                "outlier_threshold": 0.0,
-                "q50_radius": 0.0,
-                "q90_radius": 0.0,
-                "connect_radius_effective": 0.0,
-                "connect_radius_multiplier": 1.0,
-            }
-
-        alive_positions = []
-        for unit_id in fleet.unit_ids:
-            unit = state.units.get(unit_id)
-            if unit is None or unit.hit_points <= 0.0:
-                continue
-            alive_positions.append((unit.position.x, unit.position.y))
-        n_alive = len(alive_positions)
-
-        v2_connect_multiplier = float(getattr(self, "V2_CONNECT_RADIUS_MULTIPLIER", 1.0))
-        if v2_connect_multiplier <= 0.0:
-            v2_connect_multiplier = 1.0
-
-        if n_alive == 0:
-            return 0.0, {
-                "n_alive": 0,
-                "centroid_x": 0.0,
-                "centroid_y": 0.0,
-                "fragmentation": 1.0,
-                "dispersion": 0.0,
-                "outlier_mass": 0.0,
-                "elongation": 0.0,
-                "exploitability": 1.0,
-                "cohesion_v2": 0.0,
-                "lcc_ratio": 0.0,
-                "dispersion_ratio_q90_q50": 1.0,
-                "outlier_count": 0,
-                "outlier_threshold": 0.0,
-                "q50_radius": 0.0,
-                "q90_radius": 0.0,
-                "connect_radius_effective": float(self.separation_radius) * v2_connect_multiplier,
-                "connect_radius_multiplier": v2_connect_multiplier,
-            }
-
-        sum_x = 0.0
-        sum_y = 0.0
-        for x, y in alive_positions:
-            sum_x += x
-            sum_y += y
-        centroid_x = sum_x / n_alive
-        centroid_y = sum_y / n_alive
-
-        radii = []
-        cov_xx = 0.0
-        cov_xy = 0.0
-        cov_yy = 0.0
-        for x, y in alive_positions:
-            dx = x - centroid_x
-            dy = y - centroid_y
-            radii.append(math.sqrt((dx * dx) + (dy * dy)))
-            cov_xx += dx * dx
-            cov_xy += dx * dy
-            cov_yy += dy * dy
-        cov_xx /= n_alive
-        cov_xy /= n_alive
-        cov_yy /= n_alive
-
-        sorted_radii = sorted(radii)
-        q25 = self._quantile_sorted(sorted_radii, 0.25)
-        q50 = self._quantile_sorted(sorted_radii, 0.50)
-        q75 = self._quantile_sorted(sorted_radii, 0.75)
-        q90 = self._quantile_sorted(sorted_radii, 0.90)
-        iqr = max(0.0, q75 - q25)
-
-        if q90 <= eps and q50 <= eps:
-            dispersion_ratio = 1.0
-            f_disp = 0.0
-        else:
-            dispersion_ratio = q90 / (q50 + eps)
-            if dispersion_ratio < 1.0:
-                dispersion_ratio = 1.0
-            f_disp = 1.0 - (1.0 / dispersion_ratio)
-            f_disp = self._clamp01(f_disp)
-
-        outlier_threshold = q75 + (1.5 * iqr)
-        outlier_count = 0
-        for r in radii:
-            if r > outlier_threshold:
-                outlier_count += 1
-        f_out = self._clamp01(outlier_count / n_alive)
-
-        trace = cov_xx + cov_yy
-        det = (cov_xx * cov_yy) - (cov_xy * cov_xy)
-        disc = max(0.0, (trace * trace) - (4.0 * det))
-        sqrt_disc = math.sqrt(disc)
-        lambda_1 = 0.5 * (trace + sqrt_disc)
-        lambda_2 = 0.5 * (trace - sqrt_disc)
-        if lambda_1 < eps:
-            f_elong = 0.0
-        else:
-            f_elong = 1.0 - (lambda_2 / (lambda_1 + eps))
-            f_elong = self._clamp01(f_elong)
-
-        if n_alive == 1:
-            lcc_ratio = 1.0
-            connect_radius_effective = float(self.separation_radius) * v2_connect_multiplier
-        else:
-            connect_radius = float(self.separation_radius) * v2_connect_multiplier
-            if connect_radius < eps:
-                connect_radius = eps
-            connect_radius_effective = connect_radius
-            connect_radius_sq = connect_radius * connect_radius
-            visited = [False] * n_alive
-            largest_component_size = 0
-            for i in range(n_alive):
-                if visited[i]:
-                    continue
-                visited[i] = True
-                stack = [i]
-                component_size = 0
-                while stack:
-                    node = stack.pop()
-                    component_size += 1
-                    nx, ny = alive_positions[node]
-                    for j in range(n_alive):
-                        if visited[j] or j == node:
-                            continue
-                        px, py = alive_positions[j]
-                        ddx = nx - px
-                        ddy = ny - py
-                        if (ddx * ddx) + (ddy * ddy) <= connect_radius_sq:
-                            visited[j] = True
-                            stack.append(j)
-                if component_size > largest_component_size:
-                    largest_component_size = component_size
-            lcc_ratio = largest_component_size / n_alive
-        f_frag = self._clamp01(1.0 - lcc_ratio)
-
-        exploitability = 1.0 - (
-            (1.0 - f_frag)
-            * (1.0 - f_disp)
-            * (1.0 - f_out)
-            * (1.0 - f_elong)
-        )
-        cohesion_v2 = self._clamp01(1.0 - exploitability)
-
-        return cohesion_v2, {
-            "n_alive": n_alive,
-            "centroid_x": centroid_x,
-            "centroid_y": centroid_y,
-            "fragmentation": f_frag,
-            "dispersion": f_disp,
-            "outlier_mass": f_out,
-            "elongation": f_elong,
-            "exploitability": exploitability,
-            "cohesion_v2": cohesion_v2,
-            "lcc_ratio": lcc_ratio,
-            "dispersion_ratio_q90_q50": dispersion_ratio,
-            "outlier_count": outlier_count,
-            "outlier_threshold": outlier_threshold,
-            "q50_radius": q50,
-            "q90_radius": q90,
-            "connect_radius_effective": connect_radius_effective,
-            "connect_radius_multiplier": v2_connect_multiplier,
-        }
-
     def evaluate_cohesion(self, state: BattleState) -> BattleState:
         return super().evaluate_cohesion(state)
 
@@ -2393,8 +2188,6 @@ def run_simulation(
     movement_cfg = _require_mapping(runtime_cfg, "movement")
     contact_cfg = _require_mapping(runtime_cfg, "contact")
     boundary_cfg = _require_mapping(runtime_cfg, "boundary")
-    bridge_cfg = _require_mapping(observer_cfg, "bridge")
-    collapse_shadow_cfg = _require_mapping(observer_cfg, "collapse_shadow")
     fixture_cfg = execution_cfg.get("fixture", {})
     if fixture_cfg is None:
         fixture_cfg = {}
@@ -2584,9 +2377,6 @@ def run_simulation(
                 "neutral execution_cfg['fixture']['stop_radius'] must be >= 0, "
                 f"got {fixture_stop_radius}"
             )
-    odw_posture_bias_cfg = movement_cfg.get("odw_posture_bias", {})
-    if not isinstance(odw_posture_bias_cfg, Mapping):
-        odw_posture_bias_cfg = {}
     hybrid_v2_cfg = contact_cfg.get("hybrid_v2", {})
     if not isinstance(hybrid_v2_cfg, Mapping):
         hybrid_v2_cfg = {}
@@ -2602,10 +2392,10 @@ def run_simulation(
     observer_enabled = bool(observer_cfg["enabled"])
     tick_timing_enabled = bool(observer_cfg.get("tick_timing_enabled", True))
     post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
-    movement_model = str(runtime_cfg["movement_model"]).strip().lower() or "v3a"
-    if movement_model not in {"v3a", "v4a"}:
+    movement_model = str(runtime_cfg["movement_model"]).strip().lower() or "v4a"
+    if movement_model != "v4a":
         raise ValueError(
-            "test_run maintained path only supports runtime_cfg['movement_model'] in {'v3a', 'v4a'}, "
+            "test_run maintained path only supports runtime_cfg['movement_model']='v4a', "
             f"got {runtime_cfg['movement_model']!r}"
         )
     engine = engine_cls(
@@ -2652,36 +2442,14 @@ def run_simulation(
             "HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH",
             _clamp01(float(intent_unified_spacing_cfg.get("strength", HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT))),
         ),
-        ("V2_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v2_connect_radius_multiplier", 1.0)))),
-        ("V3_CONNECT_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_connect_radius_multiplier_effective", 1.0)))),
-        ("V3_R_REF_RADIUS_MULTIPLIER", max(1e-12, float(movement_cfg.get("v3_r_ref_radius_multiplier_effective", 1.0)))),
     ):
         setattr(engine, attr, value)
-
-    engine.runtime_cohesion_decision_source = str(runtime_cfg["decision_source"]).strip().lower() or "v2"
     movement_surface = getattr(engine, "_movement_surface", None)
     if not isinstance(movement_surface, dict):
         raise TypeError("EngineTickSkeleton._movement_surface missing or invalid")
     movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
-    movement_surface["model"] = movement_model
-    if movement_model == "v4a":
-        v4a_restore_strength = float(movement_cfg.get("v4a_restore_strength_effective", 0.25))
-        movement_surface["v4a_restore_strength"] = v4a_restore_strength
-        movement_surface["v3a_experiment"] = V3A_EXPERIMENT_BASE
-        movement_surface["centroid_probe_scale"] = 1.0
-    else:
-        movement_surface["v4a_restore_strength"] = 1.0
-        movement_surface["v3a_experiment"] = (
-            str(movement_cfg.get("experiment_effective", "base")).strip().lower() or "base"
-        )
-        movement_surface["centroid_probe_scale"] = float(movement_cfg.get("centroid_probe_scale_effective", 1.0))
-    movement_surface["odw_posture_bias_enabled"] = bool(odw_posture_bias_cfg.get("enabled_effective", False))
-    movement_surface["odw_posture_bias_k"] = max(0.0, float(odw_posture_bias_cfg.get("k_effective", 0.0)))
-    movement_surface["odw_posture_bias_clip_delta"] = max(
-        0.0,
-        float(odw_posture_bias_cfg.get("clip_delta_effective", 0.2)),
-    )
-
+    movement_surface["model"] = "v4a"
+    movement_surface["v4a_restore_strength"] = float(movement_cfg.get("v4a_restore_strength_effective", 0.25))
     combat_surface = getattr(engine, "_combat_surface", None)
     if not isinstance(combat_surface, dict):
         raise TypeError("EngineTickSkeleton._combat_surface missing or invalid")
@@ -3071,10 +2839,6 @@ def run_simulation(
         **{
             key: _per_fleet_series()
             for key in (
-                "cohesion_v3",
-                "c_conn",
-                "c_scale",
-                "rho",
                 "centroid_x",
                 "centroid_y",
                 "center_wing_advance_gap",
@@ -3184,30 +2948,6 @@ def run_simulation(
         "in_contact_count": [],
         "damage_events_count": [],
     }
-    bridge_telemetry = {
-        "theta_split": float(bridge_cfg["theta_split"]),
-        "theta_env": float(bridge_cfg["theta_env"]),
-        "sustain_ticks": int(bridge_cfg["sustain_ticks"]),
-        **{
-            key: _per_fleet_series()
-            for key in (
-                "AR",
-                "wedge_ratio",
-                "split_separation",
-                "angle_coverage",
-                "split_cond",
-                "env_cond",
-                "split_sustain_counter",
-                "env_sustain_counter",
-                "bridge_event_cut",
-                "bridge_event_pocket",
-            )
-        },
-        "first_tick_split_sustain": {fleet_id: None for fleet_id in fleet_ids},
-        "first_tick_env_sustain": {fleet_id: None for fleet_id in fleet_ids},
-    }
-    split_counter_state = {fleet_id: 0 for fleet_id in fleet_ids}
-    env_counter_state = {fleet_id: 0 for fleet_id in fleet_ids}
     position_frames = []
     center_wing_interval_ticks = int(observer_telemetry.get("center_wing_advance_gap_interval_ticks", 10))
     center_wing_position_history = _per_fleet_series()
@@ -3424,7 +3164,6 @@ def run_simulation(
             combat_stats = {}
         combat_telemetry["in_contact_count"].append(int(combat_stats.get("in_contact_count", 0)))
         combat_telemetry["damage_events_count"].append(int(combat_stats.get("damage_events_count", 0)))
-        contact_active_tick = int(combat_stats.get("in_contact_count", 0)) > 0
 
         if print_tick_summary:
             ordered_fleet_ids = [fleet_id for fleet_id in ("A", "B") if fleet_id in state.fleets]
@@ -3736,83 +3475,6 @@ def run_simulation(
             posture_persistence_state[fleet_id]["length"] = next_length
             observer_telemetry["posture_persistence_time"][fleet_id].append(float(posture_sign * next_length))
 
-        runtime_v3 = getattr(engine, "debug_last_cohesion_v3", {})
-        if not isinstance(runtime_v3, dict):
-            runtime_v3 = {}
-        runtime_v3_components = getattr(engine, "debug_last_cohesion_v3_components", {})
-        if not isinstance(runtime_v3_components, dict):
-            runtime_v3_components = {}
-        for fleet_id in state.fleets:
-            fallback_v2 = float(state.last_fleet_cohesion.get(fleet_id, 1.0))
-            cohesion_v3 = float(runtime_v3.get(fleet_id, fallback_v2)) if diagnostics_enabled else float("nan")
-            comp = runtime_v3_components.get(fleet_id, {})
-            if not isinstance(comp, dict):
-                comp = {}
-            observer_telemetry["cohesion_v3"][fleet_id].append(cohesion_v3)
-            observer_telemetry["c_conn"][fleet_id].append(float(comp.get("c_conn", float("nan"))))
-            observer_telemetry["c_scale"][fleet_id].append(float(comp.get("c_scale", float("nan"))))
-            observer_telemetry["rho"][fleet_id].append(float(comp.get("rho", float("nan"))))
-
-        bridge_metrics = compute_bridge_metrics_per_side(state)
-        for fleet_id in state.fleets:
-            if diagnostics_enabled:
-                metric = bridge_metrics.get(fleet_id, {})
-                ar_value = float(metric.get("AR", float("nan")))
-                wedge_value = float(metric.get("wedge_ratio", float("nan")))
-                split_value = float(metric.get("split_separation", 0.0))
-                env_value = float(metric.get("angle_coverage", 0.0))
-                split_cond = bool(
-                    state.tick >= 1 and contact_active_tick and split_value >= float(bridge_cfg["theta_split"])
-                )
-                env_cond = bool(
-                    state.tick >= 1 and contact_active_tick and env_value >= float(bridge_cfg["theta_env"])
-                )
-            else:
-                ar_value = float("nan")
-                wedge_value = float("nan")
-                split_value = float("nan")
-                env_value = float("nan")
-                split_cond = False
-                env_cond = False
-
-            if split_cond:
-                split_counter_state[fleet_id] = int(split_counter_state.get(fleet_id, 0)) + 1
-            else:
-                split_counter_state[fleet_id] = 0
-            if env_cond:
-                env_counter_state[fleet_id] = int(env_counter_state.get(fleet_id, 0)) + 1
-            else:
-                env_counter_state[fleet_id] = 0
-
-            cut_event_tick = False
-            pocket_event_tick = False
-            if (
-                split_counter_state[fleet_id] >= int(bridge_cfg["sustain_ticks"])
-                and bridge_telemetry["first_tick_split_sustain"].get(fleet_id) is None
-            ):
-                bridge_telemetry["first_tick_split_sustain"][fleet_id] = int(state.tick)
-                cut_event_tick = True
-            if (
-                env_counter_state[fleet_id] >= int(bridge_cfg["sustain_ticks"])
-                and bridge_telemetry["first_tick_env_sustain"].get(fleet_id) is None
-            ):
-                bridge_telemetry["first_tick_env_sustain"][fleet_id] = int(state.tick)
-                pocket_event_tick = True
-
-            for metric_key, metric_value in (
-                ("AR", ar_value),
-                ("wedge_ratio", wedge_value),
-                ("split_separation", split_value),
-                ("angle_coverage", env_value),
-                ("split_cond", bool(split_cond)),
-                ("env_cond", bool(env_cond)),
-                ("split_sustain_counter", int(split_counter_state[fleet_id])),
-                ("env_sustain_counter", int(env_counter_state[fleet_id])),
-                ("bridge_event_cut", bool(cut_event_tick)),
-                ("bridge_event_pocket", bool(pocket_event_tick)),
-            ):
-                bridge_telemetry[metric_key][fleet_id].append(metric_value)
-
         _capture_position_frame(state)
 
         any_fleet_eliminated = any(len(fleet.unit_ids) == 0 for fleet in state.fleets.values())
@@ -3833,8 +3495,6 @@ def run_simulation(
             fleet_size_trajectory,
             observer_telemetry,
             combat_telemetry,
-            bridge_telemetry,
-            {},
             position_frames,
         )
 
@@ -3925,19 +3585,6 @@ def run_simulation(
     observer_telemetry["fire_efficiency"]["A"] = fire_efficiency_series_a
     observer_telemetry["fire_efficiency"]["B"] = fire_efficiency_series_b
 
-    collapse_shadow_telemetry = compute_collapse_v2_shadow_telemetry(
-        observer_enabled=diagnostics_enabled,
-        observer_telemetry=observer_telemetry,
-        alive_trajectory=alive_trajectory,
-        theta_conn_default=float(collapse_shadow_cfg["theta_conn_default"]),
-        theta_coh_default=float(collapse_shadow_cfg["theta_coh_default"]),
-        theta_force_default=float(collapse_shadow_cfg["theta_force_default"]),
-        theta_attr_default=float(collapse_shadow_cfg["theta_attr_default"]),
-        attrition_window=int(collapse_shadow_cfg["attrition_window"]),
-        sustain_ticks=int(collapse_shadow_cfg["sustain_ticks"]),
-        min_conditions=int(collapse_shadow_cfg["min_conditions"]),
-    )
-
     return (
         state,
         trajectory,
@@ -3945,7 +3592,5 @@ def run_simulation(
         fleet_size_trajectory,
         observer_telemetry,
         combat_telemetry,
-        bridge_telemetry,
-        collapse_shadow_telemetry,
         position_frames,
     )
