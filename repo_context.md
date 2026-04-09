@@ -7,7 +7,7 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Primary development branch: `dev_v2.0`
+- Primary development branch: `dev_v2.1`
 
 ## Current Phase Focus
 
@@ -18,7 +18,8 @@ Authority: Reference only, not canonical semantics authority
 - Step 3 objective line is now sufficiently established in bounded scope: opening review, first carrier, harness-side validation, and very small viewer-consumption hookup are all in place
 - Step 3 formation reference line is now structurally opened and closed in bounded document-only scope across frame / layout / spacing carriers
 - Step 3 mapping line remains at scope-confirmation plus minimum-contract records only; the legality line now spans merged opening-scope, minimum-contract, contract-stabilization, touchpoint/interface/consumer-boundary, runtime-integration-envelope, implementation-prep decision/plan records, a merged first bounded runtime/harness implementation baseline, and an active bounded hardening charter
-- bounded `neutral_transit_v1` corrections now read as: first-turn `A1 + B1` remain active; the later early-side `E2` candidate regressed locally and was withdrawn during subtraction-first cleanup; the current post-cleanup bounded turn adds a late-only terminal non-overshoot clamp inside the existing stop-radius window without adding new parameters or settings
+- current recovered anchor is `dev_v2.1`; the active cleanup carrier is `eng/dev-v2.1-targeting-restore-cleanup`
+- current neutral fixture active mode is `neutral`; runtime expected-position intake no longer depends on the old `neutral_transit_v1` mode gate
 - Panda3D viewer now has a very small viewer-consumption hookup for the bounded neutral-transit first carrier while remaining a pure consumer of runtime-owned results
 - A1 hostile penetration line freeze completed as working/stopped/failed status separation
 - A3 settings layering completed
@@ -67,7 +68,9 @@ Current emphasis is bounded 3D viewer bootstrap rather than personality expansio
   - tick pipeline and core runtime behavior; maintained cohesion path now runs a single selected source inside runtime
   - current hot-path cleanup includes local spatial-hash use for combat candidate generation, movement pair pruning with preserved pair order, and cohesion connectivity search
   - current merged baseline now exposes one first bounded legality seam after mapping-produced reference positions are available and before downstream feasible-position consumption
-  - current `dev_v2.1` line also carries a first local expected-damage targeting candidate in `resolve_combat()`: target selection now considers bounded angle/range-derived expected damage, while `attack_range` remains max range and `fire_optimal_range_ratio` defines a local optimal-range carrier
+  - current `dev_v2.1` line also carries a first bounded expected-damage targeting candidate in `resolve_combat()`: target selection now considers bounded angle/range-derived expected damage, `attack_range` remains max range, and `fire_optimal_range_ratio` now also defines the active battle hold-gap base through `fire_optimal_range`
+  - active `v4a` restore is now a direct runtime seam: `restore_term = restore_strength * normalize(restore_vector)`
+  - active `v4a` no longer consumes FSR
 
 ## Test Harness Paths
 
@@ -166,11 +169,11 @@ Current availability status:
   - thin entry settings / layer pointer
 - `test_run/test_run_v1_0.runtime.settings.json`
   - runtime values
-  - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and `neutral_transit_v1` objective-arrival continuation
-  - current `dev_v2.1` local runtime line also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the first bounded range-quality carrier for the new targeting candidate
+  - `run_control.post_resolution_hold_steps` is now the authoritative harness/runtime hold-window control for battle-resolution and neutral objective-arrival continuation
+  - current `dev_v2.1` local runtime line also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the bounded range-quality carrier for the current targeting candidate and the active battle hold-gap base
 - `test_run/test_run_v1_0.testonly.settings.json`
   - test-only harness controls
-  - active local movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`; `v4a.restore_strength` is now a native `v4a` restore/cohesion seam, and the first near-contact smoothing group (`battle_hold_relaxation`, `battle_approach_drive_relaxation`, `battle_near_contact_internal_stability_blend`, `battle_near_contact_speed_relaxation`) remains active on the local `v4a` line
+  - active local movement seams currently include bounded `v4a` transition-movement / terminal controls used only in `test_run`; `v4a.restore_strength` is now a direct native `v4a` restore seam, the first near-contact smoothing group remains active on the local `v4a` line, and `fixture.neutral.stop_radius` is the neutral-only objective termination radius
   - the same local cleanup line has retired the public `continuous_fr_shaping` and `pre_tl_target_substrate` settings surfaces; retained `v3a` support surfaces are now narrower and explicitly legacy
 - `test_run/test_run_v1_0.viz.settings.json`
   - visualization values

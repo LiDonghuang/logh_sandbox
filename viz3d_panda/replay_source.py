@@ -22,8 +22,8 @@ VIEWER_SOURCE_CHOICES = (
     VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE,
 )
 FIXED_VIEWER_FLEET_COLORS = {
-    "A": "#2a63b8",
-    "B": "#b6404a",
+    "A": "#216bd9",
+    "B": "#a62631",
 }
 DEFAULT_VIEWER_AVATAR_A = getattr(test_run_entry, "DEFAULT_AVATAR_A", "avatar_reinhard")
 DEFAULT_VIEWER_AVATAR_B = getattr(test_run_entry, "DEFAULT_AVATAR_B", "avatar_yang")
@@ -233,7 +233,7 @@ def _resolve_viewer_source(settings: dict[str, Any], requested_source: str) -> s
     if normalized != VIEWER_SOURCE_AUTO:
         return normalized
     fixture_mode = str(settings_api.get_fixture_setting(settings, ("active_mode",), "battle")).strip().lower()
-    if fixture_mode == "neutral_transit_v1":
+    if fixture_mode == "neutral":
         return VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE
     return VIEWER_SOURCE_ACTIVE_BATTLE
 

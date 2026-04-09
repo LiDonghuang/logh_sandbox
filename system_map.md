@@ -74,13 +74,15 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_v1_0.settings.comments.json`
 - `test_run/test_run_v1_0.settings.reference.md`
 - current authoritative post-resolution hold surface is `test_run/test_run_v1_0.runtime.settings.json::run_control.post_resolution_hold_steps`
-- current local cleanup line carries `v4a.restore_strength` as an explicit native `v4a` runtime seam rather than the old centroid-probe bridge
+- current local cleanup line carries `v4a.restore_strength` as a direct native `v4a` runtime seam rather than the old centroid-probe bridge; active read is `restore_term = restore_strength * normalize(restore_vector)`
 - the same local line also restores the first bounded near-contact smoothing/stability group on the public `v4a` test-only surface:
   - `battle_hold_relaxation`
   - `battle_approach_drive_relaxation`
   - `battle_near_contact_internal_stability_blend`
   - `battle_near_contact_speed_relaxation`
-- the same local line now also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the bounded optimal-range carrier for the expected-damage targeting candidate
+- the same local line now also adds `runtime.physical.fire_control.fire_optimal_range_ratio` as the bounded optimal-range carrier for the expected-damage targeting candidate and the active battle hold-gap base
+- active neutral fixture mode is now `neutral`
+- active `v4a` no longer consumes FSR
 - the same local cleanup line narrows old-family public settings surface by retiring `continuous_fr_shaping` and `pre_tl_target_substrate`; retained `v3a` support knobs are now more explicitly legacy/fallback material
 
 ### 7. Documentation Layer
@@ -163,7 +165,7 @@ Current availability:
 - the same PR #6 branch now also carries a bounded far-field battle-target cleanup on the active `v4a` line inside `test_run/`; current branch-only read is that Layer A now prefers `global enemy relation + d*`, while older `nearest5 / weighted_local / local_cluster / soft_local_weighted` enemy-localization semantics are being retired from the active far-field owner read and kept only as legacy harness material
 - the `20260329` branch package now also includes a turning-cost / heading-inertia discussion note and a future 3D runtime computation-principles review note; both are repo-side structural discussion assets only and do not activate new runtime doctrine
 - the failed early-side `E2` candidate was withdrawn during subtraction-first cleanup; active bounded neutral-transit corrections now read as first-turn `A1 + B1` plus a post-cleanup late-only terminal non-overshoot clamp in `test_run/test_run_execution.py`
-- the maintained `neutral_transit_v1` harness now permits strict `objective_point_xy == initial centroid` for fixture expected-position reference construction by using the initial fleet forward orientation as a harness-only fallback axis; this does not widen runtime semantics
+- the maintained neutral fixture harness now permits strict `objective_point_xy == initial centroid` for fixture expected-position reference construction by using the initial fleet forward orientation as a harness-only fallback axis; this does not widen runtime semantics
 - late-stage direction-read residual around the objective remains open as a viewer-local/readout issue and is not currently claimed as closed
 - late terminal settle root-cause work is now being read primarily as a solver-layer residual rather than a viewer-primary issue
 - the HP-bucketed inner-cluster-count query remains deferred / not active during this investigation turn

@@ -92,7 +92,7 @@ CORNER_AVATAR_BAR_HEIGHT = 0.016
 CORNER_AVATAR_TEXT_SCALE = 0.034
 CORNER_AVATAR_NAME_SCALE = 0.034
 CORNER_AVATAR_BAR_BG = (0.10, 0.14, 0.18, 0.92)
-CORNER_AVATAR_BAR_FILL = (0.78, 0.14, 0.14, 0.98)
+CORNER_AVATAR_BAR_FILL = (0.0, 1.0, 0.0, 0.98)
 CORNER_AVATAR_TEXT_COLOR = (0.92, 0.95, 0.98, 1.0)
 CJK_FONT_CANDIDATES = (
     Path("C:/Windows/Fonts/simhei.ttf"),
@@ -1709,7 +1709,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=VIEWER_SOURCE_AUTO,
         help=(
             "Viewer replay source. 'auto' follows the current layered fixture.active_mode when it is "
-            "neutral_transit_v1; otherwise it uses the active battle path."
+            "neutral; otherwise it uses the active battle path."
         ),
     )
     parser.add_argument(

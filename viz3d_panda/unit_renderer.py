@@ -24,8 +24,8 @@ FIRE_LINK_PULSE_SPACING = 1.00
 FIRE_LINK_PULSE_LENGTH = 0.75
 FIRE_LINK_BASE_SPEED_PER_SECOND = 0.50
 FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 1.00
-FIRE_LINK_BEAM_SPREAD = 0.20
-FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.20
+FIRE_LINK_BEAM_SPREAD = 0.10
+FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.10
 FIRE_LINK_BEAM_COUNT_BY_BUCKET = {
     5: 5,
     4: 4,
@@ -41,11 +41,10 @@ FIRE_LINK_BEAM_LAYOUTS = {
     5: ((-1.0, 1.0), (-1.0, -1.0), (0.0, 0.0), (1.0, 1.0), (1.0, -1.0)),
 }
 
-# Unit dual-layer appearance, ordered near -> mid -> far.
-TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA = (0.02, 0.50, 0.90)
-CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA = (0.90, 0.50, 0.0)
-DUAL_LAYER_NEAR_DISTANCE_RATIO, DUAL_LAYER_MID_DISTANCE_RATIO, DUAL_LAYER_FAR_DISTANCE_RATIO = (0.11, 0.19, 0.28)
-DUAL_LAYER_NEAR_DISTANCE_FLOOR, DUAL_LAYER_MID_DISTANCE_FLOOR, DUAL_LAYER_FAR_DISTANCE_FLOOR = (18.0, 42.0, 70.0)
+# Unit dual-layer appearance, ordered level 1 -> level 5.
+TOKEN_ALPHA_BY_LEVEL = (0.01, 0.10, 0.25, 0.50, 0.90)
+CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.25, 0.0, 0.0, 0.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (30.0, 48.0, 64.0, 76.0, 112.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
@@ -72,7 +71,7 @@ CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
 
 # Unit inner-cluster geometry.
 CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
-CLUSTER_SHIP_MODEL_UNIT = 0.040
+CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
 CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.75, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
@@ -112,7 +111,7 @@ def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     red = int(normalized[0:2], 16) / 255.0
     green = int(normalized[2:4], 16) / 255.0
     blue = int(normalized[4:6], 16) / 255.0
-    return (red, green, blue, TOKEN_FAR_ALPHA)
+    return (red, green, blue, float(TOKEN_ALPHA_BY_LEVEL[-1]))
 
 
 def _brighten_rgb(
@@ -380,21 +379,20 @@ class UnitRenderer:
         self._playback_level_index = 0
         self._playback_fps = 2.0
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
-        self._dual_layer_near_distance = max(
-            DUAL_LAYER_NEAR_DISTANCE_FLOOR,
-            float(self._replay.arena_size) * DUAL_LAYER_NEAR_DISTANCE_RATIO,
-        )
-        self._dual_layer_mid_distance = max(
-            self._dual_layer_near_distance,
-            max(
-                DUAL_LAYER_MID_DISTANCE_FLOOR,
-                float(self._replay.arena_size) * DUAL_LAYER_MID_DISTANCE_RATIO,
-            ),
-        )
-        self._dual_layer_far_distance = max(
-            DUAL_LAYER_FAR_DISTANCE_FLOOR,
-            float(self._replay.arena_size) * DUAL_LAYER_FAR_DISTANCE_RATIO,
-        )
+        if len(TOKEN_ALPHA_BY_LEVEL) != len(CLUSTER_ALPHA_BY_LEVEL):
+            raise ValueError("TOKEN_ALPHA_BY_LEVEL and CLUSTER_ALPHA_BY_LEVEL must have identical lengths.")
+        if len(TOKEN_ALPHA_BY_LEVEL) != len(DUAL_LAYER_DISTANCE_BY_LEVEL):
+            raise ValueError("alpha profiles and DUAL_LAYER_DISTANCE_BY_LEVEL must have identical lengths.")
+        if len(DUAL_LAYER_DISTANCE_BY_LEVEL) != 5:
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must define exactly 5 levels; got {len(DUAL_LAYER_DISTANCE_BY_LEVEL)}.")
+        self._dual_layer_distances = tuple(float(distance) for distance in DUAL_LAYER_DISTANCE_BY_LEVEL)
+        if any(distance <= 0.0 for distance in self._dual_layer_distances):
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must contain only positive distances; got {self._dual_layer_distances!r}.")
+        if any(
+            self._dual_layer_distances[index] < self._dual_layer_distances[index - 1]
+            for index in range(1, len(self._dual_layer_distances))
+        ):
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must be non-decreasing; got {self._dual_layer_distances!r}.")
         self._sync_objective_marker()
 
     def _build_fleet_halo_baselines(self) -> dict[str, tuple[float, float]]:
@@ -505,7 +503,7 @@ class UnitRenderer:
         template = NodePath(f"unit_template_{fleet_id}")
         token_np = _build_wedge_template(f"unit_token_{fleet_id}")
         token_np.setName("outer_token")
-        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), TOKEN_FAR_ALPHA)
+        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), float(TOKEN_ALPHA_BY_LEVEL[-1]))
         token_np.setTransparency(TransparencyAttrib.MAlpha)
         token_np.setTwoSided(True)
         token_np.setBin("transparent", 0)
@@ -535,9 +533,7 @@ class UnitRenderer:
 
     def update_view(self, camera_np: NodePath) -> None:
         camera_pos = camera_np.getPos(self._parent)
-        near_distance = float(self._dual_layer_near_distance)
-        mid_distance = float(self._dual_layer_mid_distance)
-        far_distance = float(self._dual_layer_far_distance)
+        level_distances = self._dual_layer_distances
         min_unit_distance: float | None = None
         for node_key, root_np in self._unit_nodes.items():
             token_np = self._token_nodes.get(node_key)
@@ -551,23 +547,29 @@ class UnitRenderer:
             distance = math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
             if min_unit_distance is None or distance < min_unit_distance:
                 min_unit_distance = distance
-            if distance <= near_distance:
-                outer_alpha = TOKEN_NEAR_ALPHA
-                cluster_alpha = CLUSTER_NEAR_ALPHA
-            elif distance <= mid_distance:
-                mid_weight = _smoothstep(near_distance, mid_distance, distance)
-                outer_alpha = _lerp(TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, mid_weight)
-                cluster_alpha = _lerp(CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, mid_weight)
-            elif distance <= far_distance:
-                far_weight = _smoothstep(mid_distance, far_distance, distance)
-                outer_alpha = _lerp(TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA, far_weight)
-                cluster_alpha = _lerp(CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA, far_weight)
+            if distance <= level_distances[0]:
+                outer_alpha = float(TOKEN_ALPHA_BY_LEVEL[0])
+                cluster_alpha = float(CLUSTER_ALPHA_BY_LEVEL[0])
             else:
-                outer_alpha = TOKEN_FAR_ALPHA
-                cluster_alpha = CLUSTER_FAR_ALPHA
+                outer_alpha = float(TOKEN_ALPHA_BY_LEVEL[-1])
+                cluster_alpha = float(CLUSTER_ALPHA_BY_LEVEL[-1])
+                for level_index in range(1, len(level_distances)):
+                    if distance <= level_distances[level_index]:
+                        blend = _smoothstep(level_distances[level_index - 1], level_distances[level_index], distance)
+                        outer_alpha = _lerp(
+                            float(TOKEN_ALPHA_BY_LEVEL[level_index - 1]),
+                            float(TOKEN_ALPHA_BY_LEVEL[level_index]),
+                            blend,
+                        )
+                        cluster_alpha = _lerp(
+                            float(CLUSTER_ALPHA_BY_LEVEL[level_index - 1]),
+                            float(CLUSTER_ALPHA_BY_LEVEL[level_index]),
+                            blend,
+                        )
+                        break
             token_alpha_scale = 1.0
-            if TOKEN_FAR_ALPHA > 1e-9:
-                token_alpha_scale = outer_alpha / TOKEN_FAR_ALPHA
+            if float(TOKEN_ALPHA_BY_LEVEL[-1]) > 1e-9:
+                token_alpha_scale = outer_alpha / float(TOKEN_ALPHA_BY_LEVEL[-1])
             token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
             if cluster_alpha > 1e-4:
                 cluster_np.show()
@@ -575,7 +577,7 @@ class UnitRenderer:
             else:
                 cluster_np.hide()
         if self._current_frame is not None:
-            should_show_fire_links = bool(min_unit_distance is not None and min_unit_distance <= far_distance)
+            should_show_fire_links = bool(min_unit_distance is not None and min_unit_distance <= level_distances[-1])
             if (
                 self._fire_link_mode == "disabled"
                 or not self._current_frame.targets

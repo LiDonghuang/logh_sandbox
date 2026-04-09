@@ -1,6 +1,6 @@
 {
   "run_control": {
-    "max_time_steps": -1,
+    "max_time_steps": 500,
     "post_resolution_hold_steps": 20,
     "random_seed": -1,
     "test_mode": 2
@@ -10,8 +10,8 @@
     "background_map_seed": -1
   },
   "fleet": {
-    "fleet_a_archetype_id": "bewcock",
-    "fleet_b_archetype_id": "merkatz",
+    "fleet_a_archetype_id": "yang",
+    "fleet_b_archetype_id": "reinhard",
     "initial_fleet_a_size": 100,
     "initial_fleet_b_size": 100,
     "initial_fleet_a_aspect_ratio": 1.0,

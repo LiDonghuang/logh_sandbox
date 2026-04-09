@@ -57,11 +57,11 @@ SimulationBoundaryConfig = dict
 SimulationRuntimeConfig = dict
 SimulationObserverConfig = dict
 FIXTURE_MODE_BATTLE = "battle"
-FIXTURE_MODE_NEUTRAL_TRANSIT_V1 = "neutral_transit_v1"
+FIXTURE_MODE_NEUTRAL = "neutral"
 FIXTURE_LINEAR_ARRIVAL_GAIN_MIN_STOP_RADIUS = 1e-12
 FIXTURE_MODE_LABELS = {
     FIXTURE_MODE_BATTLE,
-    FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+    FIXTURE_MODE_NEUTRAL,
 }
 OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE = "fixture"
 OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR = "point_anchor"
@@ -387,11 +387,11 @@ def _compute_fire_efficiency_series(
 def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[str, Any], tuple[float, float]]:
     if not isinstance(contract_cfg, Mapping):
         raise TypeError(
-            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d'] must be a mapping"
+            "neutral execution_cfg['fixture']['objective_contract_3d'] must be a mapping"
         )
     if "transit_axis_hint_xyz" in contract_cfg:
         raise ValueError(
-            "neutral_transit_v1 first implementation must not set "
+            "neutral first implementation must not set "
             "execution_cfg['fixture']['objective_contract_3d']['transit_axis_hint_xyz']"
         )
     anchor_point_xyz = contract_cfg.get("anchor_point_xyz")
@@ -401,7 +401,7 @@ def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[st
         or len(anchor_point_xyz) != 3
     ):
         raise TypeError(
-            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['anchor_point_xyz'] "
+            "neutral execution_cfg['fixture']['objective_contract_3d']['anchor_point_xyz'] "
             "must be a 3-item sequence"
         )
     normalized_contract = {
@@ -416,17 +416,17 @@ def _normalize_fixture_objective_contract_3d(contract_cfg: Any) -> tuple[dict[st
     }
     if normalized_contract["source_owner"] != OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE:
         raise ValueError(
-            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['source_owner'] "
+            "neutral execution_cfg['fixture']['objective_contract_3d']['source_owner'] "
             f"must be {OBJECTIVE_CONTRACT_3D_SOURCE_OWNER_FIXTURE!r}, got {normalized_contract['source_owner']!r}"
         )
     if normalized_contract["objective_mode"] != OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR:
         raise ValueError(
-            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['objective_mode'] "
+            "neutral execution_cfg['fixture']['objective_contract_3d']['objective_mode'] "
             f"must be {OBJECTIVE_CONTRACT_3D_MODE_POINT_ANCHOR!r}, got {normalized_contract['objective_mode']!r}"
         )
     if normalized_contract["no_enemy_semantics"] != OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS:
         raise ValueError(
-            "neutral_transit_v1 execution_cfg['fixture']['objective_contract_3d']['no_enemy_semantics'] "
+            "neutral execution_cfg['fixture']['objective_contract_3d']['no_enemy_semantics'] "
             f"must be {OBJECTIVE_CONTRACT_3D_NO_ENEMY_SEMANTICS!r}, got {normalized_contract['no_enemy_semantics']!r}"
         )
     return normalized_contract, (
@@ -512,11 +512,8 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
         if current_axis_norm <= 0.0:
             current_axis_hat = resolved_forward_hat
-        # Current local read: terminal/hold morphology latching over-regularizes arrival
-        # into a visibly discrete end-state. Keep arrival detection, but disable the
-        # harness-side terminal/hold reshape path for now.
-        terminal_active = False
-        hold_active = False
+        terminal_active = bool(bundle.get("formation_terminal_active", False))
+        hold_active = bool(bundle.get("formation_hold_active", False))
         hold_axis = bundle.get("formation_hold_axis_xy", current_axis_hat)
         if not isinstance(hold_axis, Sequence) or len(hold_axis) < 2:
             hold_axis = current_axis_hat
@@ -535,6 +532,20 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         )
         if terminal_axis_norm <= 0.0:
             terminal_axis_hat = current_axis_hat
+        objective_point_xy = bundle.get("objective_point_xy")
+        stop_radius = float(bundle.get("stop_radius", 0.0))
+        within_stop_radius = False
+        if isinstance(objective_point_xy, Sequence) and len(objective_point_xy) >= 2 and stop_radius > 0.0:
+            objective_dx = float(objective_point_xy[0]) - float(centroid_x)
+            objective_dy = float(objective_point_xy[1]) - float(centroid_y)
+            objective_distance = math.sqrt((objective_dx * objective_dx) + (objective_dy * objective_dy))
+            within_stop_radius = objective_distance <= stop_radius
+        if within_stop_radius:
+            terminal_active = True
+            hold_active = False
+            terminal_axis_hat = current_axis_hat
+            terminal_center_x = float(centroid_x)
+            terminal_center_y = float(centroid_y)
         desired_axis_hat = current_axis_hat
         if target_norm > 0.0:
             desired_axis_hat = target_forward_hat
@@ -553,14 +564,6 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 desired_axis_hat,
                 V4A_MORPHOLOGY_AXIS_RELAXATION_DEFAULT,
             )
-        objective_point_xy = bundle.get("objective_point_xy")
-        hold_stop_radius = float(bundle.get("hold_stop_radius", 0.0))
-        within_hold_radius = False
-        if isinstance(objective_point_xy, Sequence) and len(objective_point_xy) >= 2 and hold_stop_radius > 0.0:
-            objective_dx = float(objective_point_xy[0]) - float(centroid_x)
-            objective_dy = float(objective_point_xy[1]) - float(centroid_y)
-            objective_distance = math.sqrt((objective_dx * objective_dx) + (objective_dy * objective_dy))
-            within_hold_radius = objective_distance <= hold_stop_radius
         if hold_active:
             current_axis_hat = hold_axis_hat
         elif terminal_active:
@@ -586,6 +589,9 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             terminal_center = (current_center_x, current_center_y)
         terminal_center_x = float(terminal_center[0]) if len(terminal_center) >= 1 else float(current_center_x)
         terminal_center_y = float(terminal_center[1]) if len(terminal_center) >= 2 else float(current_center_y)
+        if within_stop_radius:
+            terminal_center_x = float(centroid_x)
+            terminal_center_y = float(centroid_y)
         current_offsets_local: dict[str, tuple[float, float]] = {}
         for unit in alive_units:
             rel_x = float(unit.position.x) - centroid_x
@@ -678,18 +684,32 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         lateral_shape_error = abs(actual_lateral_extent - lateral_extent_target) / max(1e-9, lateral_extent_base)
         shape_error_current = min(1.0, max(0.0, max(forward_shape_error, lateral_shape_error)))
         bundle["shape_error_current"] = float(shape_error_current)
-        bundle["hold_within_stop_radius"] = bool(within_hold_radius)
-        bundle["formation_terminal_active"] = False
-        bundle["formation_hold_active"] = False
-        bundle["formation_terminal_latched_tick"] = None
+        bundle["stop_within_radius"] = bool(within_stop_radius)
+        bundle["formation_terminal_active"] = bool(terminal_active)
+        bundle["formation_hold_active"] = bool(hold_active)
+        bundle["formation_terminal_latched_tick"] = 0 if terminal_active else None
         bundle["formation_hold_latched_tick"] = None
-        bundle["formation_terminal_axis_xy"] = None
-        bundle["formation_terminal_center_xy"] = None
-        bundle["formation_hold_axis_xy"] = None
-        bundle["formation_hold_center_xy"] = None
-        bundle["formation_hold_forward_extent"] = None
-        bundle["formation_hold_lateral_extent"] = None
-        bundle["formation_hold_center_wing_differential"] = None
+        bundle["formation_terminal_axis_xy"] = (
+            (float(current_axis_hat[0]), float(current_axis_hat[1])) if terminal_active else None
+        )
+        bundle["formation_terminal_center_xy"] = (
+            (float(current_center_x), float(current_center_y)) if terminal_active else None
+        )
+        bundle["formation_hold_axis_xy"] = (
+            (float(hold_axis_hat[0]), float(hold_axis_hat[1])) if hold_active else None
+        )
+        bundle["formation_hold_center_xy"] = (
+            (float(hold_center_x), float(hold_center_y)) if hold_active else None
+        )
+        bundle["formation_hold_forward_extent"] = (
+            float(forward_extent_current) if hold_active else None
+        )
+        bundle["formation_hold_lateral_extent"] = (
+            float(lateral_extent_current) if hold_active else None
+        )
+        bundle["formation_hold_center_wing_differential"] = (
+            float(center_wing_differential_current) if hold_active else None
+        )
         current_material_forward_phase_by_unit = bundle.get("current_material_forward_phase_by_unit", {})
         if not isinstance(current_material_forward_phase_by_unit, Mapping):
             current_material_forward_phase_by_unit = {}
@@ -799,7 +819,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         if not isinstance(fixture_cfg, Mapping):
             return None
         active_mode = str(fixture_cfg.get("active_mode", FIXTURE_MODE_BATTLE)).strip().lower()
-        if active_mode != FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+        if active_mode != FIXTURE_MODE_NEUTRAL:
             return None
         if len(state.fleets) != 1:
             return None
@@ -807,7 +827,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         fleet_id, fleet = next(iter(state.fleets.items()))
         objective_contract_3d = fixture_cfg.get("objective_contract_3d")
         if not isinstance(objective_contract_3d, Mapping):
-            raise TypeError("neutral_transit_v1 engine fixture config requires objective_contract_3d mapping")
+            raise TypeError("neutral engine fixture config requires objective_contract_3d mapping")
         anchor_point_xyz = objective_contract_3d.get("anchor_point_xyz")
         objective_point_xy = (
             float(anchor_point_xyz[0]),
@@ -839,6 +859,10 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 last_target_direction={fleet_id: (0.0, 0.0)},
                 last_engagement_intensity={fleet_id: 0.0},
             )
+        movement_surface = getattr(self, "_movement_surface", {})
+        movement_model = str(movement_surface.get("model", "v3a")).strip().lower()
+        if movement_model == "v4a":
+            return None
         if not own_units:
             direction = (0.0, 0.0)
             intensity = 0.0
@@ -872,6 +896,23 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
     def _evaluate_target_with_pre_tl_substrate(self, state: BattleState) -> BattleState:
         last_target_direction = {}
         last_engagement_intensity = {}
+        fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
+        fixture_active_mode = (
+            str(fixture_cfg.get("active_mode", FIXTURE_MODE_BATTLE)).strip().lower()
+            if isinstance(fixture_cfg, Mapping)
+            else FIXTURE_MODE_BATTLE
+        )
+        fixture_bundle = getattr(self, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
+        fixture_fleet_id = (
+            str(fixture_cfg.get("fleet_id", "")).strip()
+            if isinstance(fixture_cfg, Mapping)
+            else ""
+        )
+        fixture_objective_active = (
+            fixture_active_mode == FIXTURE_MODE_NEUTRAL
+            and isinstance(fixture_bundle, Mapping)
+            and bool(fixture_fleet_id)
+        )
 
         for fleet_id, fleet in state.fleets.items():
             own_units = [
@@ -884,8 +925,17 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 for unit in state.units.values()
                 if unit.fleet_id != fleet_id and float(unit.hit_points) > 0.0
             ]
+            neutral_fixture_objective_active = (
+                fixture_objective_active
+                and str(fleet_id) == fixture_fleet_id
+                and not enemy_units
+            )
 
-            if not own_units or not enemy_units:
+            if not own_units:
+                last_target_direction[fleet_id] = (0.0, 0.0)
+                last_engagement_intensity[fleet_id] = 0.0
+                continue
+            if (not neutral_fixture_objective_active) and (not enemy_units):
                 last_target_direction[fleet_id] = (0.0, 0.0)
                 last_engagement_intensity[fleet_id] = 0.0
                 continue
@@ -898,13 +948,32 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                 return (dx * dx) + (dy * dy)
 
             battle_restore_bundles = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
-            battle_bundle = (
-                battle_restore_bundles.get(str(fleet_id))
-                if isinstance(battle_restore_bundles, Mapping)
-                else None
-            )
+            if neutral_fixture_objective_active:
+                battle_bundle = fixture_bundle
+            else:
+                battle_bundle = (
+                    battle_restore_bundles.get(str(fleet_id))
+                    if isinstance(battle_restore_bundles, Mapping)
+                    else None
+                )
             reference_units: list[UnitState]
-            if isinstance(battle_bundle, Mapping):
+            if neutral_fixture_objective_active:
+                objective_point_xy = fixture_bundle.get("objective_point_xy", None) if isinstance(fixture_bundle, Mapping) else None
+                if not isinstance(objective_point_xy, Sequence) or len(objective_point_xy) < 2:
+                    objective_contract_3d = fixture_cfg.get("objective_contract_3d") if isinstance(fixture_cfg, Mapping) else None
+                    anchor_point_xyz = objective_contract_3d.get("anchor_point_xyz") if isinstance(objective_contract_3d, Mapping) else None
+                    if not isinstance(anchor_point_xyz, Sequence) or len(anchor_point_xyz) < 2:
+                        raise TypeError(
+                            "neutral v4a path requires objective_point_xy or objective_contract_3d anchor"
+                        )
+                    objective_point_xy = (
+                        float(anchor_point_xyz[0]),
+                        float(anchor_point_xyz[1]),
+                    )
+                reference_units = []
+                ref_x = float(objective_point_xy[0])
+                ref_y = float(objective_point_xy[1])
+            elif isinstance(battle_bundle, Mapping):
                 # v4a far-field battle target now reads as global enemy relation + d*.
                 reference_units = list(enemy_units)
                 ref_x, ref_y = self._compute_position_centroid(reference_units)
@@ -1018,48 +1087,13 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     reference_direction_hat,
                     toward_positive=True,
                 )
-                enemy_front_strip_depth = _compute_front_strip_depth(
-                    enemy_units,
-                    reference_direction_hat,
-                    toward_positive=False,
-                )
-                fire_entry_margin = max(
-                    0.0,
-                    float(battle_bundle.get("expected_reference_spacing", self.separation_radius)),
-                )
-                target_front_strip_gap_base = max(
-                    0.0,
-                    float(self.attack_range) - float(fire_entry_margin),
-                )
-                target_front_strip_gap_bias = float(
-                    battle_bundle.get(
-                        "battle_target_front_strip_gap_bias",
-                        V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
-                    )
-                )
-                if not math.isfinite(target_front_strip_gap_bias):
-                    target_front_strip_gap_bias = V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT
-                target_front_strip_gap = max(
-                    0.0,
-                    float(target_front_strip_gap_base) + float(target_front_strip_gap_bias),
-                )
+                fire_entry_margin = max(0.0, float(battle_bundle["expected_reference_spacing"]))
                 hold_band = max(
                     0.1,
                     float(self.attack_range)
-                    * max(0.0, float(battle_bundle.get("battle_standoff_hold_band_ratio", 0.0))),
+                    * max(0.0, float(battle_bundle["battle_standoff_hold_band_ratio"])),
                 )
-                hold_weight_strength = _clamp01(
-                    float(
-                        battle_bundle.get(
-                            "battle_hold_weight_strength",
-                            V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
-                        )
-                    )
-                )
-                current_front_strip_gap = float(reference_distance) - (
-                    float(own_front_strip_depth) + float(enemy_front_strip_depth)
-                )
-                distance_gap = float(current_front_strip_gap) - float(target_front_strip_gap)
+                hold_weight_strength = _clamp01(float(battle_bundle["battle_hold_weight_strength"]))
                 reference_speed_values = [
                     float(unit.max_speed)
                     for unit in own_units
@@ -1071,40 +1105,71 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                     )
                 else:
                     relation_reference_speed = 1.0
-                battle_relation_lead_ticks = float(
-                    battle_bundle.get(
-                        "battle_relation_lead_ticks",
-                        V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
-                    )
-                )
-                if not math.isfinite(battle_relation_lead_ticks) or battle_relation_lead_ticks <= 0.0:
-                    battle_relation_lead_ticks = V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
-                battle_hold_relaxation = float(
-                    battle_bundle.get(
-                        "battle_hold_relaxation",
-                        V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
-                    )
-                )
-                if not math.isfinite(battle_hold_relaxation) or not 0.0 < battle_hold_relaxation <= 1.0:
-                    battle_hold_relaxation = V4A_BATTLE_HOLD_RELAXATION_DEFAULT
-                battle_approach_drive_relaxation = float(
-                    battle_bundle.get(
-                        "battle_approach_drive_relaxation",
-                        V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
-                    )
-                )
-                if (
-                    not math.isfinite(battle_approach_drive_relaxation)
-                    or not 0.0 < battle_approach_drive_relaxation <= 1.0
-                ):
-                    battle_approach_drive_relaxation = (
-                        V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT
-                    )
+                battle_relation_lead_ticks = float(battle_bundle["battle_relation_lead_ticks"])
+                battle_hold_relaxation = float(battle_bundle["battle_hold_relaxation"])
+                battle_approach_drive_relaxation = float(battle_bundle["battle_approach_drive_relaxation"])
                 relation_scale = max(
                     float(relation_reference_speed) * battle_relation_lead_ticks,
                     float(hold_band),
                     1e-9,
                 )
+                if neutral_fixture_objective_active:
+                    enemy_front_strip_depth = 0.0
+                    target_front_strip_gap_base = 0.0
+                    target_front_strip_gap_bias = 0.0
+                    target_front_strip_gap = 0.0
+                    current_front_strip_gap = float(reference_distance)
+                    distance_gap = float(reference_distance)
+                else:
+                    raw_enemy_front_strip_depth = _compute_front_strip_depth(
+                        enemy_units,
+                        reference_direction_hat,
+                        toward_positive=False,
+                    )
+                    combat_surface = getattr(self, "_combat_surface", None)
+                    if not isinstance(combat_surface, Mapping):
+                        raise TypeError("EngineTickSkeleton._combat_surface missing or invalid")
+                    fire_optimal_range_ratio = float(combat_surface["fire_optimal_range_ratio"])
+                    if not 0.0 <= fire_optimal_range_ratio <= 1.0:
+                        raise ValueError(
+                            "active v4a battle gap read requires fire_optimal_range_ratio within [0.0, 1.0], "
+                            f"got {fire_optimal_range_ratio}"
+                        )
+                    fire_optimal_range = float(self.attack_range) * float(fire_optimal_range_ratio)
+                    target_front_strip_gap_base = max(
+                        0.0,
+                        float(fire_optimal_range) - float(fire_entry_margin),
+                    )
+                    target_front_strip_gap_bias = float(battle_bundle["battle_target_front_strip_gap_bias"])
+                    target_front_strip_gap = max(
+                        0.0,
+                        float(target_front_strip_gap_base) + float(target_front_strip_gap_bias),
+                    )
+                    enemy_strip_activation_start = (
+                        float(target_front_strip_gap)
+                        + float(own_front_strip_depth)
+                        + float(raw_enemy_front_strip_depth)
+                        + (2.0 * float(relation_scale))
+                    )
+                    enemy_front_strip_activation = _clamp01(
+                        (float(enemy_strip_activation_start) - float(reference_distance))
+                        / max(1e-9, float(relation_scale))
+                    )
+                    enemy_front_strip_depth = (
+                        float(raw_enemy_front_strip_depth) * float(enemy_front_strip_activation)
+                    )
+                    current_front_strip_gap = float(reference_distance) - (
+                        float(own_front_strip_depth) + float(enemy_front_strip_depth)
+                    )
+                    distance_gap = float(current_front_strip_gap) - float(target_front_strip_gap)
+                    if isinstance(battle_bundle, dict):
+                        battle_bundle["battle_fire_optimal_range"] = float(fire_optimal_range)
+                        battle_bundle["battle_enemy_front_strip_depth_raw"] = float(
+                            raw_enemy_front_strip_depth
+                        )
+                        battle_bundle["battle_enemy_front_strip_activation"] = float(
+                            enemy_front_strip_activation
+                        )
                 relation_gap_raw = max(
                     -1.0,
                     min(1.0, float(distance_gap) / relation_scale),
@@ -1304,7 +1369,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         lead_fleet_id = str(next(iter(state.fleets.keys()), "")).strip()
         bundle: Mapping[str, Any] | None = None
         using_fixture_bundle = (
-            fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1
+            fixture_active_mode == FIXTURE_MODE_NEUTRAL
             and had_previous_fixture_cfg
             and isinstance(fixture_bundle, Mapping)
         )
@@ -1350,20 +1415,14 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             if current_heading_norm <= 0.0:
                 current_heading_hat = current_forward_hat_xy
             desired_heading_hat = raw_target_hat if raw_target_norm > 0.0 else current_forward_hat_xy
-            heading_relaxation = max(
-                1e-6,
-                min(1.0, float(bundle.get("heading_relaxation", V4A_HEADING_RELAXATION_DEFAULT))),
-            )
+            heading_relaxation = max(1e-6, min(1.0, float(bundle["heading_relaxation"])))
             current_heading_hat = self._relax_direction(
                 current_heading_hat,
                 desired_heading_hat,
                 heading_relaxation,
             )
             bundle["movement_heading_current_xy"] = current_heading_hat
-            shape_vs_advance_strength = max(
-                0.0,
-                min(1.0, float(bundle.get("shape_vs_advance_strength", V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT))),
-            )
+            shape_vs_advance_strength = max(0.0, min(1.0, float(bundle["shape_vs_advance_strength"])))
             shape_error_current = max(
                 0.0,
                 min(1.0, float(bundle.get("shape_error_current", 0.0))),
@@ -1513,10 +1572,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                             min(
                                 1.0,
                                 float(
-                                    bundle.get(
-                                        "battle_near_contact_internal_stability_blend",
-                                        V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
-                                    )
+                                    bundle["battle_near_contact_internal_stability_blend"]
                                 ),
                             ),
                         )
@@ -1575,10 +1631,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
                         min(
                             1.0,
                             float(
-                                bundle.get(
-                                    "battle_near_contact_speed_relaxation",
-                                    V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
-                                )
+                                bundle["battle_near_contact_speed_relaxation"]
                             ),
                         ),
                     )
@@ -1625,28 +1678,22 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
             if changed:
                 movement_state = replace(movement_state, units=updated_units)
 
-        if using_fixture_bundle and had_previous_fixture_cfg:
-            previous_fixture_cfg["initial_forward_hat_xy"] = tuple(current_forward_hat_xy)
-            previous_fixture_cfg["expected_slot_offsets_local"] = dict(expected_slot_offsets_local)
-            previous_fixture_cfg["expected_position_candidate_active"] = True
-            previous_fixture_cfg["formation_hold_active"] = bool(bundle.get("formation_hold_active", False))
-            return super().integrate_movement(movement_state)
         if had_previous_fixture_cfg:
             previous_fixture_cfg["initial_forward_hat_xy"] = tuple(current_forward_hat_xy)
             previous_fixture_cfg["expected_slot_offsets_local"] = dict(expected_slot_offsets_local)
         temp_fixture_cfg = dict(previous_fixture_cfg) if had_previous_fixture_cfg else {}
         temp_fixture_cfg.update(
             {
-                "active_mode": FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
                 "fleet_id": lead_fleet_id,
                 "expected_position_candidate_active": True,
                 "initial_forward_hat_xy": tuple(current_forward_hat_xy),
                 "expected_slot_offsets_local": dict(expected_slot_offsets_local),
+                "formation_terminal_active": bool(bundle.get("formation_terminal_active", False)),
+                "formation_hold_active": bool(bundle.get("formation_hold_active", False)),
                 "frozen_terminal_frame_active": False,
                 "frozen_terminal_primary_axis_xy": None,
                 "frozen_terminal_secondary_axis_xy": None,
                 "objective_contract_3d": None,
-                "stop_radius": 0.0,
             }
         )
         self.TEST_RUN_FIXTURE_CFG = temp_fixture_cfg
@@ -2079,7 +2126,7 @@ class TestModeEngineTickSkeleton(EngineTickSkeleton):
         moved_state = self._restore_intent_penetration_bias_units(next_state, moved_state)
         moved_state = self._apply_hostile_contact_impedance(next_state, moved_state)
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
-        if isinstance(fixture_cfg, dict) and str(fixture_cfg.get("active_mode", "")).strip().lower() == FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+        if isinstance(fixture_cfg, dict) and str(fixture_cfg.get("active_mode", "")).strip().lower() == FIXTURE_MODE_NEUTRAL:
             fixture_fleet_id = str(fixture_cfg.get("fleet_id", "")).strip()
             objective_contract_3d = fixture_cfg.get("objective_contract_3d")
             stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
@@ -2359,7 +2406,7 @@ def run_simulation(
             f"run_simulation execution_cfg['fixture']['active_mode'] must be one of {sorted(FIXTURE_MODE_LABELS)}, "
             f"got {fixture_active_mode!r}"
         )
-    fixture_active = fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1
+    fixture_active = fixture_active_mode == FIXTURE_MODE_NEUTRAL
     v4a_reference_surface_mode = str(
         movement_cfg.get("v4a_reference_surface_mode_effective", V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS)
     ).strip().lower()
@@ -2518,13 +2565,13 @@ def run_simulation(
     if fixture_active:
         if len(initial_state.fleets) != 1:
             raise ValueError(
-                "neutral_transit_v1 requires a single-fleet initial_state, "
+                "neutral requires a single-fleet initial_state, "
                 f"got fleet_ids={list(initial_state.fleets.keys())}"
             )
         fixture_fleet_id = str(fixture_cfg.get("fleet_id", next(iter(initial_state.fleets.keys())))).strip()
         if fixture_fleet_id not in initial_state.fleets:
             raise ValueError(
-                "neutral_transit_v1 fixture fleet_id must exist in initial_state.fleets, "
+                "neutral fixture fleet_id must exist in initial_state.fleets, "
                 f"got {fixture_fleet_id!r}"
             )
         fixture_objective_contract_3d, projected_anchor_point_xy = _normalize_fixture_objective_contract_3d(
@@ -2534,7 +2581,7 @@ def run_simulation(
         fixture_stop_radius = float(fixture_cfg.get("stop_radius", 0.0))
         if fixture_stop_radius < 0.0:
             raise ValueError(
-                "neutral_transit_v1 execution_cfg['fixture']['stop_radius'] must be >= 0, "
+                "neutral execution_cfg['fixture']['stop_radius'] must be >= 0, "
                 f"got {fixture_stop_radius}"
             )
     odw_posture_bias_cfg = movement_cfg.get("odw_posture_bias", {})
@@ -2646,7 +2693,7 @@ def run_simulation(
     fsr_surface = getattr(engine, "_fsr_surface", None)
     if not isinstance(fsr_surface, dict):
         raise TypeError("EngineTickSkeleton._fsr_surface missing or invalid")
-    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"]) and not (fixture_active and movement_model == "v4a")
+    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"]) and movement_model != "v4a"
     fsr_surface["strength"] = float(contact_cfg["fsr_strength"])
 
     boundary_surface = getattr(engine, "_boundary_surface", None)
@@ -2753,7 +2800,7 @@ def run_simulation(
         reference_layout_mode = str(shape_cfg["reference_layout_mode"])
         centroid_x, centroid_y, _ = _compute_centroid_and_rms_radius(position_map)
         if not math.isfinite(centroid_x) or not math.isfinite(centroid_y):
-            raise ValueError("neutral_transit_v1 expected-position reference requires at least one alive unit")
+            raise ValueError("neutral expected-position reference requires at least one alive unit")
         primary_dx = float(objective_point_xy[0]) - centroid_x
         primary_dy = float(objective_point_xy[1]) - centroid_y
         primary_norm = math.sqrt((primary_dx * primary_dx) + (primary_dy * primary_dy))
@@ -2875,7 +2922,7 @@ def run_simulation(
             "shape_error_current": 0.0,
             "actual_forward_extent": float(forward_extent_initial),
             "actual_lateral_extent": float(lateral_extent_initial),
-            "hold_within_stop_radius": False,
+            "stop_within_radius": False,
             "initial_material_forward_phase_by_unit": {
                 str(unit_id): float(phase)
                 for unit_id, phase in initial_forward_phase_by_unit.items()
@@ -3013,7 +3060,6 @@ def run_simulation(
                 float(objective_point_xy[0]),
                 float(objective_point_xy[1]),
             )
-            bundle["hold_stop_radius"] = 0.0
             battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
     if battle_restore_bundles_by_fleet:
         engine.TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET = battle_restore_bundles_by_fleet
@@ -3077,7 +3123,7 @@ def run_simulation(
             float(fixture_objective_point_xy[0]),
             float(fixture_objective_point_xy[1]),
         )
-        fixture_reference_bundle["hold_stop_radius"] = float(fixture_stop_radius)
+        fixture_reference_bundle["stop_radius"] = float(fixture_stop_radius)
         engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
         initial_centroid_x, initial_centroid_y, initial_rms_radius = _compute_centroid_and_rms_radius(initial_positions)
         initial_distance = math.sqrt(
@@ -3172,7 +3218,7 @@ def run_simulation(
             return {}
         focus_payload: dict[str, dict[str, float]] = {}
         bundle_entries: dict[str, Mapping[str, Any]] = {}
-        if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+        if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL:
             fixture_bundle = getattr(engine, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
             if isinstance(fixture_bundle, Mapping):
                 bundle_entries[str(fixture_fleet_id)] = fixture_bundle
@@ -3512,17 +3558,6 @@ def run_simulation(
             fixture_metrics["legality_handoff_ready"].append(
                 bool(fixture_runtime_debug.get("legality_handoff_ready", False))
             )
-            fixture_reference_bundle["formation_terminal_active"] = False
-            fixture_reference_bundle["formation_terminal_latched_tick"] = None
-            fixture_reference_bundle["formation_terminal_axis_xy"] = None
-            fixture_reference_bundle["formation_terminal_center_xy"] = None
-            fixture_reference_bundle["formation_hold_active"] = False
-            fixture_reference_bundle["formation_hold_latched_tick"] = None
-            fixture_reference_bundle["formation_hold_axis_xy"] = None
-            fixture_reference_bundle["formation_hold_center_xy"] = None
-            fixture_reference_bundle["formation_hold_forward_extent"] = None
-            fixture_reference_bundle["formation_hold_lateral_extent"] = None
-            fixture_reference_bundle["formation_hold_center_wing_differential"] = None
             engine.TEST_RUN_FIXTURE_REFERENCE_BUNDLE = fixture_reference_bundle
             if (
                 fixture_metrics.get("objective_reached_tick") is None

@@ -1,14 +1,14 @@
 {
   "fixture": {
-    "active_mode": "Test-only harness mode selector: battle | neutral_transit_v1. This is the only activation switch; default should remain battle so the maintained battle path stays unchanged.",
-    "neutral_transit_v1": {
+    "active_mode": "Test-only harness mode selector: battle | neutral. This is the only activation switch; default should remain battle so the maintained battle path stays unchanged.",
+    "neutral": {
       "objective_point_xy": "Single objective point as [x, y] for fixture-only objective injection. This is not canonical runtime target semantics.",
-      "stop_radius": "Fixture-only completion radius around objective_point_xy. Simulation stops when the single fleet centroid enters this radius.",
+      "stop_radius": "Neutral-only objective termination radius around objective_point_xy. It is used for objective-reached judgment and late clamp/termination semantics; it is not the battle hold mechanism.",
       "fleet_archetype_id": "Single-fleet archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
-      "fleet_size": "Single-fleet initial unit count for neutral_transit_v1.",
-      "aspect_ratio": "Single-fleet initial formation col/row ratio for neutral_transit_v1.",
-      "origin_xy": "Single-fleet initial formation center anchor as [x, y] for neutral_transit_v1.",
-      "facing_angle_deg": "Single-fleet initial facing angle in degrees for neutral_transit_v1. 0=+X, 90=+Y."
+      "fleet_size": "Single-fleet initial unit count for neutral.",
+      "aspect_ratio": "Single-fleet initial formation col/row ratio for neutral.",
+      "origin_xy": "Single-fleet initial formation center anchor as [x, y] for neutral.",
+      "facing_angle_deg": "Single-fleet initial facing angle in degrees for neutral. 0=+X, 90=+Y."
     }
   },
   "fleet": {
@@ -47,11 +47,11 @@
     },
     "selectors": {
       "movement_model": "Runtime movement selector: baseline | v3a | v4a. baseline remains the maintained baseline (currently v3a). v4a is the bounded subtractive experimental line and should only be used when test_mode=2; current testonly layer may set it as the explicit test-mode default without changing the baseline.",
-      "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
+      "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection. On the current v4a line this selector no longer owns v4a movement restore/pursuit behavior; it remains live for legacy/non-v4a paths and cohesion-observer surfaces."
     },
     "movement": {
       "v4a": {
-        "restore_strength": "Active v4a native restore/cohesion-strength seam in [0.0, 1.0]. This surface now feeds a dedicated native v4a runtime movement scalar. 1.0 keeps the full v4a restore/cohesion contribution; values below 1.0 attenuate that v4a restore term directly without reusing the old v3_test centroid-probe carrier.",
+        "restore_strength": "Active v4a restore-strength seam in [0.0, 1.0]. Current v4a read is direct: restore_term = restore_strength * normalize(restore_vector). This seam no longer uses formation_rigidity, pursuit_drive, mobility_bias, or any hidden native scale. Current v4a movement also no longer depends on the old runtime cohesion decision source (`v2` vs `v3_test`) for this seam.",
         "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
         "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
         "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
@@ -59,7 +59,7 @@
         "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
         "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
         "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
-        "battle_target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
+        "battle_target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Current base read is max(0, fire_optimal_range - expected_reference_spacing), where fire_optimal_range = attack_range * fire_optimal_range_ratio. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
         "battle_hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
         "battle_relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
         "battle_hold_relaxation": "Raw-to-current relaxation for the near-contact v4a relation family in (0.0, 1.0]. This smooths battle_relation_gap, close_drive, brake_drive, and hold_weight before they affect active battle behavior.",
@@ -104,7 +104,7 @@
       },
       "contact_model": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
-        "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR.",
+        "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. Current active v4a path does not consume FSR; FSR remains legacy / non-v4a only. fsr_strength<=0 disables FSR where that legacy path is still active.",
         "hostile_contact_impedance": {
           "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
           "hybrid_v2": {
@@ -145,7 +145,7 @@
   },
   "run_control": {
     "max_time_steps": "Maximum simulation ticks. If <=0, run until the first resolved stop condition (battle elimination or fixture objective arrival), then keep running for run_control.post_resolution_hold_steps more ticks, capped at 999 ticks.",
-    "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral_transit_v1 objective-arrival hold. Must be >= 0.",
+    "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral objective-arrival hold. Must be >= 0.",
     "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
     "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted."
   },

@@ -1251,7 +1251,10 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             f"got {contact_cfg['fire_optimal_range_ratio']}"
         )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
-    contact_cfg["fsr_enabled"] = contact_cfg["fsr_strength"] > 0.0
+    contact_cfg["fsr_enabled"] = (
+        contact_cfg["fsr_strength"] > 0.0
+        and movement_cfg["model_effective"] != "v4a"
+    )
 
     observer_cfg = {
         "bridge": {
@@ -1393,9 +1396,9 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         get_fixture(("active_mode",), execution.FIXTURE_MODE_BATTLE),
         execution.FIXTURE_MODE_LABELS,
     )
-    if active_mode != execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+    if active_mode != execution.FIXTURE_MODE_NEUTRAL:
         raise ValueError(
-            "prepare_neutral_transit_fixture requires fixture.active_mode=neutral_transit_v1, "
+            "prepare_neutral_transit_fixture requires fixture.active_mode=neutral, "
             f"got {active_mode!r}"
         )
     common_context = _load_common_scenario_context(
@@ -1415,7 +1418,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     fleet_data = resolve_fleet_archetype_data(
         archetypes,
         metatype_settings,
-        str(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_archetype_id"), "default")),
+        str(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "fleet_archetype_id"), "default")),
         rng=archetype_rng,
     )
     fleet_params = to_personality_parameters(fleet_data)
@@ -1426,29 +1429,29 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     origin_x, origin_y = (
         float(value)
         for value in get_fixture(
-            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "origin_xy"),
+            (execution.FIXTURE_MODE_NEUTRAL, "origin_xy"),
             (default_origin_x, default_origin_y),
         )
     )
     objective_x, objective_y = (
         float(value)
         for value in get_fixture(
-            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "objective_point_xy"),
+            (execution.FIXTURE_MODE_NEUTRAL, "objective_point_xy"),
             (battlefield_cfg["arena_size"] - default_origin_x, default_origin_y),
         )
     )
-    fleet_size = int(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_size"), 100))
-    fleet_aspect_ratio = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "aspect_ratio"), 4.0))
-    stop_radius = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "stop_radius"), 2.0))
-    facing_angle_deg = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "facing_angle_deg"), 0.0))
+    fleet_size = int(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "fleet_size"), 100))
+    fleet_aspect_ratio = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "aspect_ratio"), 4.0))
+    stop_radius = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "stop_radius"), 2.0))
+    facing_angle_deg = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "facing_angle_deg"), 0.0))
 
     if stop_radius < 0.0:
-        raise ValueError(f"fixture.neutral_transit_v1.stop_radius must be >= 0, got {stop_radius}")
+        raise ValueError(f"fixture.neutral.stop_radius must be >= 0, got {stop_radius}")
 
     run_cfg = _build_run_cfg(
         get_run,
         get_runtime,
-        test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+        test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL,
     )
     movement_cfg = _build_movement_cfg(
         get_runtime,
@@ -1467,7 +1470,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     unit_spacing = float(v4a_reference_cfg["expected_reference_spacing"])
     if fleet_aspect_ratio <= 0.0 or unit_spacing <= 0.0:
         raise ValueError(
-            "fixture.neutral_transit_v1.aspect_ratio and expected reference spacing must be > 0, "
+            "fixture.neutral.aspect_ratio and expected reference spacing must be > 0, "
             f"got aspect_ratio={fleet_aspect_ratio}, spacing={unit_spacing}"
         )
 
@@ -1494,7 +1497,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         "plot_diagnostics_enabled": True,
         "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
         "fixture": {
-            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "active_mode": execution.FIXTURE_MODE_NEUTRAL,
             "fleet_id": "A",
             "objective_contract_3d": {
                 "anchor_point_xyz": (objective_x, objective_y, 0.0),
@@ -1565,7 +1568,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
             "test_mode": run_cfg["test_mode"],
-            "test_mode_name": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "test_mode_name": execution.FIXTURE_MODE_NEUTRAL,
             "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
             "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
             "movement_model_effective": movement_cfg["model_effective"],
@@ -1622,6 +1625,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
             "export_battle_report": False,
-            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "active_mode": execution.FIXTURE_MODE_NEUTRAL,
         },
     }

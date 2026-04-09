@@ -241,8 +241,6 @@ class EngineTickSkeleton:
             return None
         if not bool(fixture_cfg.get("expected_position_candidate_active", False)):
             return None
-        if str(fixture_cfg.get("active_mode", "")).strip().lower() != "neutral_transit_v1":
-            return None
         if str(fixture_cfg.get("fleet_id", "")).strip() != str(fleet_id):
             return None
         local_offsets = fixture_cfg.get("expected_slot_offsets_local")
@@ -838,8 +836,9 @@ class EngineTickSkeleton:
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         fixture_terminal_step_gate_enabled = (
             isinstance(fixture_cfg, dict)
-            and str(fixture_cfg.get("active_mode", "")).strip().lower() == "neutral_transit_v1"
             and bool(fixture_cfg.get("expected_position_candidate_active", False))
+            and isinstance(fixture_cfg.get("objective_contract_3d"), dict)
+            and bool(str(fixture_cfg.get("fleet_id", "")).strip())
         )
         fixture_terminal_step_gate_fleet_id = (
             str(fixture_cfg.get("fleet_id", "")).strip()
@@ -1088,68 +1087,70 @@ class EngineTickSkeleton:
                         separation_accumulator[unit_j][0] -= vx
                         separation_accumulator[unit_j][1] -= vy
 
-            kappa = normalized_params["formation_rigidity"]
-            pd_norm = normalized_params.get("pursuit_drive", 0.5)
-            mobility_raw = float(fleet.parameters.mobility_bias)
-            # Canonical 1-9 mapping:
-            # MB_eff = 0.2 * (mobility_bias - 5) / 4, clipped to [-0.2, +0.2].
-            mb = 0.2 * (mobility_raw - 5.0) / 4.0
-            if mb < -0.2:
-                mb = -0.2
-            elif mb > 0.2:
-                mb = 0.2
-            if v4a_active:
-                mb = 0.0
+            if not v4a_active:
+                kappa = normalized_params["formation_rigidity"]
+                pd_norm = normalized_params.get("pursuit_drive", 0.5)
+                mobility_raw = float(fleet.parameters.mobility_bias)
+                # Canonical 1-9 mapping:
+                # MB_eff = 0.2 * (mobility_bias - 5) / 4, clipped to [-0.2, +0.2].
+                mb = 0.2 * (mobility_raw - 5.0) / 4.0
+                if mb < -0.2:
+                    mb = -0.2
+                elif mb > 0.2:
+                    mb = 0.2
 
             # Phase V3 canonical PD activation:
             # EnemyCollapseSignal = 1 - EnemyCohesion
             # PursuitConfirmThreshold = 1 - PD_norm
-            enemy_cohesion_values = []
-            for other_fleet_id, other_fleet in state.fleets.items():
-                if other_fleet_id == fleet_id:
-                    continue
-                if len(other_fleet.unit_ids) == 0:
-                    continue
-                cohesion_value = float(state.last_fleet_cohesion.get(other_fleet_id, 1.0))
-                enemy_cohesion_values.append(cohesion_value)
-            if enemy_cohesion_values:
-                enemy_cohesion = sum(enemy_cohesion_values) / len(enemy_cohesion_values)
-            else:
-                enemy_cohesion = 1.0
-            enemy_collapse_signal = 1.0 - enemy_cohesion
-            pursuit_confirm_threshold = 1.0 - pd_norm
-            deep_pursuit_mode = enemy_collapse_signal > pursuit_confirm_threshold
-            if deep_pursuit_mode:
-                collapse_excess = enemy_collapse_signal - pursuit_confirm_threshold
-                collapse_span = 1.0 - pursuit_confirm_threshold
-                if collapse_span <= 1e-12:
-                    pursuit_intensity = 1.0
+            if not v4a_active:
+                enemy_cohesion_values = []
+                for other_fleet_id, other_fleet in state.fleets.items():
+                    if other_fleet_id == fleet_id:
+                        continue
+                    if len(other_fleet.unit_ids) == 0:
+                        continue
+                    cohesion_value = float(state.last_fleet_cohesion.get(other_fleet_id, 1.0))
+                    enemy_cohesion_values.append(cohesion_value)
+                if enemy_cohesion_values:
+                    enemy_cohesion = sum(enemy_cohesion_values) / len(enemy_cohesion_values)
                 else:
-                    pursuit_intensity = collapse_excess / collapse_span
-                pursuit_intensity = min(1.0, max(0.0, pursuit_intensity))
+                    enemy_cohesion = 1.0
+                enemy_collapse_signal = 1.0 - enemy_cohesion
+                pursuit_confirm_threshold = 1.0 - pd_norm
+                deep_pursuit_mode = enemy_collapse_signal > pursuit_confirm_threshold
+                if deep_pursuit_mode:
+                    collapse_excess = enemy_collapse_signal - pursuit_confirm_threshold
+                    collapse_span = 1.0 - pursuit_confirm_threshold
+                    if collapse_span <= 1e-12:
+                        pursuit_intensity = 1.0
+                    else:
+                        pursuit_intensity = collapse_excess / collapse_span
+                    pursuit_intensity = min(1.0, max(0.0, pursuit_intensity))
+                else:
+                    pursuit_intensity = 0.0
+                # DeepPursuitMode effects are movement-only:
+                # - stronger forward weighting
+                # - weaker cohesion restoration
+                # - stronger extension tendency on non-cohesion maneuver
+                forward_gain = 1.0 + (0.35 * pursuit_intensity)
+                cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
+                extension_gain = 1.0 + (0.25 * pursuit_intensity)
+                mb_is_zero = abs(mb) <= 1e-12
+                odw_posture_bias_active = odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
+                tx = target_direction[0]
+                ty = target_direction[1]
+                target_norm = 0.0
+                t_hat_x = 0.0
+                t_hat_y = 0.0
+                has_target_axis = False
+                if (not mb_is_zero) or odw_posture_bias_active:
+                    target_norm = math.sqrt((tx * tx) + (ty * ty))
+                    if target_norm > 1e-12:
+                        t_hat_x = tx / target_norm
+                        t_hat_y = ty / target_norm
+                        has_target_axis = True
             else:
-                pursuit_intensity = 0.0
-            # DeepPursuitMode effects are movement-only:
-            # - stronger forward weighting
-            # - weaker cohesion restoration
-            # - stronger extension tendency on non-cohesion maneuver
-            forward_gain = 1.0 + (0.35 * pursuit_intensity)
-            cohesion_gain = 1.0 - (0.35 * pursuit_intensity)
-            extension_gain = 1.0 + (0.25 * pursuit_intensity)
-            mb_is_zero = abs(mb) <= 1e-12
-            odw_posture_bias_active = (not v4a_active) and odw_posture_bias_fleet_enabled and odw_posture_bias_k_fleet > 0.0
-            tx = target_direction[0]
-            ty = target_direction[1]
-            target_norm = 0.0
-            t_hat_x = 0.0
-            t_hat_y = 0.0
-            has_target_axis = False
-            if (not mb_is_zero) or odw_posture_bias_active:
-                target_norm = math.sqrt((tx * tx) + (ty * ty))
-                if target_norm > 1e-12:
-                    t_hat_x = tx / target_norm
-                    t_hat_y = ty / target_norm
-                    has_target_axis = True
+                has_target_axis = False
 
             fixture_expected_reference = self._build_fixture_expected_position_map(
                 state=state,
@@ -1187,7 +1188,6 @@ class EngineTickSkeleton:
             fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
             if (
                 isinstance(fixture_cfg, dict)
-                and str(fixture_cfg.get("active_mode", "")).strip().lower() == "neutral_transit_v1"
                 and bool(fixture_cfg.get("expected_position_candidate_active", False))
             ):
                 fixture_restore_deadband = (
@@ -1317,7 +1317,18 @@ class EngineTickSkeleton:
                         enemy_dir_y = target_direction[1]
 
                 if v4a_active:
-                    stray_factor = 0.0
+                    # v4a restore is direct and single-owned:
+                    # restore_term = restore_strength * normalize(restore_vector)
+                    cohesion_x = v4a_restore_strength * cohesion_dir[0]
+                    cohesion_y = v4a_restore_strength * cohesion_dir[1]
+                    target_term_x = float(target_direction[0])
+                    target_term_y = float(target_direction[1])
+                    separation_term_x = alpha_sep * separation_dir[0]
+                    separation_term_y = alpha_sep * separation_dir[1]
+                    boundary_term_x = alpha_sep * boundary_x
+                    boundary_term_y = alpha_sep * boundary_y
+                    maneuver_x = target_term_x + separation_term_x + boundary_term_x
+                    maneuver_y = target_term_y + separation_term_y + boundary_term_y
                 else:
                     if fleet_rms_radius > 1e-12:
                         stray_ratio_raw = (cohesion_norm / fleet_rms_radius)
@@ -1329,22 +1340,14 @@ class EngineTickSkeleton:
                         stray_factor = (stray_ratio_raw - stray_threshold_ratio) / max(1e-12, 2.0 - stray_threshold_ratio)
                     stray_factor = min(1.0, max(0.0, stray_factor))
 
-                anti_stretch = 0.0
-
-                cohesion_scale = 1.0 + (0.40 * anti_stretch)
-                cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
-                cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
-                if v4a_active:
-                    cohesion_x *= v4a_restore_strength
-                    cohesion_y *= v4a_restore_strength
-                elif movement_v3a_experiment == "exp_precontact_centroid_probe":
-                    # A-line causal probe: only scale centroid restoration term.
-                    cohesion_x *= centroid_probe_scale
-                    cohesion_y *= centroid_probe_scale
-                if v4a_active:
-                    attract_x = 0.0
-                    attract_y = 0.0
-                else:
+                    anti_stretch = 0.0
+                    cohesion_scale = 1.0 + (0.40 * anti_stretch)
+                    cohesion_x = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[0]
+                    cohesion_y = (kappa * cohesion_gain * cohesion_scale) * cohesion_dir[1]
+                    if movement_v3a_experiment == "exp_precontact_centroid_probe":
+                        # A-line causal probe: only scale centroid restoration term.
+                        cohesion_x *= centroid_probe_scale
+                        cohesion_y *= centroid_probe_scale
                     attract_gain = attract_gain_base + ((attract_gain_max - attract_gain_base) * stray_factor)
                     enemy_pull_gain = enemy_pull_floor + ((1.0 - enemy_pull_floor) * stray_factor)
                     attract_x = attract_gain * (
@@ -1353,63 +1356,63 @@ class EngineTickSkeleton:
                     attract_y = attract_gain * (
                         (enemy_pull_gain * enemy_dir_y) + ((1.0 - enemy_pull_gain) * target_direction[1])
                     )
-                target_term_x = (forward_gain * target_direction[0]) + attract_x
-                target_term_y = (forward_gain * target_direction[1]) + attract_y
-                separation_term_x = alpha_sep * separation_dir[0]
-                separation_term_y = alpha_sep * separation_dir[1]
-                boundary_term_x = alpha_sep * boundary_x
-                boundary_term_y = alpha_sep * boundary_y
-                maneuver_x = target_term_x + separation_term_x + boundary_term_x
-                maneuver_y = target_term_y + separation_term_y + boundary_term_y
-                if has_target_axis:
-                    dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
-                    m_parallel_x = dot_mt * t_hat_x
-                    m_parallel_y = dot_mt * t_hat_y
-                    m_tangent_x = maneuver_x - m_parallel_x
-                    m_tangent_y = maneuver_y - m_parallel_y
-                    if odw_posture_bias_active:
-                        odw_raw = float(fleet.parameters.offense_defense_weight)
-                        odw_centered = (odw_raw - 5.0) / 4.0
-                        odw_centered = min(1.0, max(-1.0, odw_centered))
-                        if lateral_span_ref > 1e-12:
-                            lateral_offset = ((unit.position.x - centroid_x) * (-t_hat_y)) + (
-                                (unit.position.y - centroid_y) * t_hat_x
-                            )
-                            lateral_norm = abs(lateral_offset) / lateral_span_ref
-                            lateral_norm = min(1.0, lateral_norm)
+                    target_term_x = (forward_gain * target_direction[0]) + attract_x
+                    target_term_y = (forward_gain * target_direction[1]) + attract_y
+                    separation_term_x = alpha_sep * separation_dir[0]
+                    separation_term_y = alpha_sep * separation_dir[1]
+                    boundary_term_x = alpha_sep * boundary_x
+                    boundary_term_y = alpha_sep * boundary_y
+                    maneuver_x = target_term_x + separation_term_x + boundary_term_x
+                    maneuver_y = target_term_y + separation_term_y + boundary_term_y
+                    if has_target_axis:
+                        dot_mt = (maneuver_x * t_hat_x) + (maneuver_y * t_hat_y)
+                        m_parallel_x = dot_mt * t_hat_x
+                        m_parallel_y = dot_mt * t_hat_y
+                        m_tangent_x = maneuver_x - m_parallel_x
+                        m_tangent_y = maneuver_y - m_parallel_y
+                        if odw_posture_bias_active:
+                            odw_raw = float(fleet.parameters.offense_defense_weight)
+                            odw_centered = (odw_raw - 5.0) / 4.0
+                            odw_centered = min(1.0, max(-1.0, odw_centered))
+                            if lateral_span_ref > 1e-12:
+                                lateral_offset = ((unit.position.x - centroid_x) * (-t_hat_y)) + (
+                                    (unit.position.y - centroid_y) * t_hat_x
+                                )
+                                lateral_norm = abs(lateral_offset) / lateral_span_ref
+                                lateral_norm = min(1.0, lateral_norm)
+                            else:
+                                lateral_norm = 0.0
+                            # ODW redistributes forward pressure across the fleet width:
+                            # center-heavy for offensive posture, wing-heavy for defensive posture.
+                            width_profile = 1.0 - (2.0 * lateral_norm)
+                            odw_parallel_scale = 1.0 + (odw_posture_bias_k_fleet * odw_centered * width_profile)
+                            odw_parallel_scale_min = max(0.0, 1.0 - odw_posture_bias_clip_delta_fleet)
+                            odw_parallel_scale_max = 1.0 + odw_posture_bias_clip_delta_fleet
+                            if odw_parallel_scale < odw_parallel_scale_min:
+                                odw_parallel_scale = odw_parallel_scale_min
+                            elif odw_parallel_scale > odw_parallel_scale_max:
+                                odw_parallel_scale = odw_parallel_scale_max
                         else:
-                            lateral_norm = 0.0
-                        # ODW redistributes forward pressure across the fleet width:
-                        # center-heavy for offensive posture, wing-heavy for defensive posture.
-                        width_profile = 1.0 - (2.0 * lateral_norm)
-                        odw_parallel_scale = 1.0 + (odw_posture_bias_k_fleet * odw_centered * width_profile)
-                        odw_parallel_scale_min = max(0.0, 1.0 - odw_posture_bias_clip_delta_fleet)
-                        odw_parallel_scale_max = 1.0 + odw_posture_bias_clip_delta_fleet
-                        if odw_parallel_scale < odw_parallel_scale_min:
-                            odw_parallel_scale = odw_parallel_scale_min
-                        elif odw_parallel_scale > odw_parallel_scale_max:
-                            odw_parallel_scale = odw_parallel_scale_max
-                    else:
-                        odw_parallel_scale = 1.0
-                    tangent_scale = 1.0 + mb
-                    tangent_scale -= (lateral_damping_base * stray_factor)
-                    parallel_scale = 1.0
-                    if tangent_scale < 0.05:
-                        tangent_scale = 0.05
-                    maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
-                    maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
-                    target_term_x = maneuver_x - separation_term_x - boundary_term_x
-                    target_term_y = maneuver_y - separation_term_y - boundary_term_y
-                if deep_pursuit_mode:
-                    extension_gain_effective = extension_gain
-                    maneuver_x *= extension_gain_effective
-                    maneuver_y *= extension_gain_effective
-                    target_term_x *= extension_gain_effective
-                    target_term_y *= extension_gain_effective
-                    separation_term_x *= extension_gain_effective
-                    separation_term_y *= extension_gain_effective
-                    boundary_term_x *= extension_gain_effective
-                    boundary_term_y *= extension_gain_effective
+                            odw_parallel_scale = 1.0
+                        tangent_scale = 1.0 + mb
+                        tangent_scale -= (lateral_damping_base * stray_factor)
+                        parallel_scale = 1.0
+                        if tangent_scale < 0.05:
+                            tangent_scale = 0.05
+                        maneuver_x = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_x) + (tangent_scale * m_tangent_x)
+                        maneuver_y = ((1.0 - mb) * parallel_scale * odw_parallel_scale * m_parallel_y) + (tangent_scale * m_tangent_y)
+                        target_term_x = maneuver_x - separation_term_x - boundary_term_x
+                        target_term_y = maneuver_y - separation_term_y - boundary_term_y
+                    if deep_pursuit_mode:
+                        extension_gain_effective = extension_gain
+                        maneuver_x *= extension_gain_effective
+                        maneuver_y *= extension_gain_effective
+                        target_term_x *= extension_gain_effective
+                        target_term_y *= extension_gain_effective
+                        separation_term_x *= extension_gain_effective
+                        separation_term_y *= extension_gain_effective
+                        boundary_term_x *= extension_gain_effective
+                        boundary_term_y *= extension_gain_effective
                 total_x = cohesion_x + maneuver_x
                 total_y = cohesion_y + maneuver_y
                 total_norm = math.sqrt((total_x * total_x) + (total_y * total_y))

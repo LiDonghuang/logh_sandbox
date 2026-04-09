@@ -485,7 +485,7 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
     projection_mean = [float(value) for value in fixture_metrics.get("projection_mean_displacement", [])]
     projection_max = [float(value) for value in fixture_metrics.get("projection_max_displacement", [])]
     print(
-        f"[fixture] mode={execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1} "
+        f"[fixture] mode={execution.FIXTURE_MODE_NEUTRAL} "
         f"movement={summary['movement_model_effective']} "
         f"arrival_tick={objective_reached_tick} "
         f"final_tick={int(result['final_state'].tick)} "
@@ -607,7 +607,7 @@ def _run_neutral_transit_fixture(*, base_dir: Path, settings: dict) -> None:
         "symmetric_movement_sync_enabled": movement_cfg["symmetric_movement_sync_enabled"],
         "v3_connect_radius_multiplier_effective": movement_cfg["v3_connect_radius_multiplier_effective"],
         "plot_smoothing_ticks": viz_cfg["plot_smoothing_ticks"],
-        "fixture_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+        "fixture_mode": execution.FIXTURE_MODE_NEUTRAL,
     }
     if movement_cfg["model_effective"] == "v3a":
         render_debug_context["odw_posture_bias_enabled_effective"] = movement_cfg["odw_posture_bias"]["enabled_effective"]
@@ -644,7 +644,7 @@ def main() -> None:
         settings_api.get_fixture_setting(settings, ("active_mode",), execution.FIXTURE_MODE_BATTLE),
         execution.FIXTURE_MODE_LABELS,
     )
-    if active_mode == execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+    if active_mode == execution.FIXTURE_MODE_NEUTRAL:
         _run_neutral_transit_fixture(base_dir=base_dir, settings=settings)
         return
     prepared = scenario.prepare_active_scenario(base_dir, settings_override=settings)

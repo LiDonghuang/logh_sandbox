@@ -30,6 +30,7 @@
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.
+  - `fixture.neutral.stop_radius` is the neutral-only objective termination radius used by the current neutral fixture line; it is not the battle hold mechanism.
   - Current usage:
     - `runtime.physical.contact_model.hostile_contact_impedance`
     - `runtime.movement.v4a.restore_strength`
@@ -54,7 +55,11 @@
     - `runtime.movement.v3a.centroid_probe_scale`
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
-    - `runtime.movement.v4a.restore_strength` is the active native v4a restore/cohesion-strength seam; values below `1.0` attenuate the v4a restore term directly and values at `1.0` keep the full base read
+    - `runtime.movement.v4a.restore_strength` is the active v4a restore-strength seam
+    - current direct read is:
+      - `restore_term = restore_strength * normalize(restore_vector)`
+    - the current v4a line does not apply `formation_rigidity`, `pursuit_drive`, `mobility_bias`, or any hidden native scale on top of this seam
+    - current `v4a` movement no longer changes when `runtime.selectors.cohesion_decision_source` toggles between `v2` and `v3_test`; that selector remains live only for legacy/non-`v4a` paths and cohesion-observer surfaces
     - `runtime.movement.v4a.expected_reference_spacing` carries the expected/reference formation spacing
     - `runtime.movement.v4a.reference_layout_mode` now selects an explicit reference target aspect (`rect_centered_1.0` or `rect_centered_4.0`) distinct from the fleet's initial spawned aspect ratio
     - `runtime.movement.v4a.reference_surface_mode` selects between the legacy rigid slot-map reference read and the bounded soft-morphology carrier
@@ -62,7 +67,7 @@
     - `runtime.movement.v4a.shape_vs_advance_strength` controls how strongly large morphology error suppresses pure objective advance in favor of ongoing shape transition
     - `runtime.movement.v4a.heading_relaxation` controls the minimal fleet-level heading realization seam used by the transition carrier
     - `runtime.movement.v4a.battle_standoff_hold_band_ratio` defines the near-`d*` no-chase band used by the bounded battle standoff carrier
-    - `runtime.movement.v4a.battle_target_front_strip_gap_bias` is the single active correction bias on the base front-strip target gap; it replaces the older two-weight extent buffer interface on the current local line
+    - `runtime.movement.v4a.battle_target_front_strip_gap_bias` is the single active correction bias on the base front-strip target gap; current base read is `max(0, fire_optimal_range - expected_reference_spacing)`, where `fire_optimal_range = attack_range * fire_optimal_range_ratio`; it replaces the older two-weight extent buffer interface on the current local line
     - `runtime.movement.v4a.battle_hold_weight_strength` defines how strongly the bounded near-`d*` hold state suppresses approach authority; the read is reversible, so if fleets are separated again, pre-contact-like approach can resume
     - `runtime.movement.v4a.battle_relation_lead_ticks` defines the near-contact lead window in ticks for signed battle-relation slowdown
     - `runtime.movement.v4a.battle_hold_relaxation` defines the restored raw-to-current smoothing weight for the signed near-contact relation family (`battle_relation_gap`, `close_drive`, `brake_drive`, `hold_weight`)

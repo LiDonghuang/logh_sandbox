@@ -1,7 +1,7 @@
 {
   "fixture": {
     "active_mode": "battle",
-    "neutral_transit_v1": {
+    "neutral": {
       "objective_point_xy": [
         350.0,
         350.0
@@ -27,11 +27,11 @@
         "expected_reference_spacing": 2.0,
         "reference_layout_mode": "rect_centered_4.0",
         "reference_surface_mode": "soft_morphology_v1",
-        "soft_morphology_relaxation": 0.2,
-        "shape_vs_advance_strength": 0.65,
+        "soft_morphology_relaxation": 0.50,
+        "shape_vs_advance_strength": 0.50,
         "heading_relaxation": 0.18,
         "battle_standoff_hold_band_ratio": 0.2,
-        "battle_target_front_strip_gap_bias": -4.0,
+        "battle_target_front_strip_gap_bias": -0.0,
         "battle_hold_weight_strength": 1.0,
         "battle_relation_lead_ticks": 18.0,
         "battle_hold_relaxation": 0.2,

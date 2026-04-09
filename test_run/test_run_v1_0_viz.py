@@ -1413,7 +1413,7 @@ def render_test_run(
 
     combat_telemetry = combat_telemetry if isinstance(combat_telemetry, Mapping) else {}
     fixture_mode = str(_cfg(debug_context, "fixture_mode", "")).strip().lower()
-    fixture_plot_mode = fixture_mode == "neutral_transit_v1"
+    fixture_plot_mode = fixture_mode == "neutral"
 
     def format_runtime_diag_lines(
         tick_index: int,

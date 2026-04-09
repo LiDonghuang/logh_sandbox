@@ -105,8 +105,8 @@ Artifact output conventions:
   - `runtime.physical.fire_control.alpha_safe_max = 1.0` (documentation-level current runtime clamp)
 - Runtime feature toggles (canonical):
   - `runtime.physical.contact_model.contact_hysteresis_h <= 0` => CH disabled
-  - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled
-  - Only `contact_hysteresis_h` / `fsr_strength` are used for runtime enable semantics
+  - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled on legacy/non-`v4a` paths
+  - Current active `v4a` path does not consume FSR
 - Current runtime collapse-signal semantics baseline:
   - `runtime.selectors.cohesion_decision_source = baseline`
   - baseline currently resolves to `v3_test`
