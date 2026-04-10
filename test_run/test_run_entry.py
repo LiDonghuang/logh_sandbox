@@ -23,16 +23,14 @@ def _print_run_summary(
     effective_random_seed: int,
     effective_metatype_random_seed: int,
     effective_background_map_seed: int,
-    test_mode_name: str,
     movement_model_effective: str,
     hostile_contact_impedance_mode: str,
     observer_enabled: bool = False,
     **_ignored,
 ) -> None:
     print(
-        f"[run] mode={test_mode_name} "
-        f"movement={movement_model_effective} "
-        f"contact_model={hostile_contact_impedance_mode} "
+        f"[run] movement={movement_model_effective} "
+        f"contact={hostile_contact_impedance_mode} "
         f"observer={observer_enabled} "
         f"seeds={effective_random_seed}/{effective_metatype_random_seed}/{effective_background_map_seed}"
     )

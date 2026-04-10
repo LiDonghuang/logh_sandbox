@@ -69,8 +69,9 @@ def _attach_axes(root: NodePath, *, arena_size: float) -> None:
 
 
 def build_scene(root: NodePath, *, arena_size: float) -> NodePath:
+    arena_size = float(arena_size)
     scene_root = root.attachNewNode("viewer_scene")
     _attach_lights(scene_root)
-    _attach_grid(scene_root, arena_size=float(arena_size))
-    _attach_axes(scene_root, arena_size=float(arena_size))
+    _attach_grid(scene_root, arena_size=arena_size)
+    _attach_axes(scene_root, arena_size=arena_size)
     return scene_root

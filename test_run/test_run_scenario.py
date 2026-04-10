@@ -34,11 +34,6 @@ FORMATION_LAYOUT_MODE_LABELS = {
     FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS,
     *REFERENCE_LAYOUT_MODE_LABELS,
 }
-TEST_MODE_LABELS = {
-    0: "default",
-    1: "observe",
-    2: "test",
-}
 PERSONALITY_PARAM_KEYS = (
     "force_concentration_ratio",
     "mobility_bias",
@@ -319,29 +314,7 @@ def resolve_avatar_with_fallback(side_data: dict, fallback_avatar: str) -> str:
     return fallback_avatar
 
 
-def parse_test_mode(raw_value) -> int:
-    if isinstance(raw_value, str):
-        value_str = raw_value.strip().lower()
-        if value_str in TEST_MODE_LABELS.values():
-            for code, label in TEST_MODE_LABELS.items():
-                if label == value_str:
-                    return code
-        if value_str.isdigit():
-            raw_value = int(value_str)
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        return 0
-    if parsed not in TEST_MODE_LABELS:
-        return 0
-    return parsed
-
-
-def test_mode_label(mode_code: int) -> str:
-    return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
-
-
-def resolve_movement_model(raw_value, test_mode: int) -> tuple[str, str]:
+def resolve_movement_model(raw_value) -> tuple[str, str]:
     requested = str(raw_value).strip().lower()
     if requested == "v1":
         raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline or v4a")
@@ -466,15 +439,14 @@ def _build_run_cfg(
     get_run,
     *,
     max_time_steps_override: int | None = None,
-    test_mode_name_override: str | None = None,
 ) -> dict:
-    test_mode = parse_test_mode(get_run("test_mode", 0))
     post_resolution_hold_steps = int(get_run("post_resolution_hold_steps", DEFAULT_POST_RESOLUTION_HOLD_STEPS))
     if post_resolution_hold_steps < 0:
         raise ValueError(
             "run_control.post_resolution_hold_steps must be >= 0, "
             f"got {post_resolution_hold_steps}"
         )
+    observer_enabled = bool(get_run("observer_enabled", True))
     return {
         "max_time_steps": (
             int(get_run("max_time_steps", -1))
@@ -482,26 +454,20 @@ def _build_run_cfg(
             else int(max_time_steps_override)
         ),
         "post_resolution_hold_steps": post_resolution_hold_steps,
-        "test_mode": test_mode,
-        "test_mode_name": (
-            str(test_mode_name_override)
-            if test_mode_name_override is not None
-            else test_mode_label(test_mode)
-        ),
-        "observer_enabled": test_mode >= 1,
+        "observer_enabled": observer_enabled,
         "export_battle_report": False,
     }
 
 
-def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
+def _build_movement_cfg(get_runtime, get_run) -> dict:
     v4a_restore_strength = float(get_runtime("v4a_restore_strength", 0.25))
     if not 0.0 <= v4a_restore_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.restore_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.restore.strength must be within [0.0, 1.0], "
             f"got {v4a_restore_strength}"
         )
     v4a_reference_surface_mode = _require_choice(
-        "runtime.movement.v4a.reference_surface_mode",
+        "runtime.movement.v4a.reference.surface_mode",
         get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
         execution.V4A_REFERENCE_SURFACE_MODE_LABELS,
     )
@@ -510,7 +476,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 < v4a_soft_morphology_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.soft_morphology_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.reference.soft_morphology_relaxation must be within (0.0, 1.0], "
             f"got {v4a_soft_morphology_relaxation}"
         )
     v4a_shape_vs_advance_strength = float(
@@ -518,7 +484,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.shape_vs_advance_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.transition.shape_vs_advance_strength must be within [0.0, 1.0], "
             f"got {v4a_shape_vs_advance_strength}"
         )
     v4a_heading_relaxation = float(
@@ -526,7 +492,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 < v4a_heading_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.heading_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.transition.heading_relaxation must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
         )
     v4a_battle_standoff_hold_band_ratio = float(
@@ -537,7 +503,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_standoff_hold_band_ratio must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.standoff_hold_band_ratio must be within [0.0, 1.0], "
             f"got {v4a_battle_standoff_hold_band_ratio}"
         )
     v4a_battle_target_front_strip_gap_bias = float(
@@ -548,7 +514,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
         raise ValueError(
-            "runtime.movement.v4a.battle_target_front_strip_gap_bias must be finite, "
+            "runtime.movement.v4a.battle.target_front_strip_gap_bias must be finite, "
             f"got {v4a_battle_target_front_strip_gap_bias}"
         )
     v4a_battle_hold_weight_strength = float(
@@ -559,7 +525,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 <= v4a_battle_hold_weight_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_hold_weight_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.hold_weight_strength must be within [0.0, 1.0], "
             f"got {v4a_battle_hold_weight_strength}"
         )
     v4a_battle_relation_lead_ticks = float(
@@ -570,7 +536,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_relation_lead_ticks must be finite and > 0, "
+            "runtime.movement.v4a.battle.relation_lead_ticks must be finite and > 0, "
             f"got {v4a_battle_relation_lead_ticks}"
         )
     v4a_battle_hold_relaxation = float(
@@ -581,7 +547,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 < v4a_battle_hold_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_hold_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.hold_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_hold_relaxation}"
         )
     v4a_battle_approach_drive_relaxation = float(
@@ -592,7 +558,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 < v4a_battle_approach_drive_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_approach_drive_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.approach_drive_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_approach_drive_relaxation}"
         )
     v4a_battle_near_contact_internal_stability_blend = float(
@@ -603,7 +569,7 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 <= v4a_battle_near_contact_internal_stability_blend <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_near_contact_internal_stability_blend must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.near_contact_internal_stability_blend must be within [0.0, 1.0], "
             f"got {v4a_battle_near_contact_internal_stability_blend}"
         )
     v4a_battle_near_contact_speed_relaxation = float(
@@ -614,41 +580,41 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
     )
     if not 0.0 < v4a_battle_near_contact_speed_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_near_contact_speed_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.near_contact_speed_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_near_contact_speed_relaxation}"
         )
-    v4a_engaged_speed_scale = float(
-        get_runtime("v4a_engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+    engaged_speed_scale = float(
+        get_runtime("engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
-    if not 0.0 < v4a_engaged_speed_scale <= 1.0:
+    if not 0.0 < engaged_speed_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.engaged_speed_scale must be within (0.0, 1.0], "
-            f"got {v4a_engaged_speed_scale}"
+            "runtime.movement.v4a.engagement.engaged_speed_scale must be within (0.0, 1.0], "
+            f"got {engaged_speed_scale}"
         )
-    v4a_attack_speed_lateral_scale = float(
+    attack_speed_lateral_scale = float(
         get_runtime(
-            "v4a_attack_speed_lateral_scale",
+            "attack_speed_lateral_scale",
             execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
         )
     )
-    if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
+    if not 0.0 < attack_speed_lateral_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.attack_speed_lateral_scale must be within (0.0, 1.0], "
-            f"got {v4a_attack_speed_lateral_scale}"
+            "runtime.movement.v4a.engagement.attack_speed_lateral_scale must be within (0.0, 1.0], "
+            f"got {attack_speed_lateral_scale}"
         )
-    v4a_attack_speed_backward_scale = float(
+    attack_speed_backward_scale = float(
         get_runtime(
-            "v4a_attack_speed_backward_scale",
+            "attack_speed_backward_scale",
             execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
         )
     )
-    if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
+    if not 0.0 <= attack_speed_backward_scale <= attack_speed_lateral_scale:
         raise ValueError(
-            "runtime.movement.v4a.attack_speed_backward_scale must be within "
-            f"[0.0, attack_speed_lateral_scale], got backward={v4a_attack_speed_backward_scale}, "
-            f"lateral={v4a_attack_speed_lateral_scale}"
+            "runtime.movement.v4a.engagement.attack_speed_backward_scale must be within "
+            f"[0.0, attack_speed_lateral_scale], got backward={attack_speed_backward_scale}, "
+            f"lateral={attack_speed_lateral_scale}"
         )
-    movement_model_effective = resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1]
+    movement_model_effective = resolve_movement_model(get_runtime("movement_model", "baseline"))[1]
     movement_cfg = {
         "model_effective": movement_model_effective,
         "symmetric_movement_sync_enabled": bool(get_run("symmetric_movement_sync_enabled", True)),
@@ -665,9 +631,9 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
         "v4a_battle_approach_drive_relaxation": v4a_battle_approach_drive_relaxation,
         "v4a_battle_near_contact_internal_stability_blend": v4a_battle_near_contact_internal_stability_blend,
         "v4a_battle_near_contact_speed_relaxation": v4a_battle_near_contact_speed_relaxation,
-        "v4a_engaged_speed_scale": v4a_engaged_speed_scale,
-        "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
-        "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
+        "engaged_speed_scale": engaged_speed_scale,
+        "attack_speed_lateral_scale": attack_speed_lateral_scale,
+        "attack_speed_backward_scale": attack_speed_backward_scale,
     }
     movement_cfg["v4a_restore_strength_effective"] = (
         movement_cfg["v4a_restore_strength"]
@@ -734,18 +700,18 @@ def _build_movement_cfg(get_runtime, get_run, *, test_mode: int) -> dict:
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT
     )
-    movement_cfg["v4a_engaged_speed_scale_effective"] = (
-        movement_cfg["v4a_engaged_speed_scale"]
+    movement_cfg["engaged_speed_scale_effective"] = (
+        movement_cfg["engaged_speed_scale"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT
     )
-    movement_cfg["v4a_attack_speed_lateral_scale_effective"] = (
-        movement_cfg["v4a_attack_speed_lateral_scale"]
+    movement_cfg["attack_speed_lateral_scale_effective"] = (
+        movement_cfg["attack_speed_lateral_scale"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT
     )
-    movement_cfg["v4a_attack_speed_backward_scale_effective"] = (
-        movement_cfg["v4a_attack_speed_backward_scale"]
+    movement_cfg["attack_speed_backward_scale_effective"] = (
+        movement_cfg["attack_speed_backward_scale"]
         if movement_cfg["model_effective"] == "v4a"
         else execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT
     )
@@ -777,33 +743,31 @@ def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_ef
             "physical_min_spacing": physical_min_spacing,
             "reference_layout_mode": reference_layout_mode,
         }
-    runtime_section = settings.get("runtime", {})
-    if not isinstance(runtime_section, dict):
-        runtime_section = {}
-    v4a_testonly_cfg = settings_api.get_nested_mapping_value(
-        runtime_section,
-        ("movement", "v4a"),
-        {},
+    expected_reference_spacing_raw = get_runtime(
+        "v4a_expected_reference_spacing",
+        settings_api.MISSING,
     )
-    if not isinstance(v4a_testonly_cfg, dict):
-        v4a_testonly_cfg = {}
-    if "expected_reference_spacing" not in v4a_testonly_cfg:
+    if expected_reference_spacing_raw is settings_api.MISSING:
         raise ValueError(
-            "runtime.movement.v4a.expected_reference_spacing must be provided when movement_model=v4a"
+            "runtime.movement.v4a.reference.expected_reference_spacing must be provided when movement_model=v4a"
         )
-    expected_reference_spacing = float(v4a_testonly_cfg["expected_reference_spacing"])
+    expected_reference_spacing = float(expected_reference_spacing_raw)
     if expected_reference_spacing <= 0.0:
         raise ValueError(
-            "runtime.movement.v4a.expected_reference_spacing must be > 0, "
+            "runtime.movement.v4a.reference.expected_reference_spacing must be > 0, "
             f"got {expected_reference_spacing}"
         )
-    if "reference_layout_mode" not in v4a_testonly_cfg:
+    reference_layout_mode_raw = get_runtime(
+        "v4a_reference_layout_mode",
+        settings_api.MISSING,
+    )
+    if reference_layout_mode_raw is settings_api.MISSING:
         raise ValueError(
-            "runtime.movement.v4a.reference_layout_mode must be provided when movement_model=v4a"
+            "runtime.movement.v4a.reference.layout_mode must be provided when movement_model=v4a"
         )
     reference_layout_mode = _require_choice(
-        "runtime.movement.v4a.reference_layout_mode",
-        v4a_testonly_cfg["reference_layout_mode"],
+        "runtime.movement.v4a.reference.layout_mode",
+        reference_layout_mode_raw,
         REFERENCE_LAYOUT_MODE_LABELS,
     )
     return {
@@ -949,7 +913,7 @@ def build_initial_state(
         arena_size=arena_size,
         units=units,
         fleets=fleets,
-        last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
+        last_fleet_cohesion_score=build_initial_cohesion_map(fleets.keys()),
     )
 
 
@@ -1006,7 +970,7 @@ def build_single_fleet_initial_state(
         arena_size=arena_size,
         units=units,
         fleets=fleets,
-        last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
+        last_fleet_cohesion_score=build_initial_cohesion_map(fleets.keys()),
     )
 
 
@@ -1017,7 +981,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         else settings_api.load_layered_test_run_settings(base_dir)
     )
     get_battlefield = partial(settings_api.get_battlefield_setting, settings)
-    get_contact_model = partial(settings_api.get_contact_model_test_setting, settings)
+    get_contact = partial(settings_api.get_contact_test_setting, settings)
     get_fleet = partial(settings_api.get_fleet_setting, settings)
     get_observer = partial(settings_api.get_observer_setting, settings)
     get_run = partial(settings_api.get_run_control_setting, settings)
@@ -1059,7 +1023,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     movement_cfg = _build_movement_cfg(
         get_runtime,
         get_run,
-        test_mode=run_cfg["test_mode"],
     )
     boundary_cfg = _build_boundary_cfg(get_runtime)
     v4a_reference_cfg = _resolve_v4a_reference_cfg(
@@ -1146,15 +1109,14 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
         "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
         "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
-        "fsr_strength": float(get_runtime("fsr_strength", 0.0)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
-            "runtime.physical.contact_model.hostile_contact_impedance.active_mode",
-            get_contact_model(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
+            "runtime.physical.contact.hostile_contact_impedance.active_mode",
+            get_contact(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
             execution.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
         ),
         "hybrid_v2": {
-            key: float(get_contact_model(("hybrid_v2", key), default))
+            key: float(get_contact(("hybrid_v2", key), default))
             for key, default in {
                 "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
                 "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
@@ -1162,7 +1124,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             }.items()
         },
         "intent_unified_spacing_v1": {
-            key: float(get_contact_model(("intent_unified_spacing_v1", key), default))
+            key: float(get_contact(("intent_unified_spacing_v1", key), default))
             for key, default in {
                 "scale": execution.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
                 "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
@@ -1175,10 +1137,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             f"got {contact_cfg['fire_optimal_range_ratio']}"
         )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
-    contact_cfg["fsr_enabled"] = (
-        contact_cfg["fsr_strength"] > 0.0
-        and movement_cfg["model_effective"] != "v4a"
-    )
 
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
@@ -1216,8 +1174,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "effective_random_seed": effective_random_seed,
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
-            "test_mode": run_cfg["test_mode"],
-            "test_mode_name": run_cfg["test_mode_name"],
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
@@ -1254,14 +1210,14 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             "v4a_battle_near_contact_speed_relaxation_effective": float(
                 movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
             ),
-            "v4a_engaged_speed_scale_effective": float(
-                movement_cfg["v4a_engaged_speed_scale_effective"]
+            "engaged_speed_scale_effective": float(
+                movement_cfg["engaged_speed_scale_effective"]
             ),
-            "v4a_attack_speed_lateral_scale_effective": float(
-                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
+            "attack_speed_lateral_scale_effective": float(
+                movement_cfg["attack_speed_lateral_scale_effective"]
             ),
-            "v4a_attack_speed_backward_scale_effective": float(
-                movement_cfg["v4a_attack_speed_backward_scale_effective"]
+            "attack_speed_backward_scale_effective": float(
+                movement_cfg["attack_speed_backward_scale_effective"]
             ),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
@@ -1345,11 +1301,10 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
     if stop_radius < 0.0:
         raise ValueError(f"fixture.neutral.stop_radius must be >= 0, got {stop_radius}")
 
-    run_cfg = _build_run_cfg(get_run, test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL)
+    run_cfg = _build_run_cfg(get_run)
     movement_cfg = _build_movement_cfg(
         get_runtime,
         get_run,
-        test_mode=run_cfg["test_mode"],
     )
     v4a_reference_cfg = _resolve_v4a_reference_cfg(
         settings,
@@ -1410,7 +1365,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "fire_quality_alpha": 0.0,
             "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
             "contact_hysteresis_h": 0.0,
-            "fsr_strength": 0.0,
             "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
             "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
             "hybrid_v2": {
@@ -1423,7 +1377,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
                 "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
             },
             "ch_enabled": False,
-            "fsr_enabled": False,
             "separation_radius": float(v4a_reference_cfg["physical_min_spacing"]),
         },
         "boundary": _build_boundary_cfg(get_runtime),
@@ -1445,8 +1398,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "effective_random_seed": effective_random_seed,
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
-            "test_mode": run_cfg["test_mode"],
-            "test_mode_name": execution.FIXTURE_MODE_NEUTRAL,
             "movement_model_effective": movement_cfg["model_effective"],
             "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
             "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
@@ -1483,14 +1434,14 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "v4a_battle_near_contact_speed_relaxation_effective": float(
                 movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
             ),
-            "v4a_engaged_speed_scale_effective": float(
-                movement_cfg["v4a_engaged_speed_scale_effective"]
+            "engaged_speed_scale_effective": float(
+                movement_cfg["engaged_speed_scale_effective"]
             ),
-            "v4a_attack_speed_lateral_scale_effective": float(
-                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
+            "attack_speed_lateral_scale_effective": float(
+                movement_cfg["attack_speed_lateral_scale_effective"]
             ),
-            "v4a_attack_speed_backward_scale_effective": float(
-                movement_cfg["v4a_attack_speed_backward_scale_effective"]
+            "attack_speed_backward_scale_effective": float(
+                movement_cfg["attack_speed_backward_scale_effective"]
             ),
             "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
             "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),

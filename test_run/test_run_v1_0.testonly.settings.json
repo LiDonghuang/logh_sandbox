@@ -23,28 +23,38 @@
     },
     "movement": {
       "v4a": {
-        "restore_strength": 0.25,
-        "expected_reference_spacing": 2.0,
-        "reference_layout_mode": "rect_centered_4.0",
-        "reference_surface_mode": "soft_morphology_v1",
-        "soft_morphology_relaxation": 0.50,
-        "shape_vs_advance_strength": 0.50,
-        "heading_relaxation": 0.18,
-        "battle_standoff_hold_band_ratio": 0.2,
-        "battle_target_front_strip_gap_bias": -0.0,
-        "battle_hold_weight_strength": 1.0,
-        "battle_relation_lead_ticks": 18.0,
-        "battle_hold_relaxation": 0.2,
-        "battle_approach_drive_relaxation": 0.22,
-        "battle_near_contact_internal_stability_blend": 0.55,
-        "battle_near_contact_speed_relaxation": 0.28,
-        "engaged_speed_scale": 0.7,
-        "attack_speed_lateral_scale": 0.65,
-        "attack_speed_backward_scale": 0.35
+        "restore": {
+          "strength": 0.25
+        },
+        "reference": {
+          "expected_reference_spacing": 2.0,
+          "layout_mode": "rect_centered_4.0",
+          "surface_mode": "soft_morphology_v1",
+          "soft_morphology_relaxation": 0.50
+        },
+        "transition": {
+          "shape_vs_advance_strength": 0.50,
+          "heading_relaxation": 0.18
+        },
+        "battle": {
+          "standoff_hold_band_ratio": 0.2,
+          "target_front_strip_gap_bias": -0.0,
+          "hold_weight_strength": 1.0,
+          "relation_lead_ticks": 18.0,
+          "hold_relaxation": 0.2,
+          "approach_drive_relaxation": 0.22,
+          "near_contact_internal_stability_blend": 0.55,
+          "near_contact_speed_relaxation": 0.28
+        },
+        "engagement": {
+          "engaged_speed_scale": 0.7,
+          "attack_speed_lateral_scale": 0.65,
+          "attack_speed_backward_scale": 0.35
+        }
       }
     },
     "physical": {
-      "contact_model": {
+      "contact": {
         "hostile_contact_impedance": {
           "active_mode": "intent_unified_spacing_v1",
           "hybrid_v2": {

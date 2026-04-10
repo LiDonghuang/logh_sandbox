@@ -32,12 +32,6 @@ class EngineTickSkeleton:
             "soft_strength": 1.0,
         }
 
-        self._fsr_surface = {
-            "enabled": False,
-            "strength": 0.0,
-            "lambda_delta": 0.10,
-        }
-
         # Active movement surface retained after v1 retirement.
         self._movement_surface = {
             "alpha_sep": 0.6,
@@ -47,7 +41,7 @@ class EngineTickSkeleton:
 
         # Active debug/reference knobs still used by maintained diagnostics.
         self._diag_surface = {
-            "fsr_diag_enabled": False,
+            "runtime_diag_enabled": False,
             "diag4_enabled": False,
             "diag4_topk": 10,
             "diag4_contact_window": 20,
@@ -55,7 +49,7 @@ class EngineTickSkeleton:
 
         # Internal-only state is kept behind a single host instead of top-level sprawl.
         self._debug_state = {
-            "fsr_reference": {},
+            "fleet_radius_reference": {},
             "diag_pending": None,
             "diag_timeseries": [],
         }
@@ -344,7 +338,7 @@ class EngineTickSkeleton:
                 largest_component_size = component_size
         return largest_component_size
 
-    def _compute_cohesion_v3_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+    def _compute_fleet_cohesion_score_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
         eps = 1e-12
         rho_low = 0.35
         rho_high = 1.15
@@ -446,13 +440,19 @@ class EngineTickSkeleton:
             "r_ref_multiplier": v3_r_ref_multiplier,
         }
 
-    def evaluate_cohesion(self, state: BattleState) -> BattleState:
-        runtime_cohesion = {}
-        for fleet_id, fleet in state.fleets.items():
-            cohesion_v3, _ = self._compute_cohesion_v3_geometry(state, fleet_id)
-            runtime_cohesion[fleet_id] = cohesion_v3
+    # Historical 2D-era reference retained on a cold path for later conceptual
+    # revisit. The maintained mainline no longer uses the v3-named seam; active
+    # code should call _compute_fleet_cohesion_score_geometry() instead.
+    def _compute_cohesion_v3_geometry(self, state: BattleState, fleet_id: str) -> tuple[float, dict]:
+        return self._compute_fleet_cohesion_score_geometry(state, fleet_id)
 
-        return replace(state, last_fleet_cohesion=runtime_cohesion)
+    def evaluate_cohesion(self, state: BattleState) -> BattleState:
+        runtime_cohesion_score = {}
+        for fleet_id, fleet in state.fleets.items():
+            cohesion_score, _ = self._compute_fleet_cohesion_score_geometry(state, fleet_id)
+            runtime_cohesion_score[fleet_id] = cohesion_score
+
+        return replace(state, last_fleet_cohesion_score=runtime_cohesion_score)
 
     def evaluate_target(self, state: BattleState) -> BattleState:
         last_target_direction = {}
@@ -669,7 +669,6 @@ class EngineTickSkeleton:
         movement_surface = self._movement_surface
         diag_surface = self._diag_surface
         boundary_surface = self._boundary_surface
-        fsr_surface = self._fsr_surface
         r_sep = self.separation_radius
         r_sep_sq = r_sep * r_sep
         sep_branch_eps = 1e-14
@@ -678,7 +677,7 @@ class EngineTickSkeleton:
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
-        diag_enabled = bool(diag_surface["fsr_diag_enabled"])
+        diag_enabled = bool(diag_surface["runtime_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         fixture_terminal_step_gate_enabled = (
@@ -1118,31 +1117,14 @@ class EngineTickSkeleton:
             if fixture_trace_units is not None:
                 fixture_trace_units_pending = fixture_trace_units
 
-        if diag4_enabled:
-            post_move_positions = {
-                unit_id: (unit.position.x, unit.position.y)
-                for unit_id, unit in updated_units.items()
-                if unit.hit_points > 0.0
-            }
-        else:
-            post_move_positions = {}
+        if diag_enabled:
+            radius_eps = 1e-12
+            fleet_radius_reference = self._debug_state.get("fleet_radius_reference")
+            if not isinstance(fleet_radius_reference, dict):
+                fleet_radius_reference = {}
+                self._debug_state["fleet_radius_reference"] = fleet_radius_reference
 
-        fsr_enabled = bool(fsr_surface["enabled"])
-        fsr_strength_raw = float(fsr_surface["strength"])
-        fsr_strength = min(0.3, max(0.0, fsr_strength_raw))
-
-        # FSR block: one centroid + one lambda + one isotropic scale per fleet per tick.
-        if fsr_enabled and fsr_strength > 0.0:
-            delta_raw = float(fsr_surface["lambda_delta"])
-            delta_lambda = min(0.5, max(0.0, delta_raw))
-            fsr_eps = 1e-12
-
-            fsr_reference = self._debug_state.get("fsr_reference")
-            if not isinstance(fsr_reference, dict):
-                fsr_reference = {}
-                self._debug_state["fsr_reference"] = fsr_reference
-
-            fsr_tick_stats = {}
+            fleet_radius_tick_stats = {}
             for fleet_id, fleet in state.fleets.items():
                 alive_unit_ids = [
                     unit_id
@@ -1170,64 +1152,30 @@ class EngineTickSkeleton:
                     radius_sq_sum += (dx * dx) + (dy * dy)
                 r_cur = math.sqrt(radius_sq_sum / n_alive)
 
-                if fleet_id in fsr_reference:
-                    n0, r_eq_n0 = fsr_reference[fleet_id]
+                if fleet_id in fleet_radius_reference:
+                    n0, r_eq_n0 = fleet_radius_reference[fleet_id]
                 else:
                     n0 = n_alive
                     r_eq_n0 = r_cur
-                    fsr_reference[fleet_id] = (n0, r_eq_n0)
+                    fleet_radius_reference[fleet_id] = (n0, r_eq_n0)
 
                 if n0 > 0 and r_eq_n0 > 0.0:
                     r_eq = r_eq_n0 * math.sqrt(n_alive / n0)
-                    s_f = r_eq / (r_cur + fsr_eps)
+                    s_f = r_eq / (r_cur + radius_eps)
                 else:
                     r_eq = r_cur
                     s_f = 1.0
 
-                kappa_f = normalized_params_by_fleet[fleet_id]["formation_rigidity"]
-                k_f = fsr_strength * (0.5 + (0.5 * kappa_f))
-                lambda_raw = 1.0 + (k_f * (s_f - 1.0))
-                lambda_min = 1.0 - delta_lambda
-                lambda_max = 1.0 + delta_lambda
-                if lambda_raw < lambda_min:
-                    lambda_f = lambda_min
-                elif lambda_raw > lambda_max:
-                    lambda_f = lambda_max
-                else:
-                    lambda_f = lambda_raw
-
-                for unit_id in alive_unit_ids:
-                    unit = updated_units[unit_id]
-                    dx = unit.position.x - centroid_x
-                    dy = unit.position.y - centroid_y
-                    updated_units[unit_id] = replace(
-                        unit,
-                        position=Vec2(
-                            x=centroid_x + (lambda_f * dx),
-                            y=centroid_y + (lambda_f * dy),
-                        ),
-                    )
-
-                fsr_tick_stats[fleet_id] = {
+                fleet_radius_tick_stats[fleet_id] = {
                     "n_alive": n_alive,
                     "n0": n0,
+                    "centroid_x": centroid_x,
+                    "centroid_y": centroid_y,
                     "r_cur": r_cur,
                     "r_eq": r_eq,
                     "s_f": s_f,
-                    "k_f": k_f,
-                    "lambda_raw": lambda_raw,
-                    "lambda_f": lambda_f,
                 }
-            self._debug_state["debug_last_fsr_stats"] = fsr_tick_stats
-
-        if diag4_enabled:
-            post_fsr_positions = {
-                unit_id: (unit.position.x, unit.position.y)
-                for unit_id, unit in updated_units.items()
-                if unit.hit_points > 0.0
-            }
-        else:
-            post_fsr_positions = {}
+            self._debug_state["debug_last_fleet_radius_stats"] = fleet_radius_tick_stats
 
         # Single-pass post-movement projection using tentative snapshot positions.
         tentative_positions = {
@@ -1408,7 +1356,7 @@ class EngineTickSkeleton:
         optimal_range_ratio_raw = float(combat_surface.get("fire_optimal_range_ratio", 1.0))
         fire_optimal_range_ratio = min(1.0, max(0.0, optimal_range_ratio_raw))
         optimal_range = self.attack_range * fire_optimal_range_ratio
-        diag_enabled = bool(diag_surface["fsr_diag_enabled"])
+        diag_enabled = bool(diag_surface["runtime_diag_enabled"])
         diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
 
         def _compute_angle_quality(attacker, ux: float, uy: float) -> float:

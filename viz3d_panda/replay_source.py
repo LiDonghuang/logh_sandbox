@@ -27,7 +27,7 @@ FIXED_VIEWER_FLEET_COLORS = {
 }
 DEFAULT_VIEWER_AVATAR_A = getattr(test_run_entry, "DEFAULT_AVATAR_A", "avatar_reinhard")
 DEFAULT_VIEWER_AVATAR_B = getattr(test_run_entry, "DEFAULT_AVATAR_B", "avatar_yang")
-FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug"}
+FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug", "fleet_body_summary"}
 VALID_VECTOR_DISPLAY_MODES = {"effective", "free", "attack", "composite", "radial_debug"}
 VIEWER_DIRECTION_MODE_SETTINGS = "settings"
 INTERNAL_DIRECTION_DISPLAY_MODES = VALID_VECTOR_DISPLAY_MODES | {"movement", "posture"}
@@ -87,6 +87,7 @@ class ViewerFrame:
     tick: int
     units: tuple[ViewerUnitState, ...]
     targets: dict[str, str]
+    fleet_body_summary: dict[str, dict[str, float]]
 
 
 @dataclass(frozen=True)
@@ -258,16 +259,49 @@ def _build_attack_direction_map(
     return direction_map
 
 
-def _fleet_centroids(units: tuple[ViewerUnitState, ...]) -> dict[str, tuple[float, float]]:
-    accum: dict[str, tuple[float, float, int]] = {}
-    for unit in units:
-        sx, sy, count = accum.get(unit.fleet_id, (0.0, 0.0, 0))
-        accum[unit.fleet_id] = (sx + float(unit.x), sy + float(unit.y), count + 1)
-    return {
-        fleet_id: (sx / float(count), sy / float(count))
-        for fleet_id, (sx, sy, count) in accum.items()
-        if count > 0
-    }
+def _parse_fleet_body_summary(raw_summary: Any) -> dict[str, dict[str, float]]:
+    if not isinstance(raw_summary, dict):
+        raise ValueError(
+            "frame['fleet_body_summary'] must be a dict with per-fleet body rows."
+        )
+    resolved: dict[str, dict[str, float]] = {}
+    required_keys = (
+        "centroid_x",
+        "centroid_y",
+        "rms_radius",
+        "max_radius",
+        "heading_x",
+        "heading_y",
+        "alive_unit_count",
+        "alive_total_hp",
+    )
+    for fleet_id, raw_row in raw_summary.items():
+        if not isinstance(raw_row, dict):
+            raise ValueError(
+                f"frame['fleet_body_summary'][{fleet_id!r}] must be a dict, got {type(raw_row).__name__}."
+            )
+        missing_keys = [key for key in required_keys if key not in raw_row]
+        if missing_keys:
+            raise ValueError(
+                f"frame['fleet_body_summary'][{fleet_id!r}] is missing required keys {missing_keys!r}."
+            )
+        heading = _normalize_vector(
+            float(raw_row["heading_x"]),
+            float(raw_row["heading_y"]),
+        )
+        if heading == (0.0, 0.0):
+            heading = (0.0, 1.0)
+        resolved[str(fleet_id)] = {
+            "centroid_x": float(raw_row["centroid_x"]),
+            "centroid_y": float(raw_row["centroid_y"]),
+            "rms_radius": max(0.0, float(raw_row["rms_radius"])),
+            "max_radius": max(0.0, float(raw_row["max_radius"])),
+            "heading_x": float(heading[0]),
+            "heading_y": float(heading[1]),
+            "alive_unit_count": max(0, int(raw_row["alive_unit_count"])),
+            "alive_total_hp": max(0.0, float(raw_row["alive_total_hp"])),
+        }
+    return resolved
 
 
 def _unit_key(unit: ViewerUnitState) -> str:
@@ -428,7 +462,14 @@ def _resolve_frame_display_units(
     units = frame.units
     targets = frame.targets
     attack_direction_map = _build_attack_direction_map(units, targets)
-    centroids = _fleet_centroids(units)
+    centroids = {
+        str(fleet_id): (
+            float(row.get("centroid_x", 0.0)),
+            float(row.get("centroid_y", 0.0)),
+        )
+        for fleet_id, row in frame.fleet_body_summary.items()
+        if isinstance(row, dict)
+    }
     resolved_units: list[ViewerUnitState] = []
 
     for unit in units:
@@ -579,6 +620,7 @@ def build_replay_bundle(
         if not isinstance(raw_runtime_debug, dict):
             raw_runtime_debug = {}
         runtime_debug_frames.append(dict(raw_runtime_debug))
+        fleet_body_summary = _parse_fleet_body_summary(raw_frame.get("fleet_body_summary"))
         units: list[ViewerUnitState] = []
         for fleet_id, points in raw_frame.items():
             if fleet_id in FRAME_CONTROL_KEYS:
@@ -599,6 +641,7 @@ def build_replay_bundle(
                 tick=tick,
                 units=tuple(units),
                 targets={str(key): str(value) for key, value in dict(raw_targets).items()},
+                fleet_body_summary=fleet_body_summary,
             )
         )
 

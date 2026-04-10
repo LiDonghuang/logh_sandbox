@@ -43,8 +43,8 @@ FIRE_LINK_BEAM_LAYOUTS = {
 
 # Unit dual-layer appearance, ordered level 1 -> level 5.
 TOKEN_ALPHA_BY_LEVEL = (0.01, 0.10, 0.25, 0.50, 0.90)
-CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.25, 0.0, 0.0, 0.0)
-DUAL_LAYER_DISTANCE_BY_LEVEL = (25.0, 50.0, 75.0, 100.0, 125.0)
+CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.01, 0.0, 0.0, 0.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (30.0, 60.0, 90.0, 120.0, 150.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
@@ -53,13 +53,6 @@ HP_BUCKET_SCALES = {
     3: 0.96,
     2: 0.80,
     1: 0.64,
-}
-CLUSTER_VISIBLE_COUNT_BY_BUCKET = {
-    5: 10,
-    4: 8,
-    3: 6,
-    2: 4,
-    1: 2,
 }
 CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
     5: (0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
@@ -75,6 +68,12 @@ CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
 CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.75, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
+CLUSTER_SWAY_AMPLITUDE_X = 0.04
+CLUSTER_SWAY_AMPLITUDE_Y = 0.05
+CLUSTER_SWAY_AMPLITUDE_Z = 0.03
+CLUSTER_SWAY_FREQUENCY = 0.1
+CLUSTER_SWAY_CLOCK_SCALE = 1.0
+CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX = 2
 CLUSTER_LAYOUT_OFFSETS = (
     (-0.10, 0.418, 0.108),
     (0.10, 0.398, -0.092),
@@ -237,6 +236,36 @@ def _interpolate_heading_xy(
     return (blended_x / length, blended_y / length)
 
 
+def _cluster_ship_base_offset(ship_index: int) -> tuple[float, float, float]:
+    base_offset = CLUSTER_LAYOUT_OFFSETS[int(ship_index)]
+    return (float(base_offset[0]), float(base_offset[1]), float(base_offset[2]))
+
+
+def _cluster_ship_sway_profile(ship_index: int) -> dict[str, float]:
+    base_offset = _cluster_ship_base_offset(int(ship_index))
+    x_phase = (0.61 * float(ship_index)) + 0.15
+    y_phase = (0.83 * float(ship_index)) + 1.35
+    z_phase = (0.47 * float(ship_index)) + 2.10
+    return {
+        "base_x": float(base_offset[0]),
+        "base_y": float(base_offset[1]),
+        "base_z": float(base_offset[2]),
+        "sin_x_phase": math.sin(x_phase),
+        "cos_x_phase": math.cos(x_phase),
+        "sin_y_phase": math.sin(y_phase),
+        "cos_y_phase": math.cos(y_phase),
+        "sin_z_phase": math.sin(z_phase),
+        "cos_z_phase": math.cos(z_phase),
+    }
+
+
+def _build_cluster_ship_sway_profiles() -> tuple[dict[str, float], ...]:
+    return tuple(
+        _cluster_ship_sway_profile(ship_index)
+        for ship_index in range(len(CLUSTER_LAYOUT_OFFSETS))
+    )
+
+
 def _build_wedge_template(name: str) -> NodePath:
     vertex_format = GeomVertexFormat.getV3()
     vertex_data = GeomVertexData(name, vertex_format, Geom.UHStatic)
@@ -365,6 +394,9 @@ class UnitRenderer:
         self._token_nodes: dict[str, NodePath] = {}
         self._cluster_nodes: dict[str, NodePath] = {}
         self._cluster_ship_nodes: dict[str, list[NodePath]] = {}
+        self._cluster_ship_sway_profiles = _build_cluster_ship_sway_profiles()
+        self._cluster_ship_sway_restored: dict[str, bool] = {}
+        self._cluster_ship_visible_masks: dict[str, tuple[bool, ...]] = {}
         self._overlay_np = self._parent.attachNewNode("viewer_overlays")
         self._objective_marker_np = self._overlay_np.attachNewNode("viewer_objective_marker")
         self._fleet_halos_np = self._overlay_np.attachNewNode("viewer_fleet_halos")
@@ -378,6 +410,7 @@ class UnitRenderer:
         self._fire_link_position_alpha = 0.0
         self._playback_level_index = 0
         self._playback_fps = 2.0
+        self._playback_active = True
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
         if len(TOKEN_ALPHA_BY_LEVEL) != len(CLUSTER_ALPHA_BY_LEVEL):
             raise ValueError("TOKEN_ALPHA_BY_LEVEL and CLUSTER_ALPHA_BY_LEVEL must have identical lengths.")
@@ -399,24 +432,14 @@ class UnitRenderer:
         if not self._replay.frames:
             return {}
         frame = self._replay.frames[0]
-        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
-        for unit in frame.units:
-            if float(unit.hit_points) <= 0.0:
-                continue
-            fleet_points.setdefault(str(unit.fleet_id), []).append((float(unit.x), float(unit.y), float(unit.hit_points)))
         baselines: dict[str, tuple[float, float]] = {}
-        for fleet_id, points in fleet_points.items():
-            if not points:
+        for fleet_id, summary in frame.fleet_body_summary.items():
+            if not isinstance(summary, dict):
                 continue
-            centroid_x = sum(point[0] for point in points) / float(len(points))
-            centroid_y = sum(point[1] for point in points) / float(len(points))
-            max_radius = max(
-                math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
-                for point in points
-            )
-            total_hp = sum(point[2] for point in points)
+            max_radius = float(summary["max_radius"])
+            total_hp = float(summary["alive_total_hp"])
             if max_radius > 1e-9 and total_hp > 1e-9:
-                baselines[fleet_id] = (float(max_radius), float(total_hp))
+                baselines[str(fleet_id)] = (float(max_radius), float(total_hp))
         return baselines
 
     def _validate_fire_link_mode(self, fire_link_mode: str) -> str:
@@ -444,6 +467,9 @@ class UnitRenderer:
             self._playback_fps = normalized_fps
             self._last_fire_link_signature = None
 
+    def set_playback_active(self, playback_active: bool) -> None:
+        self._playback_active = bool(playback_active)
+
     def refresh_fire_links(
         self,
         frame: ViewerFrame,
@@ -464,6 +490,36 @@ class UnitRenderer:
     @property
     def fleet_halo_state(self) -> dict[str, dict[str, float]]:
         return {fleet_id: dict(state) for fleet_id, state in self._fleet_halo_state.items()}
+
+    def _current_cluster_sway_seconds(self) -> float:
+        if self._current_frame is None:
+            return 0.0
+        base_seconds = (float(self._current_frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_fps))
+        return float(base_seconds) * CLUSTER_SWAY_CLOCK_SCALE
+
+    def _cluster_sway_active(self) -> bool:
+        return bool(self._playback_active and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX)
+
+    def _cluster_ship_sway_offsets(
+        self,
+        sway_profile: dict[str, float],
+        *,
+        sin_time: float,
+        cos_time: float,
+    ) -> tuple[float, float, float]:
+        x_value = float(sway_profile["base_x"]) + (
+            CLUSTER_SWAY_AMPLITUDE_X
+            * ((float(sin_time) * float(sway_profile["cos_x_phase"])) + (float(cos_time) * float(sway_profile["sin_x_phase"])))
+        )
+        y_value = float(sway_profile["base_y"]) + (
+            CLUSTER_SWAY_AMPLITUDE_Y
+            * ((float(sin_time) * float(sway_profile["cos_y_phase"])) + (float(cos_time) * float(sway_profile["sin_y_phase"])))
+        )
+        z_value = float(sway_profile["base_z"]) + (
+            CLUSTER_SWAY_AMPLITUDE_Z
+            * ((float(sin_time) * float(sway_profile["cos_z_phase"])) + (float(cos_time) * float(sway_profile["sin_z_phase"])))
+        )
+        return (x_value, y_value, z_value)
 
     def _get_fleet_halo_nodes(self, fleet_id: str) -> list[NodePath]:
         halo_nodes = self._fleet_halo_nodes.get(fleet_id)
@@ -534,6 +590,13 @@ class UnitRenderer:
     def update_view(self, camera_np: NodePath) -> None:
         camera_pos = camera_np.getPos(self._parent)
         level_distances = self._dual_layer_distances
+        cluster_sway_active = self._cluster_sway_active()
+        sway_sin_time = 0.0
+        sway_cos_time = 1.0
+        if cluster_sway_active:
+            sway_time_seconds = self._current_cluster_sway_seconds()
+            sway_sin_time = math.sin(2.0 * math.pi * CLUSTER_SWAY_FREQUENCY * sway_time_seconds)
+            sway_cos_time = math.cos(2.0 * math.pi * CLUSTER_SWAY_FREQUENCY * sway_time_seconds)
         min_unit_distance: float | None = None
         for node_key, root_np in self._unit_nodes.items():
             token_np = self._token_nodes.get(node_key)
@@ -574,6 +637,32 @@ class UnitRenderer:
             if cluster_alpha > 1e-4:
                 cluster_np.show()
                 cluster_np.setColorScale(1.0, 1.0, 1.0, cluster_alpha)
+                ship_nodes = self._cluster_ship_nodes.get(node_key, ())
+                ship_sway_profiles = self._cluster_ship_sway_profiles
+                if not cluster_sway_active:
+                    if self._cluster_ship_sway_restored.get(node_key, True):
+                        continue
+                    for ship_index, ship_np in enumerate(ship_nodes):
+                        if ship_np.isHidden():
+                            continue
+                        ship_profile = ship_sway_profiles[ship_index]
+                        ship_np.setPos(
+                            float(ship_profile["base_x"]),
+                            float(ship_profile["base_y"]),
+                            float(ship_profile["base_z"]),
+                        )
+                    self._cluster_ship_sway_restored[node_key] = True
+                    continue
+                self._cluster_ship_sway_restored[node_key] = False
+                for ship_index, ship_np in enumerate(ship_nodes):
+                    if ship_np.isHidden():
+                        continue
+                    ship_offset = self._cluster_ship_sway_offsets(
+                        ship_sway_profiles[ship_index],
+                        sin_time=sway_sin_time,
+                        cos_time=sway_cos_time,
+                    )
+                    ship_np.setPos(float(ship_offset[0]), float(ship_offset[1]), float(ship_offset[2]))
             else:
                 cluster_np.hide()
         if self._current_frame is not None:
@@ -663,38 +752,30 @@ class UnitRenderer:
         self,
         frame: ViewerFrame,
         *,
+        next_frame: ViewerFrame | None = None,
+        position_alpha: float = 0.0,
         tick_offset: float = 0.0,
-        use_node_positions: bool = False,
     ) -> None:
         self._fleet_halo_state = {}
-        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
-        for unit in frame.units:
-            if float(unit.hit_points) <= 0.0:
-                continue
-            point_x = float(unit.x)
-            point_y = float(unit.y)
-            if use_node_positions:
-                node_key = f"{unit.fleet_id}:{unit.unit_id}"
-                node = self._unit_nodes.get(node_key)
-                if node is None:
-                    continue
-                node_pos = node.getPos()
-                point_x = float(node_pos.x)
-                point_y = float(node_pos.y)
-            fleet_points.setdefault(str(unit.fleet_id), []).append((point_x, point_y, float(unit.hit_points)))
         active_fleet_ids: set[str] = set()
-        for fleet_id, points in fleet_points.items():
-            if not points:
+        for fleet_id, summary in frame.fleet_body_summary.items():
+            if not isinstance(summary, dict):
                 continue
-            centroid_x = sum(point[0] for point in points) / float(len(points))
-            centroid_y = sum(point[1] for point in points) / float(len(points))
-            current_total_hp = sum(point[2] for point in points)
+            centroid_x = float(summary["centroid_x"])
+            centroid_y = float(summary["centroid_y"])
+            current_total_hp = float(summary["alive_total_hp"])
+            blend = max(0.0, min(1.0, float(position_alpha)))
+            if next_frame is not None and blend > 1e-6:
+                next_summary = next_frame.fleet_body_summary.get(str(fleet_id))
+                if isinstance(next_summary, dict):
+                    centroid_x = ((1.0 - blend) * centroid_x) + (blend * float(next_summary["centroid_x"]))
+                    centroid_y = ((1.0 - blend) * centroid_y) + (blend * float(next_summary["centroid_y"]))
+                    current_total_hp = ((1.0 - blend) * current_total_hp) + (blend * float(next_summary["alive_total_hp"]))
+            if current_total_hp <= 1e-9:
+                continue
             baseline = self._fleet_halo_baselines.get(fleet_id)
             if baseline is None:
-                baseline_radius = max(
-                    math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
-                    for point in points
-                )
+                baseline_radius = float(summary["max_radius"])
                 baseline_total_hp = current_total_hp
             else:
                 baseline_radius, baseline_total_hp = baseline
@@ -763,15 +844,24 @@ class UnitRenderer:
                         raise RuntimeError(f"unit cluster ship {ship_index} is missing for {node_key!r}")
                     ship_nodes.append(ship_np)
                 self._cluster_ship_nodes[node_key] = ship_nodes
+                self._cluster_ship_sway_restored[node_key] = True
+                self._cluster_ship_visible_masks[node_key] = tuple(False for _ in ship_nodes)
             bucket = _hp_bucket(unit.hit_points, unit.max_hit_points)
             scale = HP_BUCKET_SCALES[bucket]
             self._token_nodes[node_key].setScale(scale)
-            visible_indices = set(CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket][: CLUSTER_VISIBLE_COUNT_BY_BUCKET[bucket]])
+            visible_indices = CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket]
+            current_visibility_mask: list[bool] = []
             for ship_index, ship_np in enumerate(self._cluster_ship_nodes[node_key]):
                 if ship_index in visible_indices:
                     ship_np.show()
+                    current_visibility_mask.append(True)
                 else:
                     ship_np.hide()
+                    current_visibility_mask.append(False)
+            visibility_mask_tuple = tuple(current_visibility_mask)
+            if visibility_mask_tuple != self._cluster_ship_visible_masks.get(node_key):
+                self._cluster_ship_visible_masks[node_key] = visibility_mask_tuple
+                self._cluster_ship_sway_restored[node_key] = False
             node.setPos(unit.x, unit.y, unit.z)
             node.setH(_heading_to_h(unit.heading_x, unit.heading_y))
             active_keys.add(node_key)
@@ -783,6 +873,8 @@ class UnitRenderer:
             self._token_nodes.pop(stale_key, None)
             self._cluster_nodes.pop(stale_key, None)
             self._cluster_ship_nodes.pop(stale_key, None)
+            self._cluster_ship_sway_restored.pop(stale_key, None)
+            self._cluster_ship_visible_masks.pop(stale_key, None)
 
         self._sync_fleet_halos(frame)
 

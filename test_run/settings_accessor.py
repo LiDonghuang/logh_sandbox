@@ -12,61 +12,85 @@ RUNTIME_SETTING_PATHS = {
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
     "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
-    "contact_hysteresis_h": ("physical", "contact_model", "contact_hysteresis_h"),
-    "fsr_strength": ("physical", "contact_model", "fsr_strength"),
+    "contact_hysteresis_h": ("physical", "contact", "contact_hysteresis_h"),
     "boundary_enabled": ("physical", "boundary", "enabled"),
     "boundary_soft_strength": ("physical", "boundary", "soft_strength"),
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
-    "v4a_restore_strength": ("movement", "v4a", "restore_strength"),
-    "v4a_reference_surface_mode": ("movement", "v4a", "reference_surface_mode"),
-    "v4a_soft_morphology_relaxation": ("movement", "v4a", "soft_morphology_relaxation"),
-    "v4a_shape_vs_advance_strength": ("movement", "v4a", "shape_vs_advance_strength"),
-    "v4a_heading_relaxation": ("movement", "v4a", "heading_relaxation"),
+    "v4a_restore_strength": ("movement", "v4a", "restore", "strength"),
+    "v4a_expected_reference_spacing": (
+        "movement",
+        "v4a",
+        "reference",
+        "expected_reference_spacing",
+    ),
+    "v4a_reference_layout_mode": ("movement", "v4a", "reference", "layout_mode"),
+    "v4a_reference_surface_mode": ("movement", "v4a", "reference", "surface_mode"),
+    "v4a_soft_morphology_relaxation": (
+        "movement",
+        "v4a",
+        "reference",
+        "soft_morphology_relaxation",
+    ),
+    "v4a_shape_vs_advance_strength": (
+        "movement",
+        "v4a",
+        "transition",
+        "shape_vs_advance_strength",
+    ),
+    "v4a_heading_relaxation": ("movement", "v4a", "transition", "heading_relaxation"),
     "v4a_battle_standoff_hold_band_ratio": (
         "movement",
         "v4a",
-        "battle_standoff_hold_band_ratio",
+        "battle",
+        "standoff_hold_band_ratio",
     ),
     "v4a_battle_target_front_strip_gap_bias": (
         "movement",
         "v4a",
-        "battle_target_front_strip_gap_bias",
+        "battle",
+        "target_front_strip_gap_bias",
     ),
     "v4a_battle_hold_weight_strength": (
         "movement",
         "v4a",
-        "battle_hold_weight_strength",
+        "battle",
+        "hold_weight_strength",
     ),
     "v4a_battle_relation_lead_ticks": (
         "movement",
         "v4a",
-        "battle_relation_lead_ticks",
+        "battle",
+        "relation_lead_ticks",
     ),
     "v4a_battle_hold_relaxation": (
         "movement",
         "v4a",
-        "battle_hold_relaxation",
+        "battle",
+        "hold_relaxation",
     ),
     "v4a_battle_approach_drive_relaxation": (
         "movement",
         "v4a",
-        "battle_approach_drive_relaxation",
+        "battle",
+        "approach_drive_relaxation",
     ),
     "v4a_battle_near_contact_internal_stability_blend": (
         "movement",
         "v4a",
-        "battle_near_contact_internal_stability_blend",
+        "battle",
+        "near_contact_internal_stability_blend",
     ),
     "v4a_battle_near_contact_speed_relaxation": (
         "movement",
         "v4a",
-        "battle_near_contact_speed_relaxation",
+        "battle",
+        "near_contact_speed_relaxation",
     ),
-    "v4a_engaged_speed_scale": ("movement", "v4a", "engaged_speed_scale"),
-    "v4a_attack_speed_lateral_scale": ("movement", "v4a", "attack_speed_lateral_scale"),
-    "v4a_attack_speed_backward_scale": ("movement", "v4a", "attack_speed_backward_scale"),
+    "engaged_speed_scale": ("movement", "v4a", "engagement", "engaged_speed_scale"),
+    "attack_speed_lateral_scale": ("movement", "v4a", "engagement", "attack_speed_lateral_scale"),
+    "attack_speed_backward_scale": ("movement", "v4a", "engagement", "attack_speed_backward_scale"),
 }
 
 OBSERVER_SETTING_PATHS = {
@@ -218,12 +242,12 @@ def get_fixture_setting(settings: dict, path: tuple[str, ...], default=MISSING):
     return default
 
 
-def get_contact_model_test_setting(settings: dict, path: tuple[str, ...], default):
+def get_contact_test_setting(settings: dict, path: tuple[str, ...], default):
     runtime_section = settings.get("runtime", {})
     if isinstance(runtime_section, dict):
         nested_value = get_nested_mapping_value(
             runtime_section,
-            ("physical", "contact_model", "hostile_contact_impedance", *path),
+            ("physical", "contact", "hostile_contact_impedance", *path),
             MISSING,
         )
         if nested_value is not MISSING:

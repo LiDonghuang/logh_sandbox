@@ -89,9 +89,7 @@ Run:
   - `runtime.physical.fire_control.fire_quality_alpha = 0.33`
   - `runtime.physical.fire_control.alpha_safe_max = 1.0` (documentation-level current runtime clamp)
 - Runtime feature toggles (canonical):
-  - `runtime.physical.contact_model.contact_hysteresis_h <= 0` => CH disabled
-  - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled on legacy/non-`v4a` paths
-  - Current active `v4a` path does not consume FSR
+  - `runtime.physical.contact.contact_hysteresis_h <= 0` => CH disabled
 - Current maintained runtime cohesion line uses a fixed `v3_test` geometry on the active mainline.
 - Current exposed low-level movement knob:
   - `runtime.physical.movement_low_level.alpha_sep`

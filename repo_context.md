@@ -22,6 +22,11 @@ Authority: Reference only, not canonical semantics authority
   - active-owner truth
   - old-family retirement in bounded slices
   - continued shrinkage of settings / runtime / harness surfaces
+- This subtraction-first cleanup phase is now treated as **phase-complete**.
+- The next planned phase is:
+  - hot-path structural tightening
+  - not compute optimization
+  - not formation-line implementation yet
 
 ## Key Entry Documents
 
@@ -96,6 +101,7 @@ Current viewer read:
 
 - 3D viewer remains replay/view only
 - 3D still consumes `visualization.display_language`
+- viewer-facing fleet geometry now reads the maintained `fleet_body_summary` export produced by `test_run`
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths
@@ -109,6 +115,12 @@ Current viewer read:
 - `test_run/test_run_v1_0.testonly.settings.json`
   - maintained test-only harness controls
   - `fixture.neutral.stop_radius` is the neutral-only objective termination radius
+  - current `v4a` candidate parameters are structured under:
+    - `restore`
+    - `reference`
+    - `transition`
+    - `battle`
+    - `engagement`
 - `test_run/test_run_v1_0.settings.comments.json`
   - current comments aligned to active settings truth
 - `test_run/test_run_v1_0.settings.reference.md`
@@ -119,6 +131,7 @@ Current viewer read:
 - `battle` and `neutral` share the maintained `v4a` movement mechanism family
 - the only intended semantic difference between them is objective source
 - `stop_radius` is neutral-only termination semantics, not battle hold semantics
+- `fleet_body_summary` is the maintained viewer-facing fleet-body geometry contract
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors
   - `cohesion_decision_source`

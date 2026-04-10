@@ -41,24 +41,34 @@
     },
     "movement": {
       "v4a": {
-        "restore_strength": "Active v4a restore-strength seam in [0.0, 1.0]. Current v4a read is direct: restore_term = restore_strength * normalize(restore_vector). This seam no longer uses formation_rigidity, pursuit_drive, mobility_bias, or any hidden native scale. Current v4a movement also no longer depends on the old runtime cohesion decision source (`v2` vs `v3_test`) for this seam.",
-        "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
-        "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
-        "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
-        "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
-        "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
-        "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
-        "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
-        "battle_target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Current base read is max(0, fire_optimal_range - expected_reference_spacing), where fire_optimal_range = attack_range * fire_optimal_range_ratio. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
-        "battle_hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
-        "battle_relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
-        "battle_hold_relaxation": "Raw-to-current relaxation for the near-contact v4a relation family in (0.0, 1.0]. This smooths battle_relation_gap, close_drive, brake_drive, and hold_weight before they affect active battle behavior.",
-        "battle_approach_drive_relaxation": "Raw-to-current relaxation for the near-contact v4a approach-drive path in (0.0, 1.0]. Kept separate so forward approach authority can lag or follow the signed relation at a different pace than hold/brake state.",
-        "battle_near_contact_internal_stability_blend": "Near-contact internal-speed unification blend in [0.0, 1.0]. Scales how strongly hold-weight pulls forward_transport_speed_scale back toward 1.0 and shape_speed_scale back toward a fleet-level advance floor while battle relation is active.",
-        "battle_near_contact_speed_relaxation": "Per-unit near-contact speed relaxation in (0.0, 1.0]. Smooths unit.max_speed toward transition_speed_target after the internal-stability blend has adjusted per-unit speed factors.",
-        "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
-        "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
-        "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale."
+        "restore": {
+          "strength": "Active v4a restore-strength seam in [0.0, 1.0]. Current v4a read is direct: restore_term = restore_strength * normalize(restore_vector). This seam no longer uses formation_rigidity, pursuit_drive, mobility_bias, or any hidden native scale. Current v4a movement also no longer depends on the old runtime cohesion decision source (`v2` vs `v3_test`) for this seam."
+        },
+        "reference": {
+          "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
+          "layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
+          "surface_mode": "Current v4a-internal reference-surface seam. It remains candidate-specific because future movement candidates may coexist with v4a for a time; it is not a general movement/formation owner.",
+          "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous."
+        },
+        "transition": {
+          "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
+          "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots."
+        },
+        "battle": {
+          "standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
+          "target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Current base read is max(0, fire_optimal_range - expected_reference_spacing), where fire_optimal_range = attack_range * fire_optimal_range_ratio. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
+          "hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
+          "relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
+          "hold_relaxation": "Raw-to-current relaxation for the near-contact v4a relation family in (0.0, 1.0]. This smooths battle_relation_gap, close_drive, brake_drive, and hold_weight before they affect active battle behavior.",
+          "approach_drive_relaxation": "Raw-to-current relaxation for the near-contact v4a approach-drive path in (0.0, 1.0]. Kept separate so forward approach authority can lag or follow the signed relation at a different pace than hold/brake state.",
+          "near_contact_internal_stability_blend": "Near-contact internal-speed unification blend in [0.0, 1.0]. Scales how strongly hold-weight pulls forward_transport_speed_scale back toward 1.0 and shape_speed_scale back toward a fleet-level advance floor while battle relation is active.",
+          "near_contact_speed_relaxation": "Per-unit near-contact speed relaxation in (0.0, 1.0]. Smooths unit.max_speed toward transition_speed_target after the internal-stability blend has adjusted per-unit speed factors."
+        },
+        "engagement": {
+          "engaged_speed_scale": "Current v4a candidate seam for engaged-movement speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
+          "attack_speed_lateral_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is lateral to current orientation. Forward attack interpolates from this value up toward 1.0.",
+          "attack_speed_backward_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is backward relative to current orientation. Must be <= attack_speed_lateral_scale."
+        }
       }
     },
     "physical": {
@@ -76,9 +86,8 @@
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
         "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
       },
-      "contact_model": {
+      "contact": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
-        "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. Current active v4a path does not consume FSR; FSR remains legacy / non-v4a only. fsr_strength<=0 disables FSR where that legacy path is still active.",
         "hostile_contact_impedance": {
           "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
           "hybrid_v2": {
@@ -102,7 +111,7 @@
     "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral objective-arrival hold. Must be >= 0.",
     "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
     "symmetric_movement_sync_enabled": "Harness-side symmetric movement merge switch. This is a run-level execution control that removes cross-fleet sequential-update bias without touching frozen runtime.",
-    "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + maintained observer telemetry. 2/test: explicit legacy/experimental selectors still permitted where those maintained test-only surfaces remain."
+    "observer_enabled": "Run-level observer/diagnostic capture switch for maintained test_run surfaces. true enables maintained observer telemetry and diagnostic exports; false keeps the run headless/quiet unless another explicit export path is requested."
   },
   "battlefield": {
     "arena_size": "Square battlefield size (0..arena_size).",

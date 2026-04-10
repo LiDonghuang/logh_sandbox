@@ -37,6 +37,7 @@ Current maintained runtime read:
   - `collapse_signal.v3_*`
   - FSR in the active `v4a` path
 - targeting is opened in bounded form inside `resolve_combat()`
+- the next structural phase should target hot-path tightening, not new mechanism expansion
 
 ### 3. Maintained Harness Spine
 
@@ -58,6 +59,7 @@ Current maintained harness read:
 - only objective source should differ
 - `stop_radius` is neutral-only objective termination semantics
 - battle gap base now uses `fire_optimal_range`
+- `test_mode` is retired from the maintained public surface
 
 ### 4. Settings Layer
 
@@ -73,6 +75,12 @@ Current maintained settings read:
 - `run_control.symmetric_movement_sync_enabled` owns symmetric merge control
 - `runtime.observer` has been narrowed to still-active maintained keys
 - old public `v3a` selector surfaces are no longer part of the maintained mainline
+- `testonly.runtime.movement.v4a.*` is now structured by candidate-owned groups:
+  - `restore`
+  - `reference`
+  - `transition`
+  - `battle`
+  - `engagement`
 
 ### 5. Viewer / Replay Layer
 
@@ -87,6 +95,7 @@ Current viewer read:
 
 - Panda3D viewer is replay/view only
 - viewer still consumes `visualization.display_language`
+- viewer-facing fleet geometry now consumes the maintained `fleet_body_summary` replay contract
 - no old 2D viz / BRF surface remains in the active mainline
 
 ### 6. Documentation / Records Layer
@@ -119,9 +128,9 @@ Do **not** read the active tree as still owning:
 
 ## Active Debts Still Worth Watching
 
-- old-named but still-active cohesion seam inside runtime
+- large maintained hot-path functions that need structural tightening
 - remaining legacy wording in comments/reference surfaces
-- further old-family retirement after the current `v4a` baseline cleanup
+- deeper harness/runtime geometry unification beyond `fleet_body_summary` Phase 1
 
 ## Interpretation Guardrails
 

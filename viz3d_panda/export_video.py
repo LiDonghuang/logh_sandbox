@@ -63,31 +63,26 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Offscreen export height in pixels. When omitted, uses the selected preset.",
     )
     args = parser.parse_args(argv)
-    if args.export_fps is not None and int(args.export_fps) < 1:
-        parser.error("--export-fps must be >= 1.")
-    if args.window_width is not None and int(args.window_width) < 1:
-        parser.error("--window-width must be >= 1.")
-    if args.window_height is not None and int(args.window_height) < 1:
-        parser.error("--window-height must be >= 1.")
-    if (
-        args.window_width is not None
-        and args.window_height is not None
-        and (int(args.window_width) < 1 or int(args.window_height) < 1)
-    ):
-        parser.error("--window-width and --window-height must both be >= 1.")
+    for option_name in ("export_fps", "window_width", "window_height"):
+        option_value = getattr(args, option_name)
+        if option_value is not None and int(option_value) < 1:
+            parser.error(f"--{option_name.replace('_', '-')} must be >= 1.")
     return args
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     preset_fps, preset_width, preset_height = EXPORT_PRESET_SETTINGS[str(args.preset)]
+    export_fps = int(preset_fps if args.export_fps is None else args.export_fps)
+    window_width = int(preset_width if args.window_width is None else args.window_width)
+    window_height = int(preset_height if args.window_height is None else args.window_height)
     export_camera_take_video(
         camera_take_path_text=str(args.camera_take),
         output_mp4_path_text=args.output_mp4,
-        export_fps=int(args.export_fps) if args.export_fps is not None else int(preset_fps),
+        export_fps=export_fps,
         ffmpeg_exe_path_text=str(args.ffmpeg_exe),
-        window_width=int(args.window_width) if args.window_width is not None else int(preset_width),
-        window_height=int(args.window_height) if args.window_height is not None else int(preset_height),
+        window_width=window_width,
+        window_height=window_height,
         offscreen=True,
     )
 

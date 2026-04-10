@@ -2320,36 +2320,36 @@ def run_simulation(
             "run_simulation movement_cfg['v4a_battle_near_contact_speed_relaxation_effective'] must be within (0.0, 1.0], "
             f"got {v4a_battle_near_contact_speed_relaxation}"
         )
-    v4a_engaged_speed_scale = float(
-        movement_cfg.get("v4a_engaged_speed_scale_effective", V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+    engaged_speed_scale = float(
+        movement_cfg.get("engaged_speed_scale_effective", V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
-    if not 0.0 < v4a_engaged_speed_scale <= 1.0:
+    if not 0.0 < engaged_speed_scale <= 1.0:
         raise ValueError(
-            "run_simulation movement_cfg['v4a_engaged_speed_scale_effective'] must be within (0.0, 1.0], "
-            f"got {v4a_engaged_speed_scale}"
+            "run_simulation movement_cfg['engaged_speed_scale_effective'] must be within (0.0, 1.0], "
+            f"got {engaged_speed_scale}"
         )
-    v4a_attack_speed_lateral_scale = float(
+    attack_speed_lateral_scale = float(
         movement_cfg.get(
-            "v4a_attack_speed_lateral_scale_effective",
+            "attack_speed_lateral_scale_effective",
             V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
         )
     )
-    if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
+    if not 0.0 < attack_speed_lateral_scale <= 1.0:
         raise ValueError(
-            "run_simulation movement_cfg['v4a_attack_speed_lateral_scale_effective'] must be within (0.0, 1.0], "
-            f"got {v4a_attack_speed_lateral_scale}"
+            "run_simulation movement_cfg['attack_speed_lateral_scale_effective'] must be within (0.0, 1.0], "
+            f"got {attack_speed_lateral_scale}"
         )
-    v4a_attack_speed_backward_scale = float(
+    attack_speed_backward_scale = float(
         movement_cfg.get(
-            "v4a_attack_speed_backward_scale_effective",
+            "attack_speed_backward_scale_effective",
             V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
         )
     )
-    if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
+    if not 0.0 <= attack_speed_backward_scale <= attack_speed_lateral_scale:
         raise ValueError(
-            "run_simulation movement_cfg['v4a_attack_speed_backward_scale_effective'] must be within "
-            f"[0.0, v4a_attack_speed_lateral_scale_effective], got backward={v4a_attack_speed_backward_scale}, "
-            f"lateral={v4a_attack_speed_lateral_scale}"
+            "run_simulation movement_cfg['attack_speed_backward_scale_effective'] must be within "
+            f"[0.0, attack_speed_lateral_scale_effective], got backward={attack_speed_backward_scale}, "
+            f"lateral={attack_speed_lateral_scale}"
         )
     fixture_fleet_id = ""
     fixture_objective_point_xy = (0.0, 0.0)
@@ -2458,12 +2458,6 @@ def run_simulation(
     combat_surface["contact_hysteresis_h"] = float(contact_cfg["contact_hysteresis_h"])
     combat_surface["ch_enabled"] = bool(contact_cfg["ch_enabled"])
 
-    fsr_surface = getattr(engine, "_fsr_surface", None)
-    if not isinstance(fsr_surface, dict):
-        raise TypeError("EngineTickSkeleton._fsr_surface missing or invalid")
-    fsr_surface["enabled"] = bool(contact_cfg["fsr_enabled"]) and movement_model != "v4a"
-    fsr_surface["strength"] = float(contact_cfg["fsr_strength"])
-
     boundary_surface = getattr(engine, "_boundary_surface", None)
     if not isinstance(boundary_surface, dict):
         raise TypeError("EngineTickSkeleton._boundary_surface missing or invalid")
@@ -2478,7 +2472,7 @@ def run_simulation(
     diag_surface = getattr(engine, "_diag_surface", None)
     if not isinstance(diag_surface, dict):
         raise TypeError("EngineTickSkeleton._diag_surface missing or invalid")
-    diag_surface["fsr_diag_enabled"] = observer_active
+    diag_surface["runtime_diag_enabled"] = observer_active
     diag_surface["diag4_enabled"] = observer_active
 
     state = replace(
@@ -2509,6 +2503,57 @@ def run_simulation(
             for x, y in zip(xs, ys, strict=False)
         ) / float(len(xs))
         return (centroid_x, centroid_y, math.sqrt(max(0.0, radius_sq_mean)))
+
+    def _build_fleet_body_summary_for_state(current_state: BattleState) -> dict[str, dict[str, float]]:
+        summary: dict[str, dict[str, float]] = {}
+        for fleet_id, fleet in current_state.fleets.items():
+            alive_units = [
+                current_state.units[unit_id]
+                for unit_id in fleet.unit_ids
+                if unit_id in current_state.units and float(current_state.units[unit_id].hit_points) > 0.0
+            ]
+            if not alive_units:
+                summary[str(fleet_id)] = {
+                    "centroid_x": 0.0,
+                    "centroid_y": 0.0,
+                    "rms_radius": 0.0,
+                    "max_radius": 0.0,
+                    "heading_x": 0.0,
+                    "heading_y": 1.0,
+                    "alive_unit_count": 0,
+                    "alive_total_hp": 0.0,
+                }
+                continue
+            centroid_x = sum(float(unit.position.x) for unit in alive_units) / float(len(alive_units))
+            centroid_y = sum(float(unit.position.y) for unit in alive_units) / float(len(alive_units))
+            radius_sq_values = [
+                ((float(unit.position.x) - centroid_x) * (float(unit.position.x) - centroid_x))
+                + ((float(unit.position.y) - centroid_y) * (float(unit.position.y) - centroid_y))
+                for unit in alive_units
+            ]
+            heading_sum_x = sum(float(unit.orientation_vector.x) for unit in alive_units)
+            heading_sum_y = sum(float(unit.orientation_vector.y) for unit in alive_units)
+            heading_hat_xy, heading_norm = TestModeEngineTickSkeleton._normalize_direction(
+                heading_sum_x,
+                heading_sum_y,
+            )
+            if heading_norm <= 0.0:
+                heading_hat_xy = (0.0, 1.0)
+            summary[str(fleet_id)] = {
+                "centroid_x": float(centroid_x),
+                "centroid_y": float(centroid_y),
+                "rms_radius": float(
+                    math.sqrt(max(0.0, sum(radius_sq_values) / float(len(radius_sq_values))))
+                ),
+                "max_radius": float(
+                    math.sqrt(max(0.0, max(radius_sq_values, default=0.0)))
+                ),
+                "heading_x": float(heading_hat_xy[0]),
+                "heading_y": float(heading_hat_xy[1]),
+                "alive_unit_count": int(len(alive_units)),
+                "alive_total_hp": float(sum(float(unit.hit_points) for unit in alive_units)),
+            }
+        return summary
 
     v4a_bundle_profile = {
         "shape": {
@@ -2547,9 +2592,9 @@ def run_simulation(
             ),
         },
         "motion": {
-            "engaged_speed_scale": float(v4a_engaged_speed_scale),
-            "attack_speed_lateral_scale": float(v4a_attack_speed_lateral_scale),
-            "attack_speed_backward_scale": float(v4a_attack_speed_backward_scale),
+            "engaged_speed_scale": float(engaged_speed_scale),
+            "attack_speed_lateral_scale": float(attack_speed_lateral_scale),
+            "attack_speed_backward_scale": float(attack_speed_backward_scale),
         },
     }
 
@@ -3142,6 +3187,7 @@ def run_simulation(
         focus_indicators = _build_focus_indicator_payload(current_state)
         if focus_indicators:
             runtime_debug["focus_indicators"] = focus_indicators
+        frame["fleet_body_summary"] = _build_fleet_body_summary_for_state(current_state)
         frame["runtime_debug"] = runtime_debug
         position_frames.append(frame)
 
@@ -3182,7 +3228,7 @@ def run_simulation(
 
         current_unit_position_maps: dict[str, dict[str, tuple[float, float]]] = {}
         for fleet_id, fleet in state.fleets.items():
-            trajectory[fleet_id].append(state.last_fleet_cohesion.get(fleet_id, 1.0))
+            trajectory[fleet_id].append(state.last_fleet_cohesion_score.get(fleet_id, 1.0))
             alive_trajectory[fleet_id].append(len(fleet.unit_ids))
             fleet_size = 0.0
             centroid_sum_x = 0.0

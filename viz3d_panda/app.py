@@ -26,7 +26,6 @@ from viz3d_panda.replay_source import (
     DEFAULT_FRAME_STRIDE,
     TEST_RUN_BASE_DIR,
     VIEWER_DIRECTION_MODE_CHOICES,
-    VIEWER_DIRECTION_MODE_SETTINGS,
     VIEWER_SOURCE_AUTO,
     VIEWER_SOURCE_ACTIVE_BATTLE,
     VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE,
@@ -70,8 +69,8 @@ FLEET_AVATAR_BORDER_PAD = 0.0045
 FLEET_AVATAR_MATTE_PAD = 0.002
 FLEET_AVATAR_HIGHLIGHT_PAD = 0.009
 FLEET_AVATAR_HIGHLIGHT_ALPHA = 0.48
-FLEET_AVATAR_MATTE_COLOR = (0.02, 0.03, 0.05, 0.82)
-FLEET_AVATAR_BORDER_ALPHA = 1.0
+FLEET_AVATAR_MATTE_COLOR = "#05080D"
+FLEET_AVATAR_MATTE_ALPHA = 0.82
 FLEET_AVATAR_PAIR_ENTER_DISTANCE_X = 0.24
 FLEET_AVATAR_PAIR_ENTER_DISTANCE_Z = 0.16
 FLEET_AVATAR_PAIR_EXIT_DISTANCE_X = 0.30
@@ -91,9 +90,12 @@ CORNER_AVATAR_BAR_WIDTH = CORNER_AVATAR_HEIGHT * CORNER_AVATAR_ASPECT_RATIO * 4.
 CORNER_AVATAR_BAR_HEIGHT = 0.016
 CORNER_AVATAR_TEXT_SCALE = 0.034
 CORNER_AVATAR_NAME_SCALE = 0.034
-CORNER_AVATAR_BAR_BG = (0.10, 0.14, 0.18, 0.92)
-CORNER_AVATAR_BAR_FILL = (0.0, 1.0, 0.0, 0.98)
-CORNER_AVATAR_TEXT_COLOR = (0.92, 0.95, 0.98, 1.0)
+CORNER_AVATAR_BAR_BG = "#B21010"
+CORNER_AVATAR_BAR_FILL = "#00FF00"
+CORNER_AVATAR_TEXT_COLOR = "#EBF2FA"
+HUD_TEXT_COLOR = "#B8CCE3"
+CAMERA_TAKE_INDICATOR_COLOR = "#F23333"
+CAMERA_TAKE_NOTICE_COLOR = "#F7EDD1"
 CJK_FONT_CANDIDATES = (
     Path("C:/Windows/Fonts/simhei.ttf"),
     Path("C:/Windows/Fonts/msyh.ttc"),
@@ -145,16 +147,6 @@ def _alive_counts(frame: ViewerFrame) -> dict[str, int]:
             continue
         counts[unit.fleet_id] = counts.get(unit.fleet_id, 0) + 1
     return counts
-
-
-def _format_launch_matchup(replay: ReplayBundle) -> str:
-    first_frame = replay.frames[0]
-    counts = _alive_counts(first_frame)
-    parts = []
-    for fleet_id in sorted(counts):
-        label = replay.fleet_labels.get(fleet_id, fleet_id)
-        parts.append(f"{label} ({counts[fleet_id]})")
-    return " vs ".join(parts) if parts else "no fleets"
 
 
 def _format_launch_result(replay: ReplayBundle) -> str:
@@ -221,7 +213,7 @@ def _resolve_playback_level_index(playback_fps: float) -> int:
     )
 
 
-def _hex_to_rgba(value: str, *, alpha: float) -> tuple[float, float, float, float]:
+def _hex_to_rgba(value: str, *, alpha: float = 1.0) -> tuple[float, float, float, float]:
     text = str(value).strip()
     if text.startswith("#"):
         text = text[1:]
@@ -471,6 +463,7 @@ class FleetViewerApp(ShowBase):
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._unit_renderer.set_playback_active(self._playing)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._direction_mode_replay_cache: dict[str, ReplayBundle] = {}
@@ -500,7 +493,7 @@ class FleetViewerApp(ShowBase):
             pos=(HUD_SIDE_INSET, HUD_BOTTOM_INSET),
             scale=HUD_TEXT_SCALE,
             align=TextNode.ALeft,
-            fg=(0.72, 0.80, 0.89, 1.0),
+            fg=_hex_to_rgba(HUD_TEXT_COLOR),
         )
         self._control_text = OnscreenText(
             text="",
@@ -508,7 +501,7 @@ class FleetViewerApp(ShowBase):
             pos=(-HUD_SIDE_INSET, HUD_BOTTOM_INSET),
             scale=HUD_TEXT_SCALE,
             align=TextNode.ARight,
-            fg=(0.72, 0.80, 0.89, 1.0),
+            fg=_hex_to_rgba(HUD_TEXT_COLOR),
         )
         self._camera_take_indicator_text = OnscreenText(
             text="",
@@ -516,7 +509,7 @@ class FleetViewerApp(ShowBase):
             pos=(HUD_SIDE_INSET, -HUD_BOTTOM_INSET),
             scale=CAMERA_TAKE_REC_SCALE,
             align=TextNode.ALeft,
-            fg=(0.95, 0.20, 0.20, 1.0),
+            fg=_hex_to_rgba(CAMERA_TAKE_INDICATOR_COLOR),
         )
         self._camera_take_notice_text = OnscreenText(
             text="",
@@ -524,7 +517,7 @@ class FleetViewerApp(ShowBase):
             pos=(HUD_SIDE_INSET, -(HUD_BOTTOM_INSET + 0.07)),
             scale=CAMERA_TAKE_NOTICE_SCALE,
             align=TextNode.ALeft,
-            fg=(0.97, 0.93, 0.82, 1.0),
+            fg=_hex_to_rgba(CAMERA_TAKE_NOTICE_COLOR),
         )
         self._build_avatar_overlays()
         self._refresh_camera_take_overlay()
@@ -576,6 +569,7 @@ class FleetViewerApp(ShowBase):
         self._unit_renderer.set_fire_link_mode(str(state["fire_link_mode"]))
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._unit_renderer.set_playback_active(self._playing)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         if self._hud_enabled:
             self._status_text.show()
@@ -749,8 +743,9 @@ class FleetViewerApp(ShowBase):
             )
             self._unit_renderer._sync_fleet_halos(
                 frame,
+                next_frame=next_frame,
+                position_alpha=position_alpha,
                 tick_offset=position_alpha,
-                use_node_positions=True,
             )
             self._unit_renderer.update_view(self.camera)
             self._sync_corner_avatar_cards(frame)
@@ -921,14 +916,14 @@ class FleetViewerApp(ShowBase):
             matte = DirectFrame(
                 parent=self.aspect2d,
                 frameSize=(-matte_half_width, matte_half_width, -matte_half_height, matte_half_height),
-                frameColor=FLEET_AVATAR_MATTE_COLOR,
+                frameColor=_hex_to_rgba(FLEET_AVATAR_MATTE_COLOR, alpha=FLEET_AVATAR_MATTE_ALPHA),
             )
             matte.setTransparency(TransparencyAttrib.MAlpha)
             matte.setBin("fixed", base_bin + 1)
             matte.setDepthTest(False)
             matte.setDepthWrite(False)
             matte.hide()
-            border_color = _hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_BORDER_ALPHA)
+            border_color = _hex_to_rgba(fleet_color)
             border_bars = {
                 "top": DirectFrame(
                     parent=self.aspect2d,
@@ -1005,7 +1000,7 @@ class FleetViewerApp(ShowBase):
             if texture is None:
                 continue
             fleet_color = self._replay.fleet_colors.get(str(fleet_id), "#ffffff")
-            border_color = _hex_to_rgba(fleet_color, alpha=FLEET_AVATAR_BORDER_ALPHA)
+            border_color = _hex_to_rgba(fleet_color)
             border_bars = {
                 "top": DirectFrame(
                     parent=parent,
@@ -1065,7 +1060,7 @@ class FleetViewerApp(ShowBase):
                 ),
                 scale=CORNER_AVATAR_TEXT_SCALE,
                 align=text_align,
-                fg=CORNER_AVATAR_TEXT_COLOR,
+                fg=_hex_to_rgba(CORNER_AVATAR_TEXT_COLOR),
                 mayChange=True,
                 **text_kwargs,
             )
@@ -1079,7 +1074,7 @@ class FleetViewerApp(ShowBase):
                     if fleet_id == "A"
                     else (-CORNER_AVATAR_BAR_WIDTH, 0.0, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
                 ),
-                frameColor=CORNER_AVATAR_BAR_BG,
+                frameColor=_hex_to_rgba(CORNER_AVATAR_BAR_BG),
                 pos=(outer_edge_x, 0.0, pos_z + portrait_half_height + CORNER_AVATAR_BAR_OFFSET),
             )
             bar_bg.setTransparency(TransparencyAttrib.MAlpha)
@@ -1093,7 +1088,7 @@ class FleetViewerApp(ShowBase):
                     if fleet_id == "A"
                     else (-CORNER_AVATAR_BAR_WIDTH, 0.0, -CORNER_AVATAR_BAR_HEIGHT * 0.5, CORNER_AVATAR_BAR_HEIGHT * 0.5)
                 ),
-                frameColor=CORNER_AVATAR_BAR_FILL,
+                frameColor=_hex_to_rgba(CORNER_AVATAR_BAR_FILL),
             )
             bar_fill.setTransparency(TransparencyAttrib.MAlpha)
             bar_fill.setBin("fixed", 78)
@@ -1106,7 +1101,7 @@ class FleetViewerApp(ShowBase):
                 pos=(outer_edge_x, pos_z - portrait_half_height - CORNER_AVATAR_NAME_OFFSET),
                 scale=CORNER_AVATAR_NAME_SCALE,
                 align=text_align,
-                fg=CORNER_AVATAR_TEXT_COLOR,
+                fg=_hex_to_rgba(CORNER_AVATAR_TEXT_COLOR),
                 **text_kwargs,
             )
             name_text.setBin("fixed", 77)
@@ -1258,6 +1253,7 @@ class FleetViewerApp(ShowBase):
     def go_to_frame(self, frame_index: int) -> None:
         self._current_frame_index = max(0, min(int(frame_index), len(self._replay.frames) - 1))
         frame = self._replay.frames[self._current_frame_index]
+        self._unit_renderer.set_playback_active(self._playing)
         if not self._playing:
             self._camera_controller.sync_tracked_frame(frame, smooth=False)
         self._render_frame(frame, pulse_phase=0.0)
@@ -1293,43 +1289,37 @@ class FleetViewerApp(ShowBase):
             f"{counts_text}  state={playback_label}",
             f"frame={self._current_frame_index + 1}/{len(self._replay.frames)}  fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}",
         ]
-        fleet_centroids: dict[str, tuple[float, float, int]] = {}
-        for unit in frame.units:
-            sum_x, sum_y, count = fleet_centroids.get(unit.fleet_id, (0.0, 0.0, 0))
-            fleet_centroids[unit.fleet_id] = (
-                float(sum_x) + float(unit.x),
-                float(sum_y) + float(unit.y),
-                int(count) + 1,
-            )
+        fleet_summaries = {
+            str(fleet_id): summary
+            for fleet_id, summary in frame.fleet_body_summary.items()
+            if isinstance(summary, dict) and int(summary.get("alive_unit_count", 0)) > 0
+        }
         centroid_parts = []
-        for fleet_id in sorted(fleet_centroids):
-            sum_x, sum_y, count = fleet_centroids[fleet_id]
-            if count <= 0:
-                continue
-            centroid_parts.append(f"{fleet_id}=({sum_x / count:.1f}, {sum_y / count:.1f})")
+        for fleet_id in sorted(fleet_summaries):
+            summary = fleet_summaries[fleet_id]
+            centroid_parts.append(
+                f"{fleet_id}=({float(summary['centroid_x']):.1f}, {float(summary['centroid_y']):.1f})"
+            )
         centroid_text = "  ".join(centroid_parts) if centroid_parts else "centroids=n/a"
         status_lines.append(centroid_text)
         fleet_speeds: dict[str, float] = {}
         if self._current_frame_index > 0:
             previous_frame = self._replay.frames[self._current_frame_index - 1]
-            previous_fleet_centroids: dict[str, tuple[float, float, int]] = {}
-            for unit in previous_frame.units:
-                sum_x, sum_y, count = previous_fleet_centroids.get(unit.fleet_id, (0.0, 0.0, 0))
-                previous_fleet_centroids[unit.fleet_id] = (
-                    float(sum_x) + float(unit.x),
-                    float(sum_y) + float(unit.y),
-                    int(count) + 1,
-                )
-            for fleet_id in sorted(fleet_centroids):
-                current_sum_x, current_sum_y, current_count = fleet_centroids[fleet_id]
-                previous_entry = previous_fleet_centroids.get(fleet_id)
-                if current_count <= 0 or previous_entry is None or int(previous_entry[2]) <= 0:
+            previous_fleet_summaries = {
+                str(fleet_id): summary
+                for fleet_id, summary in previous_frame.fleet_body_summary.items()
+                if isinstance(summary, dict) and int(summary.get("alive_unit_count", 0)) > 0
+            }
+            for fleet_id in sorted(fleet_summaries):
+                current_summary = fleet_summaries[fleet_id]
+                previous_summary = previous_fleet_summaries.get(fleet_id)
+                if previous_summary is None:
                     fleet_speeds[fleet_id] = 0.0
                     continue
-                current_centroid_x = float(current_sum_x) / float(current_count)
-                current_centroid_y = float(current_sum_y) / float(current_count)
-                previous_centroid_x = float(previous_entry[0]) / float(previous_entry[2])
-                previous_centroid_y = float(previous_entry[1]) / float(previous_entry[2])
+                current_centroid_x = float(current_summary["centroid_x"])
+                current_centroid_y = float(current_summary["centroid_y"])
+                previous_centroid_x = float(previous_summary["centroid_x"])
+                previous_centroid_y = float(previous_summary["centroid_y"])
                 delta_x = current_centroid_x - previous_centroid_x
                 delta_y = current_centroid_y - previous_centroid_y
                 fleet_speeds[fleet_id] = math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
@@ -1344,7 +1334,7 @@ class FleetViewerApp(ShowBase):
         focus_indicators = runtime_debug.get("focus_indicators", {}) if isinstance(runtime_debug, dict) else {}
         kinetics_parts = []
         fire_eff_parts = []
-        for fleet_id in sorted(fleet_centroids):
+        for fleet_id in sorted(fleet_summaries):
             hold_value = float("nan")
             fire_eff_value = float("nan")
             if isinstance(focus_indicators, dict):
@@ -1460,8 +1450,9 @@ class FleetViewerApp(ShowBase):
                     )
                     self._unit_renderer._sync_fleet_halos(
                         current_frame,
+                        next_frame=next_frame,
+                        position_alpha=smoothing_alpha,
                         tick_offset=smoothing_alpha,
-                        use_node_positions=True,
                     )
                     if self._unit_renderer.fire_link_mode == "enabled":
                         self._unit_renderer.refresh_fire_links(
