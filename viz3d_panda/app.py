@@ -49,6 +49,7 @@ PLAYBACK_FPS_LEVELS = (2.0, 4.0, 6.0, 10.0, 20.0)
 DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
 PRIMARY_DIRECTION_MODE_CYCLE = ("movement", "posture")
+CLUSTER_SWAY_TOGGLE_KEY = "j"
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
 LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
@@ -477,6 +478,7 @@ class FleetViewerApp(ShowBase):
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
         self._unit_renderer.set_playback_active(self._playing)
+        self._unit_renderer.set_cluster_sway_enabled(False)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._direction_mode_replay_cache: dict[str, ReplayBundle] = {}
@@ -543,6 +545,7 @@ class FleetViewerApp(ShowBase):
         self.accept("v", self.cycle_fire_link_mode)
         self.accept("d", self.cycle_direction_mode)
         self.accept("m", self.toggle_smoothing)
+        self.accept(CLUSTER_SWAY_TOGGLE_KEY, self.toggle_cluster_sway)
         self.accept("p", self.toggle_avatars)
         self.accept("tab", self.toggle_hud)
         self.accept("]", self._adjust_playback_speed, [1])
@@ -571,6 +574,7 @@ class FleetViewerApp(ShowBase):
             "avatars_enabled": bool(self._avatars_enabled),
             "hud_enabled": bool(self._hud_enabled),
             "fire_link_mode": str(self._unit_renderer.fire_link_mode),
+            "cluster_sway_enabled": bool(self._unit_renderer.cluster_sway_enabled),
             "playback_level_index": int(self._playback_level_index),
             "playback_fps": _round_take_float(self._playback_fps),
         }
@@ -583,6 +587,7 @@ class FleetViewerApp(ShowBase):
         self._playback_level_index = max(0, int(state["playback_level_index"]))
         self._playback_fps = float(state["playback_fps"])
         self._unit_renderer.set_fire_link_mode(str(state["fire_link_mode"]))
+        self._unit_renderer.set_cluster_sway_enabled(bool(state["cluster_sway_enabled"]))
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
         self._unit_renderer.set_playback_active(self._playing)
@@ -817,6 +822,10 @@ class FleetViewerApp(ShowBase):
 
     def toggle_smoothing(self) -> None:
         self._smoothing_enabled = not self._smoothing_enabled
+        self.go_to_frame(self._current_frame_index)
+
+    def toggle_cluster_sway(self) -> None:
+        self._unit_renderer.set_cluster_sway_enabled(not self._unit_renderer.cluster_sway_enabled)
         self.go_to_frame(self._current_frame_index)
 
     def toggle_avatars(self) -> None:
@@ -1305,6 +1314,7 @@ class FleetViewerApp(ShowBase):
         playback_label = "playing" if self._playing else "paused"
         vector_display_mode = self._replay.metadata.get("vector_display_mode", "posture")
         fire_link_mode = self._unit_renderer.fire_link_mode
+        cluster_sway_text = "on" if self._unit_renderer.cluster_sway_enabled else "off"
         smoothing_text = "on" if self._smoothing_enabled else "off"
         direction_text = f"dir_mode={vector_display_mode}"
         status_lines = [
@@ -1376,7 +1386,7 @@ class FleetViewerApp(ShowBase):
         status_lines.append(
             f"FireEff: {' | '.join(fire_eff_parts)}" if fire_eff_parts else "FireEff: n/a"
         )
-        status_tail = f"{direction_text}  fire_links={fire_link_mode}  smooth={smoothing_text}"
+        status_tail = f"{direction_text}  fire_links={fire_link_mode}  sway={cluster_sway_text}  smooth={smoothing_text}"
         fixture_readout = self._replay.metadata.get("fixture_readout")
         if isinstance(fixture_readout, dict) and fixture_readout:
             owner = str(fixture_readout.get("source_owner", ""))
@@ -1422,7 +1432,7 @@ class FleetViewerApp(ShowBase):
         self._align_hud_block_to_bottom(self._status_text, line_count=len(status_lines), side="left")
         control_lines = [
             "Space play/pause  N/B step/hold  K rec",
-            "[/ ] speed gear  V fire-links  D dir_mode  M smooth",
+            "[/ ] speed gear  V fire-links  D dir_mode  M smooth  J sway",
             "P follow avatars  Tab HUD  LDrag pan  RDrag orbit",
             "Wheel zoom  Home/End reset+jump  `/~ reset  1/2 track fleet  Esc quit",
         ]

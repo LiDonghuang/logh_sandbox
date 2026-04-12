@@ -24,8 +24,8 @@ FIRE_LINK_MODES = {"disabled", "enabled"}
 FIRE_LINK_ALPHA = 0.2
 FIRE_LINK_THICKNESS = 0.2
 FIRE_LINK_CENTER_OFFSET = 0.5
-FIRE_LINK_PULSE_SPACING = 2.7
-FIRE_LINK_PULSE_LENGTH = 0.3
+FIRE_LINK_PULSE_SPACING = 2.9
+FIRE_LINK_PULSE_LENGTH = 0.1
 FIRE_LINK_BASE_SPEED_PER_SECOND = 5.0
 FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.2
 FIRE_LINK_BEAM_SPREAD = 0.10
@@ -428,6 +428,7 @@ class UnitRenderer:
         self._playback_level_index = 0
         self._playback_fps = 2.0
         self._playback_active = True
+        self._cluster_sway_enabled = False
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
         if len(TOKEN_ALPHA_BY_LEVEL) != len(CLUSTER_ALPHA_BY_LEVEL):
             raise ValueError("TOKEN_ALPHA_BY_LEVEL and CLUSTER_ALPHA_BY_LEVEL must have identical lengths.")
@@ -490,6 +491,9 @@ class UnitRenderer:
     def set_playback_active(self, playback_active: bool) -> None:
         self._playback_active = bool(playback_active)
 
+    def set_cluster_sway_enabled(self, cluster_sway_enabled: bool) -> None:
+        self._cluster_sway_enabled = bool(cluster_sway_enabled)
+
     def set_replay(self, replay: ReplayBundle) -> None:
         # App-facing replay swap seam: refresh renderer-owned carriers without
         # exposing renderer-private storage to the viewer host.
@@ -520,6 +524,10 @@ class UnitRenderer:
         return self._fire_link_mode
 
     @property
+    def cluster_sway_enabled(self) -> bool:
+        return bool(self._cluster_sway_enabled)
+
+    @property
     def fleet_halo_state(self) -> dict[str, dict[str, float]]:
         return {fleet_id: dict(state) for fleet_id, state in self._fleet_halo_state.items()}
 
@@ -530,7 +538,11 @@ class UnitRenderer:
         return float(base_seconds) * CLUSTER_SWAY_CLOCK_SCALE
 
     def _cluster_sway_active(self) -> bool:
-        return bool(self._playback_active and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX)
+        return bool(
+            self._cluster_sway_enabled
+            and self._playback_active
+            and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX
+        )
 
     def _cluster_ship_sway_offsets(
         self,

@@ -42,7 +42,8 @@ Current maintained runtime read:
   - `collapse_signal.v3_*`
   - FSR in the active `v4a` path
 - targeting is opened in bounded form inside `resolve_combat()`
-- the next structural phase should target hot-path tightening, not new mechanism expansion
+- the merged cleanup/structural-tightening wave is complete on `dev_v2.1`
+- the current dedicated branch is a Formation-only carrier for owner/path simplification review
 
 ### 3. Maintained Harness Spine
 
@@ -106,6 +107,7 @@ Current viewer read:
 - viewer-facing fleet geometry now consumes the maintained `fleet_body_summary` replay contract
 - `app.py` owns viewer orchestration / playback / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer-local cluster sway can now be toggled from `app.py` while sway realization remains inside `unit_renderer.py`
 - no old 2D viz / BRF surface remains in the active mainline
 
 ### 6. Documentation / Records Layer
@@ -140,7 +142,7 @@ Do **not** read the active tree as still owning:
 
 - large maintained files that may still benefit from bounded same-file layering review
 - remaining legacy wording in comments/reference surfaces
-- formation-only design and ownership simplification as a separate next carrier
+- formation-only design and ownership simplification as the current separate carrier
 
 ## Interpretation Guardrails
 

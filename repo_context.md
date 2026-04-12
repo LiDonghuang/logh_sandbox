@@ -7,12 +7,13 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Active cleanup branch: `eng/dev-v2.1-targeting-restore-cleanup`
+- Active dedicated formation branch: `eng/dev-v2.1-formation-only`
 - Maintained movement baseline: `v4a`
 
 ## Current Phase Focus
 
-- The current mainline is now **post-cleanup structural tightening** on top of the recovered `dev_v2.1` anchor.
+- The cleanup and structural-tightening wave has been merged into `dev_v2.1`.
+- The current dedicated carrier is now **formation-only review and owner/path simplification planning** on top of that merged anchor.
 - The just-completed engineering wave moved from old-family retirement into owner recovery and readability/layering tightening:
   - `EngineTickSkeleton` is again the maintained active tick owner
   - `run_simulation()` remains the maintained execution/orchestration owner
@@ -20,15 +21,14 @@ Authority: Reference only, not canonical semantics authority
   - maintained battle gap now uses `fire_optimal_range` rather than raw `attack_range`
   - old 2D viz / BRF / maintained `v3a` execution surfaces are no longer part of the active mainline
 - Current emphasis is:
-  - active-owner truth
-  - human-readable maintained hot paths
-  - same-file internal layering before new file fan-out
-  - bounded viewer-local structural hygiene
+  - active-owner truth for Formation
+  - coarse-body vs locomotion boundary clarification
+  - bounded Formation-only review before mechanism redesign
+  - viewer-local adjustments staying separate from runtime doctrine
 - The large subtraction-first cleanup phase is treated as complete.
-- The current pushable wave is:
-  - post-cleanup owner recovery
-  - same-file structural tightening in runtime / `test_run` / VIZ
-- Formation-line work remains separate and should not be read as part of this structural-optimization wave.
+- The current pushable carrier is:
+  - formation-only owner/path audit and next-slice planning
+  - plus a small bounded viewer-local adjustment already present in the working scope
 
 ## Key Entry Documents
 
@@ -109,6 +109,7 @@ Current viewer read:
 - viewer-facing fleet geometry now reads the maintained `fleet_body_summary` export produced by `test_run`
 - `app.py` owns viewer orchestration / playback / camera / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer now includes an app-facing toggle for cluster sway, while sway realization remains renderer-local
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths
