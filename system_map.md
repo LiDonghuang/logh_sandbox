@@ -10,7 +10,7 @@ Authority: Reference only, not canonical semantics authority
 
 - `runtime/runtime_v0_1.py`
 - Defines the maintained runtime state/data contracts:
-  - `PersonalityParameters`
+  - `PersonalityParameters` (high-level metadata contract only; not attached to `FleetState`)
   - `Vec2`
   - `UnitState`
   - `FleetState`
@@ -29,6 +29,7 @@ Authority: Reference only, not canonical semantics authority
 Current maintained runtime read:
 
 - maintained movement model is `v4a` only
+- maintained `integrate_movement()` hot path is runtime-owned again
 - active `v4a` restore is direct:
   - `restore_term = restore_strength * normalize(restore_vector)`
 - active `v4a` no longer depends on:
@@ -48,6 +49,7 @@ Current maintained runtime read:
 - `test_run/test_run_execution.py`
   - maintained execution host
   - shared `v4a` movement-family host for `battle` and `neutral`
+  - battle/fixture bundles remain as carriers, but maintained movement hot-path ownership is back in runtime
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers only
 - `test_run/settings_accessor.py`
@@ -71,7 +73,9 @@ Current maintained harness read:
 
 Current maintained settings read:
 
-- runtime baseline is `v4a`
+- runtime selector is `v4a` only
+- test-only hostile-contact selector is `off | hybrid_v2`
+- `runtime.metatype.*` remains a scenario-level Yang/personality sampling interface only
 - `run_control.symmetric_movement_sync_enabled` owns symmetric merge control
 - `runtime.observer` has been narrowed to still-active maintained keys
 - old public `v3a` selector surfaces are no longer part of the maintained mainline

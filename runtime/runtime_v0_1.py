@@ -65,7 +65,6 @@ class UnitState:
 @dataclass(frozen=True)
 class FleetState:
     fleet_id: str
-    parameters: PersonalityParameters
     unit_ids: tuple[str, ...]
 
 

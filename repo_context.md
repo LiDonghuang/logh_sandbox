@@ -56,6 +56,7 @@ Authority: Reference only, not canonical semantics authority
   - runtime schema and immutable state types
 - `runtime/engine_skeleton.py`
   - maintained runtime tick pipeline
+  - maintained `integrate_movement()` hot path is again runtime-owned
   - maintained runtime movement now accepts only `v4a`
   - active `v4a` restore is direct:
     - `restore_term = restore_strength * normalize(restore_vector)`
@@ -75,6 +76,7 @@ Authority: Reference only, not canonical semantics authority
 - `test_run/test_run_execution.py`
   - maintained battle / neutral harness execution host
   - shared `v4a` movement-family host for both `battle` and `neutral`
+  - runtime now owns `integrate_movement()` again; harness supplies battle/fixture bundle carriers
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics
@@ -111,6 +113,7 @@ Current viewer read:
 - `test_run/test_run_v1_0.runtime.settings.json`
   - maintained runtime values
   - `run_control.symmetric_movement_sync_enabled` is now the honest owner of symmetric merge control
+  - `runtime.metatype.*` remains a scenario-level high-level interface for Yang/personality sampling only
   - `runtime.observer` is now narrowed to still-active maintained keys
 - `test_run/test_run_v1_0.testonly.settings.json`
   - maintained test-only harness controls
@@ -130,6 +133,10 @@ Current viewer read:
 
 - `battle` and `neutral` share the maintained `v4a` movement mechanism family
 - the only intended semantic difference between them is objective source
+- the maintained public movement selector is now `v4a` only
+- the maintained test-only hostile-contact selector is now `off | hybrid_v2`
+- active runtime state no longer carries `PersonalityParameters`
+- scenario-prepared high-level payloads still expose sampled `PersonalityParameters` and `effective_metatype_random_seed`
 - `stop_radius` is neutral-only termination semantics, not battle hold semantics
 - `fleet_body_summary` is the maintained viewer-facing fleet-body geometry contract
 - maintained public settings/runtime surfaces no longer expose:

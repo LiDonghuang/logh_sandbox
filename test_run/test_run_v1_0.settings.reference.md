@@ -23,6 +23,8 @@
   - `run_control.observer_enabled` is the maintained run-level switch for enabling observer telemetry and diagnostic exports in `test_run`.
   - `run_control.symmetric_movement_sync_enabled` is the maintained harness-side execution control for symmetric cross-fleet movement merge.
   - `runtime.observer.tick_timing_enabled` is the single observer-side switch for recording per-tick wall-clock elapsed time into telemetry; default is enabled and it does not change battle semantics.
+  - `runtime.metatype.settings_path` and `runtime.metatype.random_seed` drive scenario-level Yang/metatype sampling only.
+  - These metatype-derived values remain on the prepared high-level interface and do not enter maintained runtime/tick mechanisms.
   - The current targeting candidate consumes:
     - `runtime.physical.fire_control.fire_quality_alpha`
     - `runtime.physical.fire_control.fire_optimal_range_ratio`
@@ -54,6 +56,9 @@
     - `runtime.movement.v4a.engagement.engaged_speed_scale`
     - `runtime.movement.v4a.engagement.attack_speed_lateral_scale`
     - `runtime.movement.v4a.engagement.attack_speed_backward_scale`
+  - The maintained hostile-contact selector is now:
+    - `off | hybrid_v2`
+  - `intent_unified_spacing_v1` has been retired from the maintained mainline.
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
     - `runtime.movement.v4a.restore.strength` is the active v4a restore-strength seam
@@ -78,7 +83,7 @@
     - `runtime.movement.v4a.engagement.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
     - `runtime.movement.v4a.engagement.attack_speed_lateral_scale` and `runtime.movement.v4a.engagement.attack_speed_backward_scale` define the bounded attack-direction-aware movement allowance for engaged units
     - active default `test_run` settings no longer carry the legacy `runtime.movement.v3a.experiment`, `centroid_probe_scale`, or `odw_posture_bias.*` surface
-    - the maintained `test_run` mainline no longer supports `v3a` movement execution; `baseline` now resolves to `v4a`
+    - the maintained `test_run` mainline no longer supports `v3a` movement execution, and the public `baseline` alias has been retired; the maintained selector is now `v4a` only
     - `run_control.symmetric_movement_sync_enabled` is now the maintained owner for the harness-side symmetric movement merge switch
 
 - `test_run_v1_0.settings.comments.json`

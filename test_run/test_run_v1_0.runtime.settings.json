@@ -13,23 +13,23 @@
   "fleet": {
     "fleet_a_archetype_id": "yang",
     "fleet_b_archetype_id": "reinhard",
-    "initial_fleet_a_size": 100,
-    "initial_fleet_b_size": 100,
+    "initial_fleet_a_size": 36,
+    "initial_fleet_b_size": 36,
     "initial_fleet_a_aspect_ratio": 1.0,
     "initial_fleet_b_aspect_ratio": 1.0,
     "initial_fleet_a_origin_xy": [
-      50.0,
-      50.0
+      100.0,
+      100.0
     ],
     "initial_fleet_b_origin_xy": [
-      350.0,
-      350.0
+      300.0,
+      300.0
     ],
     "initial_fleet_a_facing_angle_deg": 45.0,
     "initial_fleet_b_facing_angle_deg": 225.0
   },
   "unit": {
-    "attack_range": 10.0,
+    "attack_range": 20.0,
     "damage_per_tick": 1.0,
     "unit_max_hit_points": 100.0,
     "unit_speed": 1.0
@@ -40,7 +40,7 @@
       "random_seed": -1
     },
     "selectors": {
-      "movement_model": "baseline"
+      "movement_model": "v4a"
     },
     "physical": {
       "boundary": {

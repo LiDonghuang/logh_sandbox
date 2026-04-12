@@ -21,18 +21,22 @@ def _require_choice(name: str, raw_value, allowed: set[str]) -> str:
 def _print_run_summary(
     *,
     effective_random_seed: int,
-    effective_metatype_random_seed: int,
+    effective_metatype_random_seed: int | None = None,
     effective_background_map_seed: int,
-    movement_model_effective: str,
+    movement_model: str,
     hostile_contact_impedance_mode: str,
     observer_enabled: bool = False,
-    **_ignored,
 ) -> None:
+    seed_text = (
+        f"{effective_random_seed}/{effective_metatype_random_seed}/{effective_background_map_seed}"
+        if effective_metatype_random_seed is not None
+        else f"{effective_random_seed}/{effective_background_map_seed}"
+    )
     print(
-        f"[run] movement={movement_model_effective} "
+        f"[run] movement={movement_model} "
         f"contact={hostile_contact_impedance_mode} "
         f"observer={observer_enabled} "
-        f"seeds={effective_random_seed}/{effective_metatype_random_seed}/{effective_background_map_seed}"
+        f"seeds={seed_text}"
     )
 
 
@@ -40,9 +44,7 @@ def run_active_surface(
     *,
     base_dir: Path | None = None,
     prepared_override: dict | None = None,
-    settings_override: dict | None = None,
     execution_overrides: dict | None = None,
-    summary_override: dict | None = None,
     emit_summary: bool = True,
 ) -> dict:
     active_base_dir = base_dir or Path(__file__).resolve().parent
@@ -51,15 +53,12 @@ def run_active_surface(
         if prepared_override is not None
         else scenario.prepare_active_scenario(
             active_base_dir,
-            settings_override=settings_override,
         )
     )
     execution_cfg = dict(prepared["execution_cfg"])
     if isinstance(execution_overrides, dict):
         execution_cfg.update(execution_overrides)
-    summary = dict(prepared["summary"])
-    if isinstance(summary_override, dict):
-        summary.update(summary_override)
+    summary = prepared["summary"]
     if emit_summary:
         _print_run_summary(**summary)
     (
@@ -72,14 +71,12 @@ def run_active_surface(
         position_frames,
     ) = execution.run_simulation(
         initial_state=prepared["initial_state"],
-        engine_cls=prepared["engine_cls"],
         execution_cfg=execution_cfg,
         runtime_cfg=prepared["runtime_cfg"],
         observer_cfg=prepared["observer_cfg"],
     )
     effective_prepared = dict(prepared)
     effective_prepared["execution_cfg"] = execution_cfg
-    effective_prepared["summary"] = summary
     return {
         "prepared": effective_prepared,
         "final_state": final_state,
@@ -96,9 +93,7 @@ def _run_neutral_fixture(*, base_dir: Path, settings: dict) -> None:
     prepared = scenario.prepare_neutral_transit_fixture(base_dir, settings_override=settings)
     print_tick_summary = bool(settings_api.get_visualization_setting(settings, "print_tick_summary", True))
     result = run_active_surface(
-        base_dir=base_dir,
         prepared_override=prepared,
-        settings_override=settings,
         execution_overrides={
             "print_tick_summary": print_tick_summary,
             "post_elimination_extra_ticks": int(prepared["execution_cfg"]["post_elimination_extra_ticks"]),
@@ -121,7 +116,7 @@ def _run_neutral_fixture(*, base_dir: Path, settings: dict) -> None:
     projection_max = [float(value) for value in fixture_metrics.get("projection_max_displacement", [])]
     print(
         f"[fixture] mode={execution.FIXTURE_MODE_NEUTRAL} "
-        f"movement={summary['movement_model_effective']} "
+        f"movement={summary['movement_model']} "
         f"arrival_tick={objective_reached_tick} "
         f"final_tick={int(result['final_state'].tick)} "
         f"objective=({float(projected_anchor_point_xy[0]):.2f},{float(projected_anchor_point_xy[1]):.2f}) "
@@ -171,9 +166,7 @@ def main() -> None:
     prepared = scenario.prepare_active_scenario(base_dir, settings_override=settings)
     print_tick_summary = bool(settings_api.get_visualization_setting(settings, "print_tick_summary", True))
     run_active_surface(
-        base_dir=base_dir,
         prepared_override=prepared,
-        settings_override=settings,
         execution_overrides={
             "print_tick_summary": print_tick_summary,
             "post_elimination_extra_ticks": int(prepared["execution_cfg"]["post_elimination_extra_ticks"]),

@@ -2,7 +2,7 @@
   "_comments": {
     "yang": {
       "template": "Display/identity template for generated Yang persona.",
-      "generation": "Runtime generation settings: source archetype sampling + jitter + clamp."
+      "generation": "Scenario-level generation settings: source archetype sampling + jitter + clamp. Generated values remain high-level prepared metadata and do not enter maintained runtime mechanisms."
     }
   },
   "yang": {

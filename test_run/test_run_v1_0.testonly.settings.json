@@ -56,15 +56,11 @@
     "physical": {
       "contact": {
         "hostile_contact_impedance": {
-          "active_mode": "intent_unified_spacing_v1",
+          "active_mode": "hybrid_v2",
           "hybrid_v2": {
             "radius_multiplier": 1.25,
             "repulsion_max_disp_ratio": 0.2,
             "forward_damping_strength": 0.35
-          },
-          "intent_unified_spacing_v1": {
-            "scale": 1.5,
-            "strength": 1.0
           }
         }
       }

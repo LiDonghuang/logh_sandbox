@@ -741,17 +741,12 @@ def load_viewer_replay(
         result = test_run_entry.run_active_surface(
             base_dir=TEST_RUN_BASE_DIR,
             prepared_override=prepared,
-            settings_override=settings,
             execution_overrides={
                 "capture_positions": True,
                 "capture_hit_points": True,
                 "frame_stride": int(frame_stride),
                 "include_target_lines": False,
                 "print_tick_summary": False,
-            },
-            summary_override={
-                "animate": False,
-                "export_battle_report": False,
             },
             emit_summary=False,
         )
@@ -794,17 +789,12 @@ def load_viewer_replay(
     result = test_run_entry.run_active_surface(
         base_dir=TEST_RUN_BASE_DIR,
         prepared_override=prepared,
-        settings_override=settings,
         execution_overrides={
             "capture_positions": True,
             "capture_hit_points": True,
             "frame_stride": int(frame_stride),
             "include_target_lines": capture_target_lines,
             "print_tick_summary": False,
-        },
-        summary_override={
-            "animate": False,
-            "export_battle_report": False,
         },
         emit_summary=False,
     )

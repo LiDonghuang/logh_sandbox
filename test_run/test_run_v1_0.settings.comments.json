@@ -33,11 +33,11 @@
   },
   "runtime": {
     "metatype": {
-      "settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype).",
-      "random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to run_control.random_seed. If -1, use true randomness."
+      "settings_path": "Path to metatype config (default: archetypes/metatype_settings.json; Yang display/identity template plus scenario-level sampling rules). These sampled personality values are retained only on the high-level prepared surface and do not enter maintained runtime mechanisms.",
+      "random_seed": "Random seed for scenario-level metatype/Yang sampling. If omitted, falls back to run_control.random_seed. If -1, use true randomness. This seed does not activate any runtime personality mechanism."
     },
     "selectors": {
-      "movement_model": "Runtime movement selector: baseline | v4a. baseline is the maintained movement baseline and currently resolves to v4a. The maintained test_run mainline no longer accepts v3a as a live movement execution path."
+      "movement_model": "Runtime movement selector for the maintained test_run mainline. The public selector is now v4a only; baseline and v3a have been retired."
     },
     "movement": {
       "v4a": {
@@ -89,15 +89,11 @@
       "contact": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
         "hostile_contact_impedance": {
-          "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
+          "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2.",
           "hybrid_v2": {
             "radius_multiplier": "v2 hybrid local influence radius as a multiplier of min_unit_spacing.",
             "repulsion_max_disp_ratio": "v2 hybrid-only per-tick max hostile-repulsion displacement as a ratio of min_unit_spacing.",
             "forward_damping_strength": "v2 hybrid damping fraction removable from positive forward displacement at full local hostile proximity."
-          },
-          "intent_unified_spacing_v1": {
-            "scale": "Hostile occupancy / penetration-lookahead radius as a multiplier of min_unit_spacing for intent-layer penetration bias with unified final spacing resolution.",
-            "strength": "Continuous intent-layer penetration-bias strength applied before movement, with final spacing left to the unified baseline feasibility-resolution layer."
           }
         }
       }

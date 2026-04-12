@@ -115,7 +115,7 @@ def merge_mapping_deep(base: dict, overlay: dict) -> dict:
     return merged
 
 
-def resolve_optional_json_path(base_dir: Path, configured_path: str, default_path: str) -> Path:
+def resolve_optional_json_path(configured_path: str, default_path: str) -> Path:
     raw = str(configured_path).strip()
     candidate = Path(raw if raw else default_path)
     if not candidate.is_absolute():
@@ -127,26 +127,35 @@ def load_layered_test_run_settings(base_dir: Path) -> dict:
     base_settings_path = base_dir / "test_run_v1_0.settings.json"
     settings = load_json_file(base_settings_path)
     if not isinstance(settings, dict):
-        return {}
+        raise TypeError(
+            f"Base test_run settings file must contain a JSON object: {base_settings_path}"
+        )
     layers_cfg = settings.get("settings_layers", {})
     if not isinstance(layers_cfg, dict):
-        layers_cfg = {}
+        raise TypeError(
+            f"'settings_layers' must be a JSON object in base test_run settings: {base_settings_path}"
+        )
     runtime_layer_path = resolve_optional_json_path(
-        base_dir,
         str(layers_cfg.get("runtime_path", DEFAULT_TEST_RUN_RUNTIME_SETTINGS_PATH)),
         DEFAULT_TEST_RUN_RUNTIME_SETTINGS_PATH,
     )
     testonly_layer_path = resolve_optional_json_path(
-        base_dir,
         str(layers_cfg.get("testonly_path", DEFAULT_TEST_RUN_TESTONLY_SETTINGS_PATH)),
         DEFAULT_TEST_RUN_TESTONLY_SETTINGS_PATH,
     )
-    for layer_path in (runtime_layer_path, testonly_layer_path):
+    for layer_name, layer_path in (
+        ("runtime", runtime_layer_path),
+        ("test-only", testonly_layer_path),
+    ):
         if not layer_path.exists():
-            continue
+            raise FileNotFoundError(
+                f"Required {layer_name} test_run settings layer not found: {layer_path}"
+            )
         layer_data = load_json_file(layer_path)
         if not isinstance(layer_data, dict):
-            continue
+            raise TypeError(
+                f"{layer_name.capitalize()} test_run settings layer must contain a JSON object: {layer_path}"
+            )
         settings = merge_mapping_deep(settings, layer_data)
     return settings
 
@@ -172,13 +181,6 @@ def get_visualization_setting(settings: dict, key: str, default):
     if isinstance(section, dict) and key in section:
         return section[key]
     return default
-
-
-def get_visualization_section(settings: dict) -> dict:
-    section = settings.get("visualization", {})
-    if isinstance(section, dict):
-        return section
-    return {}
 
 
 def get_runtime_metatype_setting(settings: dict, key: str, default):
