@@ -9,15 +9,6 @@
   },
   "visualization": {
     "display_language": "ZH",
-    "animate": true,
-    "plot_profile": "auto",
-    "auto_zoom_2d": true,
-    "vector_display_mode": "composite",
-    "show_attack_target_lines": true,
-    "tick_plots_follow_battlefield_tick": false,
-    "plot_smoothing_ticks": 5,
-    "animation_play_speed": 1.0,
-    "animation_frame_interval_ms": 100,
     "print_tick_summary": true
   }
 }

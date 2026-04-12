@@ -2,47 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "test_run_entry (Animate)",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_entry.py",
-      "cwd": "${workspaceFolder}",
-      "console": "internalConsole",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}",
-        "LOGH_EXPORT_VIDEO_ENABLED": "0"
-      },
-      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
-    },
-    {
-      "name": "test_run_entry (Export Video)",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_entry.py",
-      "cwd": "${workspaceFolder}",
-      "console": "internalConsole",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}",
-        "LOGH_EXPORT_VIDEO_ENABLED": "1"
-      },
-      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
-    },
-    {
-      "name": "test_run_entry (Export 10 Maps)",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/test_run/test_run_entry.py",
-      "cwd": "${workspaceFolder}",
-      "console": "internalConsole",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}",
-        "MPLBACKEND": "Agg",
-        "LOGH_EXPORT_VIDEO_ENABLED": "0",
-        "LOGH_VIZ_EXPORT_MAP_COUNT": "10"
-      },
-      "python": "${workspaceFolder}\\.venv_check\\Scripts\\python.exe"
-    },
-    {
       "name": "dev_v2.0 Viewer (Panda3D)",
       "type": "debugpy",
       "request": "launch",

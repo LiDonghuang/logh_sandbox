@@ -3,10 +3,14 @@ from __future__ import annotations
 import math
 
 from direct.showbase.ShowBase import ShowBase
-from panda3d.core import Vec3
+from panda3d.core import Point2, Point3
 
 from viz3d_panda.replay_source import ViewerFrame
 
+
+# =========================================================
+# File-level camera-control constants
+# =========================================================
 
 RESET_VIEW_KEY_EVENTS = ("`", "~")
 DEFAULT_TOPDOWN_YAW_DEGREES = 0.0
@@ -26,6 +30,11 @@ TRACKED_CAMERA_BLEND_GEAR5 = 0.34
 
 
 class OrbitCameraController:
+    """Viewer-local orbit/pan/tracking camera controller for replay playback."""
+
+    # -----------------------------------------------------
+    # A. input wiring / mouse interaction
+    # -----------------------------------------------------
     def __init__(self, app: ShowBase, *, arena_size: float) -> None:
         self._app = app
         self._arena_size = float(arena_size)
@@ -33,7 +42,6 @@ class OrbitCameraController:
         self._default_distance = max(90.0, self._arena_size * 1.20)
         self._distance = self._default_distance
         self._zoom_step = max(8.0, self._arena_size * 0.04)
-        self._mouse_pan_scale = max(35.0, self._arena_size * 0.70)
         self._mouse_orbit_scale = 140.0
         self._mouse_pitch_scale = 100.0
         self._drag_action: str | None = None
@@ -59,6 +67,9 @@ class OrbitCameraController:
 
         self.reset()
 
+    # -----------------------------------------------------
+    # B. shared geometry / tracking helpers
+    # -----------------------------------------------------
     def _mouse_pos(self) -> tuple[float, float] | None:
         watcher = getattr(self._app, "mouseWatcherNode", None)
         if watcher is None or not watcher.hasMouse():
@@ -86,26 +97,29 @@ class OrbitCameraController:
             return (0.0, 0.0)
         return (float(x_value) / length, float(y_value) / length)
 
-    def _ground_plane_basis(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        camera_quat = self._app.camera.getQuat(self._app.render)
-        right_vec = camera_quat.xform(Vec3(1.0, 0.0, 0.0))
-        forward_vec = camera_quat.xform(Vec3(0.0, 1.0, 0.0))
-        right_xy = self._normalize_xy(right_vec.getX(), right_vec.getY())
-        forward_xy = self._normalize_xy(forward_vec.getX(), forward_vec.getY())
-        if right_xy == (0.0, 0.0):
-            right_xy = (1.0, 0.0)
-        if forward_xy == (0.0, 0.0):
-            forward_xy = (0.0, 1.0)
-        return right_xy, forward_xy
+    def _mouse_ground_hit(self, mouse_pos: tuple[float, float]) -> tuple[float, float] | None:
+        lens = getattr(self._app, "camLens", None)
+        if lens is None:
+            return None
+        near_point = Point3()
+        far_point = Point3()
+        if not lens.extrude(Point2(float(mouse_pos[0]), float(mouse_pos[1])), near_point, far_point):
+            return None
+        near_world = self._app.render.getRelativePoint(self._app.camera, near_point)
+        far_world = self._app.render.getRelativePoint(self._app.camera, far_point)
+        ray_delta = far_world - near_world
+        ray_delta_z = float(ray_delta.getZ())
+        if abs(ray_delta_z) <= 1e-9:
+            return None
+        intersection_alpha = -float(near_world.getZ()) / ray_delta_z
+        if intersection_alpha < 0.0:
+            return None
+        world_point = near_world + (ray_delta * intersection_alpha)
+        return (float(world_point.getX()), float(world_point.getY()))
 
     def _translate_focus(self, dx: float, dy: float) -> None:
         self._focus_np.setX(self._clamp_focus(self._focus_np.getX() + float(dx)))
         self._focus_np.setY(self._clamp_focus(self._focus_np.getY() + float(dy)))
-
-    def _pan_distance_scale(self) -> float:
-        if self._default_distance <= 1e-9:
-            return 1.0
-        return max(0.1, float(self._distance) / float(self._default_distance))
 
     def _update_mouse_drag(self) -> None:
         if self._drag_action is None:
@@ -121,12 +135,9 @@ class OrbitCameraController:
 
         delta_x = float(current_mouse_pos[0]) - float(self._last_mouse_pos[0])
         delta_y = float(current_mouse_pos[1]) - float(self._last_mouse_pos[1])
-        self._last_mouse_pos = current_mouse_pos
         if abs(delta_x) <= 1e-9 and abs(delta_y) <= 1e-9:
+            self._last_mouse_pos = current_mouse_pos
             return
-
-        right_xy, forward_xy = self._ground_plane_basis()
-        pan_scale = self._pan_distance_scale()
 
         if self._drag_action == "pan":
             self._pan_drag_distance_accumulator += math.sqrt((delta_x * delta_x) + (delta_y * delta_y))
@@ -136,14 +147,18 @@ class OrbitCameraController:
             ):
                 self._tracked_fleet_id = None
                 self._tracked_focus_display_xy = None
+            previous_ground_xy = self._mouse_ground_hit(self._last_mouse_pos)
+            current_ground_xy = self._mouse_ground_hit(current_mouse_pos)
+            self._last_mouse_pos = current_mouse_pos
+            if previous_ground_xy is None or current_ground_xy is None:
+                return
             self._translate_focus(
-                ((-delta_x * self._mouse_pan_scale * pan_scale) * right_xy[0])
-                + ((-delta_y * self._mouse_pan_scale * pan_scale) * forward_xy[0]),
-                ((-delta_x * self._mouse_pan_scale * pan_scale) * right_xy[1])
-                + ((-delta_y * self._mouse_pan_scale * pan_scale) * forward_xy[1]),
+                float(previous_ground_xy[0]) - float(current_ground_xy[0]),
+                float(previous_ground_xy[1]) - float(current_ground_xy[1]),
             )
             return
 
+        self._last_mouse_pos = current_mouse_pos
         if self._drag_action == "orbit":
             self._yaw_np.setH(self._yaw_np.getH() - (delta_x * self._mouse_orbit_scale))
             next_pitch = self._pitch_np.getP() + (delta_y * self._mouse_pitch_scale)
@@ -169,30 +184,15 @@ class OrbitCameraController:
 
     @staticmethod
     def _summarize_fleet_frame(frame: ViewerFrame, fleet_id: str) -> dict[str, float] | None:
-        fleet_units = [unit for unit in frame.units if unit.fleet_id == str(fleet_id)]
-        if not fleet_units:
+        summary = frame.fleet_body_summary.get(str(fleet_id))
+        if not isinstance(summary, dict):
             return None
-
-        centroid_x = sum(float(unit.x) for unit in fleet_units) / float(len(fleet_units))
-        centroid_y = sum(float(unit.y) for unit in fleet_units) / float(len(fleet_units))
-        radius = 0.0
-        heading_sum_x = 0.0
-        heading_sum_y = 0.0
-        for unit in fleet_units:
-            dx = float(unit.x) - centroid_x
-            dy = float(unit.y) - centroid_y
-            radius = max(radius, math.sqrt((dx * dx) + (dy * dy)))
-            heading_sum_x += float(unit.heading_x)
-            heading_sum_y += float(unit.heading_y)
-        heading_x, heading_y = OrbitCameraController._normalize_xy(heading_sum_x, heading_sum_y)
-        if heading_x == 0.0 and heading_y == 0.0:
-            heading_x, heading_y = (0.0, 1.0)
         return {
-            "centroid_x": centroid_x,
-            "centroid_y": centroid_y,
-            "heading_x": heading_x,
-            "heading_y": heading_y,
-            "radius": radius,
+            "centroid_x": float(summary["centroid_x"]),
+            "centroid_y": float(summary["centroid_y"]),
+            "heading_x": float(summary["heading_x"]),
+            "heading_y": float(summary["heading_y"]),
+            "radius": float(summary["max_radius"]),
         }
 
     def _set_view(
@@ -264,7 +264,7 @@ class OrbitCameraController:
         summary = self._summarize_fleet_frame(frame, fleet_id)
         if summary is None:
             return None
-        min_distance = max(9.0, self._arena_size * 0.065)
+        min_distance = max(6.0, self._arena_size * 0.040)
         max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         requested_distance = (float(summary["radius"]) * FLEET_VIEW_DISTANCE_RADIUS_SCALE) + FLEET_VIEW_DISTANCE_PADDING
         requested_distance = max(min_distance, min(max_distance, requested_distance))
@@ -375,6 +375,9 @@ class OrbitCameraController:
             )
         return True
 
+    # -----------------------------------------------------
+    # C. public camera control surface
+    # -----------------------------------------------------
     def set_playback_level_index(self, playback_level_index: int) -> None:
         self._playback_level_index = max(0, int(playback_level_index))
 
@@ -410,7 +413,7 @@ class OrbitCameraController:
         if self._default_distance > 1e-9:
             distance_scale = max(1.0, min(1.8, float(self._distance) / float(self._default_distance)))
         next_distance = self._distance + (float(delta) * distance_scale)
-        min_distance = max(9.0, self._arena_size * 0.065)
+        min_distance = max(6.0, self._arena_size * 0.040)
         max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
         self._distance = max(min_distance, min(max_distance, next_distance))
         self._apply_camera_distance()

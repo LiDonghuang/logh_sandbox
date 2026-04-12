@@ -16,16 +16,20 @@ from panda3d.core import (
 
 from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
 
+# =========================================================
+# File-level renderer constants
+# =========================================================
+
 FIRE_LINK_MODES = {"disabled", "enabled"}
-FIRE_LINK_ALPHA = 0.24
-FIRE_LINK_THICKNESS = 1.25
+FIRE_LINK_ALPHA = 0.2
+FIRE_LINK_THICKNESS = 0.2
 FIRE_LINK_CENTER_OFFSET = 0.5
-FIRE_LINK_PULSE_SPACING = 1.00
-FIRE_LINK_PULSE_LENGTH = 0.75
-FIRE_LINK_BASE_SPEED_PER_SECOND = 0.50
-FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 1.00
-FIRE_LINK_BEAM_SPREAD = 0.20
-FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.20
+FIRE_LINK_PULSE_SPACING = 2.7
+FIRE_LINK_PULSE_LENGTH = 0.3
+FIRE_LINK_BASE_SPEED_PER_SECOND = 5.0
+FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.2
+FIRE_LINK_BEAM_SPREAD = 0.10
+FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.10
 FIRE_LINK_BEAM_COUNT_BY_BUCKET = {
     5: 5,
     4: 4,
@@ -41,11 +45,10 @@ FIRE_LINK_BEAM_LAYOUTS = {
     5: ((-1.0, 1.0), (-1.0, -1.0), (0.0, 0.0), (1.0, 1.0), (1.0, -1.0)),
 }
 
-# Unit dual-layer appearance, ordered near -> mid -> far.
-TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA = (0.02, 0.50, 0.90)
-CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA = (0.90, 0.50, 0.0)
-DUAL_LAYER_NEAR_DISTANCE_RATIO, DUAL_LAYER_MID_DISTANCE_RATIO, DUAL_LAYER_FAR_DISTANCE_RATIO = (0.11, 0.19, 0.28)
-DUAL_LAYER_NEAR_DISTANCE_FLOOR, DUAL_LAYER_MID_DISTANCE_FLOOR, DUAL_LAYER_FAR_DISTANCE_FLOOR = (18.0, 42.0, 70.0)
+# Unit dual-layer appearance, ordered level 1 -> level 5.
+TOKEN_ALPHA_BY_LEVEL = (0.01, 0.10, 0.25, 0.50, 0.90)
+CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.01, 0.0, 0.0, 0.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (30.0, 60.0, 90.0, 120.0, 150.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
@@ -54,13 +57,6 @@ HP_BUCKET_SCALES = {
     3: 0.96,
     2: 0.80,
     1: 0.64,
-}
-CLUSTER_VISIBLE_COUNT_BY_BUCKET = {
-    5: 10,
-    4: 8,
-    3: 6,
-    2: 4,
-    1: 2,
 }
 CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
     5: (0, 1, 2, 3, 4, 5, 6, 7, 8, 9),
@@ -72,10 +68,16 @@ CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
 
 # Unit inner-cluster geometry.
 CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
-CLUSTER_SHIP_MODEL_UNIT = 0.040
+CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
-CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.75, 1.0)
+CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.6, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
+CLUSTER_SWAY_AMPLITUDE_X = 0.04
+CLUSTER_SWAY_AMPLITUDE_Y = 0.05
+CLUSTER_SWAY_AMPLITUDE_Z = 0.03
+CLUSTER_SWAY_FREQUENCY = 0.1
+CLUSTER_SWAY_CLOCK_SCALE = 1.0
+CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX = 2
 CLUSTER_LAYOUT_OFFSETS = (
     (-0.10, 0.418, 0.108),
     (0.10, 0.398, -0.092),
@@ -105,6 +107,10 @@ FLEET_HALO_LAYERS = (
 )
 
 
+# =========================================================
+# Pure color / geometry helpers
+# =========================================================
+
 def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     normalized = str(color).strip().lstrip("#")
     if len(normalized) != 6:
@@ -112,7 +118,7 @@ def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     red = int(normalized[0:2], 16) / 255.0
     green = int(normalized[2:4], 16) / 255.0
     blue = int(normalized[4:6], 16) / 255.0
-    return (red, green, blue, TOKEN_FAR_ALPHA)
+    return (red, green, blue, float(TOKEN_ALPHA_BY_LEVEL[-1]))
 
 
 def _brighten_rgb(
@@ -238,6 +244,40 @@ def _interpolate_heading_xy(
     return (blended_x / length, blended_y / length)
 
 
+def _cluster_ship_base_offset(ship_index: int) -> tuple[float, float, float]:
+    base_offset = CLUSTER_LAYOUT_OFFSETS[int(ship_index)]
+    return (float(base_offset[0]), float(base_offset[1]), float(base_offset[2]))
+
+
+def _cluster_ship_sway_profile(ship_index: int) -> dict[str, float]:
+    base_offset = _cluster_ship_base_offset(int(ship_index))
+    x_phase = (0.61 * float(ship_index)) + 0.15
+    y_phase = (0.83 * float(ship_index)) + 1.35
+    z_phase = (0.47 * float(ship_index)) + 2.10
+    return {
+        "base_x": float(base_offset[0]),
+        "base_y": float(base_offset[1]),
+        "base_z": float(base_offset[2]),
+        "sin_x_phase": math.sin(x_phase),
+        "cos_x_phase": math.cos(x_phase),
+        "sin_y_phase": math.sin(y_phase),
+        "cos_y_phase": math.cos(y_phase),
+        "sin_z_phase": math.sin(z_phase),
+        "cos_z_phase": math.cos(z_phase),
+    }
+
+
+def _build_cluster_ship_sway_profiles() -> tuple[dict[str, float], ...]:
+    return tuple(
+        _cluster_ship_sway_profile(ship_index)
+        for ship_index in range(len(CLUSTER_LAYOUT_OFFSETS))
+    )
+
+
+# =========================================================
+# Viewer-local mesh template builders
+# =========================================================
+
 def _build_wedge_template(name: str) -> NodePath:
     vertex_format = GeomVertexFormat.getV3()
     vertex_data = GeomVertexData(name, vertex_format, Geom.UHStatic)
@@ -357,6 +397,11 @@ def _build_cluster_ship_template(name: str) -> NodePath:
 
 
 class UnitRenderer:
+    """Maintained viewer-local unit/overlay renderer for replay playback."""
+
+    # -----------------------------------------------------
+    # A. renderer bootstrap / public control surface
+    # -----------------------------------------------------
     def __init__(self, parent: NodePath, replay: ReplayBundle, *, fire_link_mode: str = "enabled") -> None:
         self._parent = parent.attachNewNode("unit_renderer")
         self._replay = replay
@@ -366,6 +411,9 @@ class UnitRenderer:
         self._token_nodes: dict[str, NodePath] = {}
         self._cluster_nodes: dict[str, NodePath] = {}
         self._cluster_ship_nodes: dict[str, list[NodePath]] = {}
+        self._cluster_ship_sway_profiles = _build_cluster_ship_sway_profiles()
+        self._cluster_ship_sway_restored: dict[str, bool] = {}
+        self._cluster_ship_visible_masks: dict[str, tuple[bool, ...]] = {}
         self._overlay_np = self._parent.attachNewNode("viewer_overlays")
         self._objective_marker_np = self._overlay_np.attachNewNode("viewer_objective_marker")
         self._fleet_halos_np = self._overlay_np.attachNewNode("viewer_fleet_halos")
@@ -379,46 +427,39 @@ class UnitRenderer:
         self._fire_link_position_alpha = 0.0
         self._playback_level_index = 0
         self._playback_fps = 2.0
+        self._playback_active = True
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
-        self._dual_layer_near_distance = max(
-            DUAL_LAYER_NEAR_DISTANCE_FLOOR,
-            float(self._replay.arena_size) * DUAL_LAYER_NEAR_DISTANCE_RATIO,
-        )
-        self._dual_layer_mid_distance = max(
-            self._dual_layer_near_distance,
-            max(
-                DUAL_LAYER_MID_DISTANCE_FLOOR,
-                float(self._replay.arena_size) * DUAL_LAYER_MID_DISTANCE_RATIO,
-            ),
-        )
-        self._dual_layer_far_distance = max(
-            DUAL_LAYER_FAR_DISTANCE_FLOOR,
-            float(self._replay.arena_size) * DUAL_LAYER_FAR_DISTANCE_RATIO,
-        )
+        if len(TOKEN_ALPHA_BY_LEVEL) != len(CLUSTER_ALPHA_BY_LEVEL):
+            raise ValueError("TOKEN_ALPHA_BY_LEVEL and CLUSTER_ALPHA_BY_LEVEL must have identical lengths.")
+        if len(TOKEN_ALPHA_BY_LEVEL) != len(DUAL_LAYER_DISTANCE_BY_LEVEL):
+            raise ValueError("alpha profiles and DUAL_LAYER_DISTANCE_BY_LEVEL must have identical lengths.")
+        if len(DUAL_LAYER_DISTANCE_BY_LEVEL) != 5:
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must define exactly 5 levels; got {len(DUAL_LAYER_DISTANCE_BY_LEVEL)}.")
+        self._dual_layer_distances = tuple(float(distance) for distance in DUAL_LAYER_DISTANCE_BY_LEVEL)
+        if any(distance <= 0.0 for distance in self._dual_layer_distances):
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must contain only positive distances; got {self._dual_layer_distances!r}.")
+        if any(
+            self._dual_layer_distances[index] < self._dual_layer_distances[index - 1]
+            for index in range(1, len(self._dual_layer_distances))
+        ):
+            raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must be non-decreasing; got {self._dual_layer_distances!r}.")
         self._sync_objective_marker()
 
+    # -----------------------------------------------------
+    # B. viewer overlay / fire-link / halo support
+    # -----------------------------------------------------
     def _build_fleet_halo_baselines(self) -> dict[str, tuple[float, float]]:
         if not self._replay.frames:
             return {}
         frame = self._replay.frames[0]
-        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
-        for unit in frame.units:
-            if float(unit.hit_points) <= 0.0:
-                continue
-            fleet_points.setdefault(str(unit.fleet_id), []).append((float(unit.x), float(unit.y), float(unit.hit_points)))
         baselines: dict[str, tuple[float, float]] = {}
-        for fleet_id, points in fleet_points.items():
-            if not points:
+        for fleet_id, summary in frame.fleet_body_summary.items():
+            if not isinstance(summary, dict):
                 continue
-            centroid_x = sum(point[0] for point in points) / float(len(points))
-            centroid_y = sum(point[1] for point in points) / float(len(points))
-            max_radius = max(
-                math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
-                for point in points
-            )
-            total_hp = sum(point[2] for point in points)
+            max_radius = float(summary["max_radius"])
+            total_hp = float(summary["alive_total_hp"])
             if max_radius > 1e-9 and total_hp > 1e-9:
-                baselines[fleet_id] = (float(max_radius), float(total_hp))
+                baselines[str(fleet_id)] = (float(max_radius), float(total_hp))
         return baselines
 
     def _validate_fire_link_mode(self, fire_link_mode: str) -> str:
@@ -446,6 +487,21 @@ class UnitRenderer:
             self._playback_fps = normalized_fps
             self._last_fire_link_signature = None
 
+    def set_playback_active(self, playback_active: bool) -> None:
+        self._playback_active = bool(playback_active)
+
+    def set_replay(self, replay: ReplayBundle) -> None:
+        # App-facing replay swap seam: refresh renderer-owned carriers without
+        # exposing renderer-private storage to the viewer host.
+        self._replay = replay
+        self._fleet_halo_baselines = self._build_fleet_halo_baselines()
+        self._fleet_halo_state = {}
+        self._current_frame = None
+        self._next_fire_link_frame = None
+        self._fire_link_position_alpha = 0.0
+        self._last_fire_link_signature = None
+        self._sync_objective_marker()
+
     def refresh_fire_links(
         self,
         frame: ViewerFrame,
@@ -466,6 +522,36 @@ class UnitRenderer:
     @property
     def fleet_halo_state(self) -> dict[str, dict[str, float]]:
         return {fleet_id: dict(state) for fleet_id, state in self._fleet_halo_state.items()}
+
+    def _current_cluster_sway_seconds(self) -> float:
+        if self._current_frame is None:
+            return 0.0
+        base_seconds = (float(self._current_frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_fps))
+        return float(base_seconds) * CLUSTER_SWAY_CLOCK_SCALE
+
+    def _cluster_sway_active(self) -> bool:
+        return bool(self._playback_active and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX)
+
+    def _cluster_ship_sway_offsets(
+        self,
+        sway_profile: dict[str, float],
+        *,
+        sin_time: float,
+        cos_time: float,
+    ) -> tuple[float, float, float]:
+        x_value = float(sway_profile["base_x"]) + (
+            CLUSTER_SWAY_AMPLITUDE_X
+            * ((float(sin_time) * float(sway_profile["cos_x_phase"])) + (float(cos_time) * float(sway_profile["sin_x_phase"])))
+        )
+        y_value = float(sway_profile["base_y"]) + (
+            CLUSTER_SWAY_AMPLITUDE_Y
+            * ((float(sin_time) * float(sway_profile["cos_y_phase"])) + (float(cos_time) * float(sway_profile["sin_y_phase"])))
+        )
+        z_value = float(sway_profile["base_z"]) + (
+            CLUSTER_SWAY_AMPLITUDE_Z
+            * ((float(sin_time) * float(sway_profile["cos_z_phase"])) + (float(cos_time) * float(sway_profile["sin_z_phase"])))
+        )
+        return (x_value, y_value, z_value)
 
     def _get_fleet_halo_nodes(self, fleet_id: str) -> list[NodePath]:
         halo_nodes = self._fleet_halo_nodes.get(fleet_id)
@@ -505,7 +591,7 @@ class UnitRenderer:
         template = NodePath(f"unit_template_{fleet_id}")
         token_np = _build_wedge_template(f"unit_token_{fleet_id}")
         token_np.setName("outer_token")
-        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), TOKEN_FAR_ALPHA)
+        token_np.setColor(float(rgba[0]), float(rgba[1]), float(rgba[2]), float(TOKEN_ALPHA_BY_LEVEL[-1]))
         token_np.setTransparency(TransparencyAttrib.MAlpha)
         token_np.setTwoSided(True)
         token_np.setBin("transparent", 0)
@@ -535,9 +621,14 @@ class UnitRenderer:
 
     def update_view(self, camera_np: NodePath) -> None:
         camera_pos = camera_np.getPos(self._parent)
-        near_distance = float(self._dual_layer_near_distance)
-        mid_distance = float(self._dual_layer_mid_distance)
-        far_distance = float(self._dual_layer_far_distance)
+        level_distances = self._dual_layer_distances
+        cluster_sway_active = self._cluster_sway_active()
+        sway_sin_time = 0.0
+        sway_cos_time = 1.0
+        if cluster_sway_active:
+            sway_time_seconds = self._current_cluster_sway_seconds()
+            sway_sin_time = math.sin(2.0 * math.pi * CLUSTER_SWAY_FREQUENCY * sway_time_seconds)
+            sway_cos_time = math.cos(2.0 * math.pi * CLUSTER_SWAY_FREQUENCY * sway_time_seconds)
         min_unit_distance: float | None = None
         for node_key, root_np in self._unit_nodes.items():
             token_np = self._token_nodes.get(node_key)
@@ -551,31 +642,63 @@ class UnitRenderer:
             distance = math.sqrt((dx * dx) + (dy * dy) + (dz * dz))
             if min_unit_distance is None or distance < min_unit_distance:
                 min_unit_distance = distance
-            if distance <= near_distance:
-                outer_alpha = TOKEN_NEAR_ALPHA
-                cluster_alpha = CLUSTER_NEAR_ALPHA
-            elif distance <= mid_distance:
-                mid_weight = _smoothstep(near_distance, mid_distance, distance)
-                outer_alpha = _lerp(TOKEN_NEAR_ALPHA, TOKEN_MID_ALPHA, mid_weight)
-                cluster_alpha = _lerp(CLUSTER_NEAR_ALPHA, CLUSTER_MID_ALPHA, mid_weight)
-            elif distance <= far_distance:
-                far_weight = _smoothstep(mid_distance, far_distance, distance)
-                outer_alpha = _lerp(TOKEN_MID_ALPHA, TOKEN_FAR_ALPHA, far_weight)
-                cluster_alpha = _lerp(CLUSTER_MID_ALPHA, CLUSTER_FAR_ALPHA, far_weight)
+            if distance <= level_distances[0]:
+                outer_alpha = float(TOKEN_ALPHA_BY_LEVEL[0])
+                cluster_alpha = float(CLUSTER_ALPHA_BY_LEVEL[0])
             else:
-                outer_alpha = TOKEN_FAR_ALPHA
-                cluster_alpha = CLUSTER_FAR_ALPHA
+                outer_alpha = float(TOKEN_ALPHA_BY_LEVEL[-1])
+                cluster_alpha = float(CLUSTER_ALPHA_BY_LEVEL[-1])
+                for level_index in range(1, len(level_distances)):
+                    if distance <= level_distances[level_index]:
+                        blend = _smoothstep(level_distances[level_index - 1], level_distances[level_index], distance)
+                        outer_alpha = _lerp(
+                            float(TOKEN_ALPHA_BY_LEVEL[level_index - 1]),
+                            float(TOKEN_ALPHA_BY_LEVEL[level_index]),
+                            blend,
+                        )
+                        cluster_alpha = _lerp(
+                            float(CLUSTER_ALPHA_BY_LEVEL[level_index - 1]),
+                            float(CLUSTER_ALPHA_BY_LEVEL[level_index]),
+                            blend,
+                        )
+                        break
             token_alpha_scale = 1.0
-            if TOKEN_FAR_ALPHA > 1e-9:
-                token_alpha_scale = outer_alpha / TOKEN_FAR_ALPHA
+            if float(TOKEN_ALPHA_BY_LEVEL[-1]) > 1e-9:
+                token_alpha_scale = outer_alpha / float(TOKEN_ALPHA_BY_LEVEL[-1])
             token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
             if cluster_alpha > 1e-4:
                 cluster_np.show()
                 cluster_np.setColorScale(1.0, 1.0, 1.0, cluster_alpha)
+                ship_nodes = self._cluster_ship_nodes.get(node_key, ())
+                ship_sway_profiles = self._cluster_ship_sway_profiles
+                if not cluster_sway_active:
+                    if self._cluster_ship_sway_restored.get(node_key, True):
+                        continue
+                    for ship_index, ship_np in enumerate(ship_nodes):
+                        if ship_np.isHidden():
+                            continue
+                        ship_profile = ship_sway_profiles[ship_index]
+                        ship_np.setPos(
+                            float(ship_profile["base_x"]),
+                            float(ship_profile["base_y"]),
+                            float(ship_profile["base_z"]),
+                        )
+                    self._cluster_ship_sway_restored[node_key] = True
+                    continue
+                self._cluster_ship_sway_restored[node_key] = False
+                for ship_index, ship_np in enumerate(ship_nodes):
+                    if ship_np.isHidden():
+                        continue
+                    ship_offset = self._cluster_ship_sway_offsets(
+                        ship_sway_profiles[ship_index],
+                        sin_time=sway_sin_time,
+                        cos_time=sway_cos_time,
+                    )
+                    ship_np.setPos(float(ship_offset[0]), float(ship_offset[1]), float(ship_offset[2]))
             else:
                 cluster_np.hide()
         if self._current_frame is not None:
-            should_show_fire_links = bool(min_unit_distance is not None and min_unit_distance <= far_distance)
+            should_show_fire_links = bool(min_unit_distance is not None and min_unit_distance <= level_distances[-1])
             if (
                 self._fire_link_mode == "disabled"
                 or not self._current_frame.targets
@@ -657,42 +780,34 @@ class UnitRenderer:
             segments_count=OBJECTIVE_MARKER_SEGMENTS,
         )
 
-    def _sync_fleet_halos(
+    def sync_fleet_halos(
         self,
         frame: ViewerFrame,
         *,
+        next_frame: ViewerFrame | None = None,
+        position_alpha: float = 0.0,
         tick_offset: float = 0.0,
-        use_node_positions: bool = False,
     ) -> None:
         self._fleet_halo_state = {}
-        fleet_points: dict[str, list[tuple[float, float, float]]] = {}
-        for unit in frame.units:
-            if float(unit.hit_points) <= 0.0:
-                continue
-            point_x = float(unit.x)
-            point_y = float(unit.y)
-            if use_node_positions:
-                node_key = f"{unit.fleet_id}:{unit.unit_id}"
-                node = self._unit_nodes.get(node_key)
-                if node is None:
-                    continue
-                node_pos = node.getPos()
-                point_x = float(node_pos.x)
-                point_y = float(node_pos.y)
-            fleet_points.setdefault(str(unit.fleet_id), []).append((point_x, point_y, float(unit.hit_points)))
         active_fleet_ids: set[str] = set()
-        for fleet_id, points in fleet_points.items():
-            if not points:
+        for fleet_id, summary in frame.fleet_body_summary.items():
+            if not isinstance(summary, dict):
                 continue
-            centroid_x = sum(point[0] for point in points) / float(len(points))
-            centroid_y = sum(point[1] for point in points) / float(len(points))
-            current_total_hp = sum(point[2] for point in points)
+            centroid_x = float(summary["centroid_x"])
+            centroid_y = float(summary["centroid_y"])
+            current_total_hp = float(summary["alive_total_hp"])
+            blend = max(0.0, min(1.0, float(position_alpha)))
+            if next_frame is not None and blend > 1e-6:
+                next_summary = next_frame.fleet_body_summary.get(str(fleet_id))
+                if isinstance(next_summary, dict):
+                    centroid_x = ((1.0 - blend) * centroid_x) + (blend * float(next_summary["centroid_x"]))
+                    centroid_y = ((1.0 - blend) * centroid_y) + (blend * float(next_summary["centroid_y"]))
+                    current_total_hp = ((1.0 - blend) * current_total_hp) + (blend * float(next_summary["alive_total_hp"]))
+            if current_total_hp <= 1e-9:
+                continue
             baseline = self._fleet_halo_baselines.get(fleet_id)
             if baseline is None:
-                baseline_radius = max(
-                    math.sqrt(((point[0] - centroid_x) * (point[0] - centroid_x)) + ((point[1] - centroid_y) * (point[1] - centroid_y)))
-                    for point in points
-                )
+                baseline_radius = float(summary["max_radius"])
                 baseline_total_hp = current_total_hp
             else:
                 baseline_radius, baseline_total_hp = baseline
@@ -733,6 +848,9 @@ class UnitRenderer:
                 halo_np.removeNode()
             del self._fleet_halo_nodes[stale_fleet_id]
 
+    # -----------------------------------------------------
+    # C. per-frame unit transforms
+    # -----------------------------------------------------
     def sync_frame(self, frame: ViewerFrame, *, pulse_phase: float = 0.0) -> None:
         self.set_fire_link_pulse_phase(pulse_phase)
         self._current_frame = frame
@@ -761,15 +879,24 @@ class UnitRenderer:
                         raise RuntimeError(f"unit cluster ship {ship_index} is missing for {node_key!r}")
                     ship_nodes.append(ship_np)
                 self._cluster_ship_nodes[node_key] = ship_nodes
+                self._cluster_ship_sway_restored[node_key] = True
+                self._cluster_ship_visible_masks[node_key] = tuple(False for _ in ship_nodes)
             bucket = _hp_bucket(unit.hit_points, unit.max_hit_points)
             scale = HP_BUCKET_SCALES[bucket]
             self._token_nodes[node_key].setScale(scale)
-            visible_indices = set(CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket][: CLUSTER_VISIBLE_COUNT_BY_BUCKET[bucket]])
+            visible_indices = CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket]
+            current_visibility_mask: list[bool] = []
             for ship_index, ship_np in enumerate(self._cluster_ship_nodes[node_key]):
                 if ship_index in visible_indices:
                     ship_np.show()
+                    current_visibility_mask.append(True)
                 else:
                     ship_np.hide()
+                    current_visibility_mask.append(False)
+            visibility_mask_tuple = tuple(current_visibility_mask)
+            if visibility_mask_tuple != self._cluster_ship_visible_masks.get(node_key):
+                self._cluster_ship_visible_masks[node_key] = visibility_mask_tuple
+                self._cluster_ship_sway_restored[node_key] = False
             node.setPos(unit.x, unit.y, unit.z)
             node.setH(_heading_to_h(unit.heading_x, unit.heading_y))
             active_keys.add(node_key)
@@ -781,8 +908,10 @@ class UnitRenderer:
             self._token_nodes.pop(stale_key, None)
             self._cluster_nodes.pop(stale_key, None)
             self._cluster_ship_nodes.pop(stale_key, None)
+            self._cluster_ship_sway_restored.pop(stale_key, None)
+            self._cluster_ship_visible_masks.pop(stale_key, None)
 
-        self._sync_fleet_halos(frame)
+        self.sync_fleet_halos(frame)
 
     def apply_interpolated_transforms(
         self,

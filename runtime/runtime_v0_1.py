@@ -65,7 +65,6 @@ class UnitState:
 @dataclass(frozen=True)
 class FleetState:
     fleet_id: str
-    parameters: PersonalityParameters
     unit_ids: tuple[str, ...]
 
 
@@ -76,7 +75,7 @@ class BattleState:
     arena_size: float
     units: Mapping[str, UnitState]
     fleets: Mapping[str, FleetState]
-    last_fleet_cohesion: Mapping[str, float] = field(default_factory=dict)
+    last_fleet_cohesion_score: Mapping[str, float] = field(default_factory=dict)
     last_target_direction: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     last_engagement_intensity: Dict[str, float] = field(default_factory=dict)
 

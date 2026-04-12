@@ -1,7 +1,7 @@
 # PR6 / dev_v2.1 Active Ownership Map
 
 Status: current-state ownership map  
-Date: 2026-04-04  
+Date: 2026-04-05
 Scope: active targeting owner, active restore owner, and still-live transitional dependencies  
 Authority: working map only; not doctrine, not merge approval
 
@@ -28,39 +28,51 @@ Current live parameter surfaces:
 
 ## 2. Where `restore_strength` is truly active
 
-Current active `restore_strength` ownership is transitional, not native:
+Current active `restore_strength` ownership is now native on the `v4a`
+movement line:
 
 - harness surface:
   - `runtime.movement.v4a.restore_strength`
-- harness bridge:
-  - `test_run/test_run_execution.py`
-  - writes `movement_surface["centroid_probe_scale"]`
-- runtime carrier:
+- runtime owner:
   - `runtime/engine_skeleton.py`
-  - under `runtime_decision_source = v3_test`
-  - through the `exp_precontact_centroid_probe` path
+  - `v4a_active` movement path
+  - direct scaling of the `v4a` runtime restore vector
 
 Current honest read:
 
 - `v4a.restore_strength` is active
-- but it is currently active by reusing an older runtime carrier
-- this is a real transitional dependency, not a final clean owner
+- current runtime read is direct:
+  - `restore_term = restore_strength * normalize(restore_vector)`
+- this read no longer multiplies by:
+  - `formation_rigidity`
+  - `pursuit_drive`
+  - `mobility_bias`
+  - any hidden native restore carrier scale
+- `v4a` movement no longer changes when
+  - `runtime.selectors.cohesion_decision_source = v2`
+  - vs `runtime.selectors.cohesion_decision_source = v3_test`
+- old `runtime_cohesion_decision_source -> enemy_cohesion -> deep_pursuit`
+  movement influence is no longer an active owner on the `v4a` line
 
 ## 3. Still-live transitional `v3a` / `v3_test` dependencies
 
-Current live transitional dependencies include:
+Current live transitional dependencies still include:
 
-- `runtime_decision_source = v3_test`
-- runtime centroid-probe carrier used by `v4a.restore_strength`
-- `movement_v3a_experiment = exp_precontact_centroid_probe`
+- `runtime_decision_source = v3_test` as the current baseline selector
+- old `v3a` experiment surface:
+  - `movement_v3a_experiment = exp_precontact_centroid_probe`
+- legacy cohesion / collapse observer family still reading the old
+  `v2 | v3_test` selector
 
 Current read:
 
 - these are still structurally live
 - they should not be described as retired yet
-- they are cleanup targets only after:
+- but they are no longer the active movement owner for
+  `v4a.restore_strength`
+- they remain cleanup targets after:
   - targeting stabilizes
-  - `restore_strength` is reconnected to a true `v4a` owner
+  - old-family retirement is formally opened
 
 ## 4. Legacy local-enemy carriers no longer active as Layer-A owners
 
@@ -85,6 +97,6 @@ Current read:
 Current ownership should be read as:
 
 - targeting owner: runtime hot path
-- `restore_strength` owner: `v4a` harness surface reusing old `v3_test` runtime carrier
-- old `v3a` / `v3_test` family: still live as transitional support
+- `restore_strength` owner: native `v4a` runtime movement restore scalar
+- old `v3a` / `v3_test` family: still live as transitional support, but no longer the active movement owner for `restore_strength`
 - old local-enemy Layer-A substrate family: no longer active owner

@@ -34,17 +34,6 @@ FORMATION_LAYOUT_MODE_LABELS = {
     FORMATION_LAYOUT_MODE_RECT_CENTERED_ROWS,
     *REFERENCE_LAYOUT_MODE_LABELS,
 }
-TEST_MODE_LABELS = {
-    0: "default",
-    1: "observe",
-    2: "test",
-}
-COHESION_DECISION_SOURCE_LABELS = {
-    "baseline": "baseline",
-    "v2": "v2",
-    "v3_test": "v3_test",
-}
-BASELINE_COHESION_DECISION_SOURCE = "v3_test"
 PERSONALITY_PARAM_KEYS = (
     "force_concentration_ratio",
     "mobility_bias",
@@ -60,12 +49,12 @@ PERSONALITY_PARAM_KEYS = (
 DEFAULT_METATYPE_SETTINGS_PATH = "archetypes/metatype_settings.json"
 
 
-def load_metatype_settings(base_dir: Path, settings: dict) -> dict:
+# 1. High-level archetype / metatype inputs retained above runtime state.
+def load_metatype_settings(settings: dict) -> dict:
     configured_path = str(
         settings_api.get_runtime_metatype_setting(settings, "settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
     )
     metatype_path = settings_api.resolve_optional_json_path(
-        base_dir,
         configured_path,
         DEFAULT_METATYPE_SETTINGS_PATH,
     )
@@ -178,7 +167,6 @@ def resolve_fleet_archetype_data(
     archetype_template = {}
     if isinstance(archetypes.get("yang"), dict):
         archetype_template = dict(archetypes["yang"])
-
     source_ids_raw = generation_cfg.get("source_archetype_ids")
     source_ids = []
     if isinstance(source_ids_raw, list):
@@ -189,6 +177,7 @@ def resolve_fleet_archetype_data(
     value_max = float(generation_cfg.get("param_max", 9.0))
 
     yang_template = {
+        **archetype_template,
         "name": str(template_cfg.get("name", archetype_template.get("name", "yang"))),
         "disp_name_EN": str(
             template_cfg.get(
@@ -235,6 +224,8 @@ def resolve_fleet_archetype_data(
     )
 
 
+# PersonalityParameters remains a high-level prepared payload only; it does not
+# flow back into maintained runtime state evolution on the current mainline.
 def to_personality_parameters(data: dict) -> PersonalityParameters:
     return PersonalityParameters(
         archetype_id=data["name"],
@@ -325,62 +316,20 @@ def resolve_avatar_with_fallback(side_data: dict, fallback_avatar: str) -> str:
     return fallback_avatar
 
 
-def parse_test_mode(raw_value) -> int:
-    if isinstance(raw_value, str):
-        value_str = raw_value.strip().lower()
-        if value_str in TEST_MODE_LABELS.values():
-            for code, label in TEST_MODE_LABELS.items():
-                if label == value_str:
-                    return code
-        if value_str.isdigit():
-            raw_value = int(value_str)
-    try:
-        parsed = int(raw_value)
-    except (TypeError, ValueError):
-        return 0
-    if parsed not in TEST_MODE_LABELS:
-        return 0
-    return parsed
-
-
-def test_mode_label(mode_code: int) -> str:
-    return TEST_MODE_LABELS.get(int(mode_code), TEST_MODE_LABELS[0])
-
-
-def resolve_runtime_decision_source(raw_value, test_mode: int) -> tuple[str, str]:
+def resolve_movement_model(raw_value) -> str:
     requested = str(raw_value).strip().lower()
-    if requested not in COHESION_DECISION_SOURCE_LABELS:
-        requested = "baseline"
-    baseline_source = BASELINE_COHESION_DECISION_SOURCE
-    effective = baseline_source if requested == "baseline" else requested
-    if int(test_mode) < 2 and effective != baseline_source:
-        print(
-            f"[mode] cohesion_decision_source={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_source}"
-        )
-        effective = baseline_source
-    return requested, effective
-
-
-def resolve_movement_model(raw_value, test_mode: int) -> tuple[str, str]:
-    requested = str(raw_value).strip().lower()
-    if requested == "v1":
-        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use baseline, v3a, or v4a")
-    if requested not in {"baseline", "v3a", "v4a"}:
-        allowed_text = ", ".join(sorted({"baseline", "v3a", "v4a"}))
-        raise ValueError(
-            f"runtime.selectors.movement_model must be one of {{{allowed_text}}}, got {raw_value!r}"
-        )
-    baseline_model = "v3a"
     if requested == "baseline":
-        effective = baseline_model
-    else:
-        effective = requested
-    if int(test_mode) < 2 and effective != baseline_model:
-        print(
-            f"[mode] movement_model={requested} requested but test_mode={test_mode} only permits baseline runtime; remapping to {baseline_model}"
+        raise ValueError("runtime.selectors.movement_model=baseline has been retired; use v4a")
+    if requested == "v1":
+        raise ValueError("runtime.selectors.movement_model=v1 has been retired; use v4a")
+    if requested == "v3a":
+        raise ValueError(
+            "runtime.selectors.movement_model=v3a has been retired from the maintained test_run mainline; "
+            "use v4a"
         )
-        effective = baseline_model
-    return requested, effective
+    if requested != "v4a":
+        raise ValueError(f"runtime.selectors.movement_model must be 'v4a', got {raw_value!r}")
+    return requested
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -388,8 +337,6 @@ def clamp(v: float, lo: float, hi: float) -> float:
 
 
 def _direction_from_angle_deg(angle_deg: float) -> tuple[float, float]:
-    import math
-
     theta = math.radians(float(angle_deg))
     return (math.cos(theta), math.sin(theta))
 
@@ -444,8 +391,8 @@ def _resolve_point_setting(
     )
 
 
+# 2. Shared scenario-preparation context and config builders.
 def _load_common_scenario_context(
-    base_dir: Path,
     settings: dict,
     *,
     get_battlefield,
@@ -453,7 +400,7 @@ def _load_common_scenario_context(
     get_runtime_metatype,
 ) -> dict:
     archetypes = settings_api.load_json_file(PROJECT_ROOT / "archetypes" / "archetypes_v1_5.json")
-    metatype_settings = load_metatype_settings(base_dir, settings)
+    metatype_settings = load_metatype_settings(settings)
     random_seed = int(get_run("random_seed", -1))
     metatype_random_seed = int(get_runtime_metatype("random_seed", random_seed))
     background_map_seed = int(get_battlefield("background_map_seed", -1))
@@ -468,7 +415,6 @@ def _load_common_scenario_context(
         "effective_background_map_seed": effective_background_map_seed,
         "battlefield_cfg": {
             "arena_size": float(get_battlefield("arena_size", 200.0)),
-            "effective_background_map_seed": effective_background_map_seed,
         },
     }
 
@@ -484,22 +430,16 @@ def _build_unit_cfg(get_unit, get_runtime) -> dict:
 
 def _build_run_cfg(
     get_run,
-    get_runtime,
     *,
     max_time_steps_override: int | None = None,
-    test_mode_name_override: str | None = None,
 ) -> dict:
-    test_mode = parse_test_mode(get_run("test_mode", 0))
-    runtime_decision_source_requested, runtime_decision_source_effective = resolve_runtime_decision_source(
-        get_runtime("cohesion_decision_source", "baseline"),
-        test_mode,
-    )
     post_resolution_hold_steps = int(get_run("post_resolution_hold_steps", DEFAULT_POST_RESOLUTION_HOLD_STEPS))
     if post_resolution_hold_steps < 0:
         raise ValueError(
             "run_control.post_resolution_hold_steps must be >= 0, "
             f"got {post_resolution_hold_steps}"
         )
+    observer_enabled = bool(get_run("observer_enabled", True))
     return {
         "max_time_steps": (
             int(get_run("max_time_steps", -1))
@@ -507,28 +447,63 @@ def _build_run_cfg(
             else int(max_time_steps_override)
         ),
         "post_resolution_hold_steps": post_resolution_hold_steps,
-        "test_mode": test_mode,
-        "test_mode_name": (
-            str(test_mode_name_override)
-            if test_mode_name_override is not None
-            else test_mode_label(test_mode)
-        ),
-        "observer_enabled": test_mode >= 1,
-        "export_battle_report": False,
-        "runtime_decision_source_requested": runtime_decision_source_requested,
-        "runtime_decision_source_effective": runtime_decision_source_effective,
+        "observer_enabled": observer_enabled,
     }
 
 
-def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, test_mode: int) -> dict:
+def _prepare_shared_simulation_context(
+    base_dir: Path,
+    *,
+    settings_override: dict | None = None,
+) -> dict:
+    """Shared harness-side preparation for both battle and neutral scenario owners."""
+    settings = (
+        settings_override
+        if settings_override is not None
+        else settings_api.load_layered_test_run_settings(base_dir)
+    )
+    get_battlefield = partial(settings_api.get_battlefield_setting, settings)
+    get_observer = partial(settings_api.get_observer_setting, settings)
+    get_run = partial(settings_api.get_run_control_setting, settings)
+    get_runtime = partial(settings_api.get_runtime_setting, settings)
+    get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
+    get_unit = partial(settings_api.get_unit_setting, settings)
+    common_context = _load_common_scenario_context(
+        settings,
+        get_battlefield=get_battlefield,
+        get_run=get_run,
+        get_runtime_metatype=get_runtime_metatype,
+    )
+    movement_cfg = _build_movement_cfg(get_runtime, get_run)
+    v4a_reference_cfg = _resolve_v4a_reference_cfg(get_runtime)
+    movement_cfg["expected_reference_spacing"] = float(v4a_reference_cfg["expected_reference_spacing"])
+    movement_cfg["reference_layout_mode"] = str(v4a_reference_cfg["reference_layout_mode"])
+    return {
+        "settings": settings,
+        "archetypes": common_context["archetypes"],
+        "metatype_settings": common_context["metatype_settings"],
+        "effective_random_seed": common_context["effective_random_seed"],
+        "effective_metatype_random_seed": common_context["effective_metatype_random_seed"],
+        "effective_background_map_seed": common_context["effective_background_map_seed"],
+        "battlefield_cfg": common_context["battlefield_cfg"],
+        "run_cfg": _build_run_cfg(get_run),
+        "movement_cfg": movement_cfg,
+        "boundary_cfg": _build_boundary_cfg(get_runtime),
+        "v4a_reference_cfg": v4a_reference_cfg,
+        "unit_cfg": _build_unit_cfg(get_unit, get_runtime),
+        "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
+    }
+
+
+def _build_movement_cfg(get_runtime, get_run) -> dict:
     v4a_restore_strength = float(get_runtime("v4a_restore_strength", 0.25))
     if not 0.0 <= v4a_restore_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.restore_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.restore.strength must be within [0.0, 1.0], "
             f"got {v4a_restore_strength}"
         )
     v4a_reference_surface_mode = _require_choice(
-        "runtime.movement.v4a.reference_surface_mode",
+        "runtime.movement.v4a.reference.surface_mode",
         get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
         execution.V4A_REFERENCE_SURFACE_MODE_LABELS,
     )
@@ -537,7 +512,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_soft_morphology_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.soft_morphology_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.reference.soft_morphology_relaxation must be within (0.0, 1.0], "
             f"got {v4a_soft_morphology_relaxation}"
         )
     v4a_shape_vs_advance_strength = float(
@@ -545,7 +520,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.shape_vs_advance_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.transition.shape_vs_advance_strength must be within [0.0, 1.0], "
             f"got {v4a_shape_vs_advance_strength}"
         )
     v4a_heading_relaxation = float(
@@ -553,7 +528,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_heading_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.heading_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.transition.heading_relaxation must be within (0.0, 1.0], "
             f"got {v4a_heading_relaxation}"
         )
     v4a_battle_standoff_hold_band_ratio = float(
@@ -564,7 +539,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_standoff_hold_band_ratio must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.standoff_hold_band_ratio must be within [0.0, 1.0], "
             f"got {v4a_battle_standoff_hold_band_ratio}"
         )
     v4a_battle_target_front_strip_gap_bias = float(
@@ -575,7 +550,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
         raise ValueError(
-            "runtime.movement.v4a.battle_target_front_strip_gap_bias must be finite, "
+            "runtime.movement.v4a.battle.target_front_strip_gap_bias must be finite, "
             f"got {v4a_battle_target_front_strip_gap_bias}"
         )
     v4a_battle_hold_weight_strength = float(
@@ -586,7 +561,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_battle_hold_weight_strength <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_hold_weight_strength must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.hold_weight_strength must be within [0.0, 1.0], "
             f"got {v4a_battle_hold_weight_strength}"
         )
     v4a_battle_relation_lead_ticks = float(
@@ -597,7 +572,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_relation_lead_ticks must be finite and > 0, "
+            "runtime.movement.v4a.battle.relation_lead_ticks must be finite and > 0, "
             f"got {v4a_battle_relation_lead_ticks}"
         )
     v4a_battle_hold_relaxation = float(
@@ -608,7 +583,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_battle_hold_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_hold_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.hold_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_hold_relaxation}"
         )
     v4a_battle_approach_drive_relaxation = float(
@@ -619,7 +594,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_battle_approach_drive_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_approach_drive_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.approach_drive_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_approach_drive_relaxation}"
         )
     v4a_battle_near_contact_internal_stability_blend = float(
@@ -630,7 +605,7 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 <= v4a_battle_near_contact_internal_stability_blend <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_near_contact_internal_stability_blend must be within [0.0, 1.0], "
+            "runtime.movement.v4a.battle.near_contact_internal_stability_blend must be within [0.0, 1.0], "
             f"got {v4a_battle_near_contact_internal_stability_blend}"
         )
     v4a_battle_near_contact_speed_relaxation = float(
@@ -641,89 +616,44 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
     )
     if not 0.0 < v4a_battle_near_contact_speed_relaxation <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.battle_near_contact_speed_relaxation must be within (0.0, 1.0], "
+            "runtime.movement.v4a.battle.near_contact_speed_relaxation must be within (0.0, 1.0], "
             f"got {v4a_battle_near_contact_speed_relaxation}"
         )
-    v4a_engaged_speed_scale = float(
-        get_runtime("v4a_engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+    engaged_speed_scale = float(
+        get_runtime("engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
     )
-    if not 0.0 < v4a_engaged_speed_scale <= 1.0:
+    if not 0.0 < engaged_speed_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.engaged_speed_scale must be within (0.0, 1.0], "
-            f"got {v4a_engaged_speed_scale}"
+            "runtime.movement.v4a.engagement.engaged_speed_scale must be within (0.0, 1.0], "
+            f"got {engaged_speed_scale}"
         )
-    v4a_attack_speed_lateral_scale = float(
+    attack_speed_lateral_scale = float(
         get_runtime(
-            "v4a_attack_speed_lateral_scale",
+            "attack_speed_lateral_scale",
             execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
         )
     )
-    if not 0.0 < v4a_attack_speed_lateral_scale <= 1.0:
+    if not 0.0 < attack_speed_lateral_scale <= 1.0:
         raise ValueError(
-            "runtime.movement.v4a.attack_speed_lateral_scale must be within (0.0, 1.0], "
-            f"got {v4a_attack_speed_lateral_scale}"
+            "runtime.movement.v4a.engagement.attack_speed_lateral_scale must be within (0.0, 1.0], "
+            f"got {attack_speed_lateral_scale}"
         )
-    v4a_attack_speed_backward_scale = float(
+    attack_speed_backward_scale = float(
         get_runtime(
-            "v4a_attack_speed_backward_scale",
+            "attack_speed_backward_scale",
             execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
         )
     )
-    if not 0.0 <= v4a_attack_speed_backward_scale <= v4a_attack_speed_lateral_scale:
+    if not 0.0 <= attack_speed_backward_scale <= attack_speed_lateral_scale:
         raise ValueError(
-            "runtime.movement.v4a.attack_speed_backward_scale must be within "
-            f"[0.0, attack_speed_lateral_scale], got backward={v4a_attack_speed_backward_scale}, "
-            f"lateral={v4a_attack_speed_lateral_scale}"
+            "runtime.movement.v4a.engagement.attack_speed_backward_scale must be within "
+            f"[0.0, attack_speed_lateral_scale], got backward={attack_speed_backward_scale}, "
+            f"lateral={attack_speed_lateral_scale}"
         )
+    movement_model = resolve_movement_model(get_runtime("movement_model", "v4a"))
     movement_cfg = {
-        "model_effective": resolve_movement_model(get_runtime("movement_model", "baseline"), test_mode)[1],
-        "experiment_effective": _require_choice(
-            "runtime.movement_v3a_experiment",
-            get_runtime("movement_v3a_experiment", execution.V3A_EXPERIMENT_BASE),
-            execution.V3A_EXPERIMENT_LABELS,
-        ),
-        "centroid_probe_scale": float(get_runtime("centroid_probe_scale", 1.0)),
-        "pre_tl_target_substrate": _require_choice(
-            "runtime.pre_tl_target_substrate",
-            get_runtime("pre_tl_target_substrate", execution.PRE_TL_TARGET_SUBSTRATE_DEFAULT),
-            execution.PRE_TL_TARGET_SUBSTRATE_LABELS,
-        ),
-        "symmetric_movement_sync_enabled": bool(get_runtime("symmetric_movement_sync_enabled", True)),
-        "continuous_fr_shaping": {
-            "enabled": bool(get_runtime("continuous_fr_shaping_enabled", False)),
-            "mode": _require_choice(
-                "runtime.continuous_fr_shaping_mode",
-                get_runtime("continuous_fr_shaping_mode", execution.CONTINUOUS_FR_SHAPING_OFF),
-                execution.CONTINUOUS_FR_SHAPING_LABELS,
-            ),
-            **{
-                key: float(get_runtime(f"continuous_fr_shaping_{key}", default))
-                for key, default in {
-                    "a": 0.0,
-                    "sigma": 0.15,
-                    "p": 1.0,
-                    "q": 1.0,
-                    "beta": 0.0,
-                    "gamma": 0.0,
-                }.items()
-            },
-        },
-        "odw_posture_bias": {
-            "enabled": bool(get_runtime("odw_posture_bias_enabled", False)),
-            "k": float(get_runtime("odw_posture_bias_k", 0.3)),
-            "clip_delta": float(get_runtime("odw_posture_bias_clip_delta", 0.2)),
-        },
-        "v2_connect_radius_multiplier": 1.0,
-        "v3_connect_radius_multiplier_effective": (
-            float(get_runtime("v3_connect_radius_multiplier", execution.BASELINE_V3_CONNECT_RADIUS_MULTIPLIER))
-            if runtime_decision_source_effective == "v3_test"
-            else 1.0
-        ),
-        "v3_r_ref_radius_multiplier_effective": (
-            float(get_runtime("v3_r_ref_radius_multiplier", execution.BASELINE_V3_R_REF_RADIUS_MULTIPLIER))
-            if runtime_decision_source_effective == "v3_test"
-            else 1.0
-        ),
+        "model": movement_model,
+        "symmetric_movement_sync_enabled": bool(get_run("symmetric_movement_sync_enabled", True)),
         "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
@@ -737,124 +667,10 @@ def _build_movement_cfg(get_runtime, *, runtime_decision_source_effective: str, 
         "v4a_battle_approach_drive_relaxation": v4a_battle_approach_drive_relaxation,
         "v4a_battle_near_contact_internal_stability_blend": v4a_battle_near_contact_internal_stability_blend,
         "v4a_battle_near_contact_speed_relaxation": v4a_battle_near_contact_speed_relaxation,
-        "v4a_engaged_speed_scale": v4a_engaged_speed_scale,
-        "v4a_attack_speed_lateral_scale": v4a_attack_speed_lateral_scale,
-        "v4a_attack_speed_backward_scale": v4a_attack_speed_backward_scale,
+        "engaged_speed_scale": engaged_speed_scale,
+        "attack_speed_lateral_scale": attack_speed_lateral_scale,
+        "attack_speed_backward_scale": attack_speed_backward_scale,
     }
-    movement_cfg["centroid_probe_scale_effective"] = (
-        movement_cfg["centroid_probe_scale"]
-        if movement_cfg["model_effective"] in {"v3a", "v4a"}
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        else 1.0
-    )
-    movement_cfg["continuous_fr_shaping"]["effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["experiment_effective"] == execution.V3A_EXPERIMENT_PRECONTACT_CENTROID_PROBE
-        and movement_cfg["continuous_fr_shaping"]["enabled"]
-        and movement_cfg["continuous_fr_shaping"]["mode"] != execution.CONTINUOUS_FR_SHAPING_OFF
-        and movement_cfg["continuous_fr_shaping"]["a"] > 0.0
-    )
-    movement_cfg["continuous_fr_shaping"]["mode_effective"] = (
-        movement_cfg["continuous_fr_shaping"]["mode"]
-        if movement_cfg["continuous_fr_shaping"]["effective"]
-        else execution.CONTINUOUS_FR_SHAPING_OFF
-    )
-    movement_cfg["odw_posture_bias"]["enabled_effective"] = (
-        movement_cfg["model_effective"] == "v3a"
-        and movement_cfg["odw_posture_bias"]["enabled"]
-    )
-    movement_cfg["odw_posture_bias"]["k_effective"] = (
-        movement_cfg["odw_posture_bias"]["k"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.0
-    )
-    movement_cfg["odw_posture_bias"]["clip_delta_effective"] = (
-        movement_cfg["odw_posture_bias"]["clip_delta"]
-        if movement_cfg["odw_posture_bias"]["enabled_effective"]
-        else 0.2
-    )
-    movement_cfg["v4a_restore_strength_effective"] = (
-        movement_cfg["v4a_restore_strength"]
-        if movement_cfg["model_effective"] == "v4a"
-        else 1.0
-    )
-    movement_cfg["v4a_reference_surface_mode_effective"] = (
-        movement_cfg["v4a_reference_surface_mode"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS
-    )
-    movement_cfg["v4a_soft_morphology_relaxation_effective"] = (
-        movement_cfg["v4a_soft_morphology_relaxation"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT
-    )
-    movement_cfg["v4a_shape_vs_advance_strength_effective"] = (
-        movement_cfg["v4a_shape_vs_advance_strength"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT
-    )
-    movement_cfg["v4a_heading_relaxation_effective"] = (
-        movement_cfg["v4a_heading_relaxation"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_HEADING_RELAXATION_DEFAULT
-    )
-    movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"] = (
-        movement_cfg["v4a_battle_standoff_hold_band_ratio"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT
-    )
-    movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"] = (
-        movement_cfg["v4a_battle_target_front_strip_gap_bias"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT
-    )
-    movement_cfg["v4a_battle_hold_weight_strength_effective"] = (
-        movement_cfg["v4a_battle_hold_weight_strength"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT
-    )
-    movement_cfg["v4a_battle_relation_lead_ticks_effective"] = (
-        movement_cfg["v4a_battle_relation_lead_ticks"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT
-    )
-    movement_cfg["v4a_battle_hold_relaxation_effective"] = (
-        movement_cfg["v4a_battle_hold_relaxation"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_HOLD_RELAXATION_DEFAULT
-    )
-    movement_cfg["v4a_battle_approach_drive_relaxation_effective"] = (
-        movement_cfg["v4a_battle_approach_drive_relaxation"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT
-    )
-    movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"] = (
-        movement_cfg["v4a_battle_near_contact_internal_stability_blend"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT
-    )
-    movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"] = (
-        movement_cfg["v4a_battle_near_contact_speed_relaxation"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT
-    )
-    movement_cfg["v4a_engaged_speed_scale_effective"] = (
-        movement_cfg["v4a_engaged_speed_scale"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT
-    )
-    movement_cfg["v4a_attack_speed_lateral_scale_effective"] = (
-        movement_cfg["v4a_attack_speed_lateral_scale"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT
-    )
-    movement_cfg["v4a_attack_speed_backward_scale_effective"] = (
-        movement_cfg["v4a_attack_speed_backward_scale"]
-        if movement_cfg["model_effective"] == "v4a"
-        else execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT
-    )
-    movement_cfg.setdefault("expected_reference_spacing_effective", None)
-    movement_cfg.setdefault("reference_layout_mode_effective", None)
     return movement_cfg
 
 
@@ -866,48 +682,38 @@ def _build_boundary_cfg(get_runtime) -> dict:
     }
 
 
-def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_effective: str) -> dict:
+def _resolve_v4a_reference_cfg(get_runtime) -> dict:
     physical_min_spacing = float(get_runtime("min_unit_spacing", 1.0))
     if physical_min_spacing <= 0.0:
         raise ValueError(
             "runtime.physical.movement_low_level.min_unit_spacing must be > 0, "
             f"got {physical_min_spacing}"
         )
-    expected_reference_spacing = float(physical_min_spacing)
-    reference_layout_mode = REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0
-    if movement_model_effective != "v4a":
-        return {
-            "expected_reference_spacing": expected_reference_spacing,
-            "physical_min_spacing": physical_min_spacing,
-            "reference_layout_mode": reference_layout_mode,
-        }
-    runtime_section = settings.get("runtime", {})
-    if not isinstance(runtime_section, dict):
-        runtime_section = {}
-    v4a_testonly_cfg = settings_api.get_nested_mapping_value(
-        runtime_section,
-        ("movement", "v4a"),
-        {},
+    expected_reference_spacing_raw = get_runtime(
+        "v4a_expected_reference_spacing",
+        settings_api.MISSING,
     )
-    if not isinstance(v4a_testonly_cfg, dict):
-        v4a_testonly_cfg = {}
-    if "expected_reference_spacing" not in v4a_testonly_cfg:
+    if expected_reference_spacing_raw is settings_api.MISSING:
         raise ValueError(
-            "runtime.movement.v4a.expected_reference_spacing must be provided when movement_model=v4a"
+            "runtime.movement.v4a.reference.expected_reference_spacing must be provided when movement_model=v4a"
         )
-    expected_reference_spacing = float(v4a_testonly_cfg["expected_reference_spacing"])
+    expected_reference_spacing = float(expected_reference_spacing_raw)
     if expected_reference_spacing <= 0.0:
         raise ValueError(
-            "runtime.movement.v4a.expected_reference_spacing must be > 0, "
+            "runtime.movement.v4a.reference.expected_reference_spacing must be > 0, "
             f"got {expected_reference_spacing}"
         )
-    if "reference_layout_mode" not in v4a_testonly_cfg:
+    reference_layout_mode_raw = get_runtime(
+        "v4a_reference_layout_mode",
+        settings_api.MISSING,
+    )
+    if reference_layout_mode_raw is settings_api.MISSING:
         raise ValueError(
-            "runtime.movement.v4a.reference_layout_mode must be provided when movement_model=v4a"
+            "runtime.movement.v4a.reference.layout_mode must be provided when movement_model=v4a"
         )
     reference_layout_mode = _require_choice(
-        "runtime.movement.v4a.reference_layout_mode",
-        v4a_testonly_cfg["reference_layout_mode"],
+        "runtime.movement.v4a.reference.layout_mode",
+        reference_layout_mode_raw,
         REFERENCE_LAYOUT_MODE_LABELS,
     )
     return {
@@ -917,6 +723,7 @@ def _resolve_v4a_reference_cfg(settings: dict, get_runtime, *, movement_model_ef
     }
 
 
+# 3. Initial-state geometry builders.
 def _spawn_formation_units(
     *,
     units: dict[str, UnitState],
@@ -967,8 +774,6 @@ def resolve_effective_seed(seed_value: int) -> int:
 
 
 def build_initial_state(
-    fleet_a_params: PersonalityParameters,
-    fleet_b_params: PersonalityParameters,
     fleet_a_size: int,
     fleet_b_size: int,
     fleet_a_aspect_ratio: float,
@@ -1044,8 +849,8 @@ def build_initial_state(
     )
 
     fleets = {
-        "A": FleetState(fleet_id="A", parameters=fleet_a_params, unit_ids=tuple(fleet_a_unit_ids)),
-        "B": FleetState(fleet_id="B", parameters=fleet_b_params, unit_ids=tuple(fleet_b_unit_ids)),
+        "A": FleetState(fleet_id="A", unit_ids=tuple(fleet_a_unit_ids)),
+        "B": FleetState(fleet_id="B", unit_ids=tuple(fleet_b_unit_ids)),
     }
     return BattleState(
         tick=0,
@@ -1053,13 +858,12 @@ def build_initial_state(
         arena_size=arena_size,
         units=units,
         fleets=fleets,
-        last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
+        last_fleet_cohesion_score=build_initial_cohesion_map(fleets.keys()),
     )
 
 
 def build_single_fleet_initial_state(
     *,
-    fleet_params: PersonalityParameters,
     fleet_size: int,
     fleet_aspect_ratio: float,
     unit_spacing: float,
@@ -1102,7 +906,7 @@ def build_single_fleet_initial_state(
         arena_size=arena_size,
     )
     fleets = {
-        "A": FleetState(fleet_id="A", parameters=fleet_params, unit_ids=tuple(fleet_unit_ids)),
+        "A": FleetState(fleet_id="A", unit_ids=tuple(fleet_unit_ids)),
     }
     return BattleState(
         tick=0,
@@ -1110,39 +914,23 @@ def build_single_fleet_initial_state(
         arena_size=arena_size,
         units=units,
         fleets=fleets,
-        last_fleet_cohesion=build_initial_cohesion_map(fleets.keys()),
+        last_fleet_cohesion_score=build_initial_cohesion_map(fleets.keys()),
     )
 
 
+# 4. Public prepared-scenario owners consumed by test_run entry/execution.
 def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = None) -> dict:
-    settings = (
-        settings_override
-        if settings_override is not None
-        else settings_api.load_layered_test_run_settings(base_dir)
-    )
-    get_battlefield = partial(settings_api.get_battlefield_setting, settings)
-    get_collapse_shadow = partial(settings_api.get_collapse_shadow_setting, settings)
-    get_contact_model = partial(settings_api.get_contact_model_test_setting, settings)
-    get_event_bridge = partial(settings_api.get_event_bridge_setting, settings)
+    """Build the maintained battle-mode prepared payload for run_active_surface()."""
+    shared_context = _prepare_shared_simulation_context(base_dir, settings_override=settings_override)
+    settings = shared_context["settings"]
+    get_contact = partial(settings_api.get_contact_test_setting, settings)
     get_fleet = partial(settings_api.get_fleet_setting, settings)
-    get_observer = partial(settings_api.get_observer_setting, settings)
-    get_run = partial(settings_api.get_run_control_setting, settings)
     get_runtime = partial(settings_api.get_runtime_setting, settings)
-    get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
-    get_unit = partial(settings_api.get_unit_setting, settings)
-
-    common_context = _load_common_scenario_context(
-        base_dir,
-        settings,
-        get_battlefield=get_battlefield,
-        get_run=get_run,
-        get_runtime_metatype=get_runtime_metatype,
-    )
-    archetypes = common_context["archetypes"]
-    metatype_settings = common_context["metatype_settings"]
-    effective_random_seed = common_context["effective_random_seed"]
-    effective_metatype_random_seed = common_context["effective_metatype_random_seed"]
-    effective_background_map_seed = common_context["effective_background_map_seed"]
+    archetypes = shared_context["archetypes"]
+    metatype_settings = shared_context["metatype_settings"]
+    effective_random_seed = shared_context["effective_random_seed"]
+    effective_metatype_random_seed = shared_context["effective_metatype_random_seed"]
+    effective_background_map_seed = shared_context["effective_background_map_seed"]
 
     archetype_rng = random.Random(int(effective_metatype_random_seed))
     fleet_a_data = resolve_fleet_archetype_data(
@@ -1157,25 +945,14 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         get_fleet("fleet_b_archetype_id", "default"),
         rng=archetype_rng,
     )
-    fleet_a_params = to_personality_parameters(fleet_a_data)
-    fleet_b_params = to_personality_parameters(fleet_b_data)
+    fleet_a_parameters = to_personality_parameters(fleet_a_data)
+    fleet_b_parameters = to_personality_parameters(fleet_b_data)
 
-    battlefield_cfg = common_context["battlefield_cfg"]
-    run_cfg = _build_run_cfg(get_run, get_runtime)
-    movement_cfg = _build_movement_cfg(
-        get_runtime,
-        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
-        test_mode=run_cfg["test_mode"],
-    )
-    boundary_cfg = _build_boundary_cfg(get_runtime)
-    v4a_reference_cfg = _resolve_v4a_reference_cfg(
-        settings,
-        get_runtime,
-        movement_model_effective=movement_cfg["model_effective"],
-    )
-    movement_cfg["expected_reference_spacing_effective"] = float(v4a_reference_cfg["expected_reference_spacing"])
-    movement_cfg["reference_layout_mode_effective"] = str(v4a_reference_cfg["reference_layout_mode"])
-    battle_restore_bridge_active = movement_cfg["model_effective"] == "v4a"
+    battlefield_cfg = shared_context["battlefield_cfg"]
+    run_cfg = shared_context["run_cfg"]
+    movement_cfg = shared_context["movement_cfg"]
+    boundary_cfg = shared_context["boundary_cfg"]
+    v4a_reference_cfg = shared_context["v4a_reference_cfg"]
     spawn_margin = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     fleet_a_origin_x, fleet_a_origin_y = _resolve_point_setting(
         settings,
@@ -1226,10 +1003,8 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             f"min_unit_spacing={v4a_reference_cfg['physical_min_spacing']}"
         )
 
-    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
+    unit_cfg = shared_context["unit_cfg"]
     initial_state = build_initial_state(
-        fleet_a_params=fleet_a_params,
-        fleet_b_params=fleet_b_params,
         fleet_a_size=fleet_cfg["sizes"]["A"],
         fleet_b_size=fleet_cfg["sizes"]["B"],
         fleet_a_aspect_ratio=fleet_cfg["aspect_ratios"]["A"],
@@ -1253,26 +1028,18 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
         "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
         "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
-        "fsr_strength": float(get_runtime("fsr_strength", 0.0)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
-            "runtime.physical.contact_model.hostile_contact_impedance.active_mode",
-            get_contact_model(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
+            "runtime.physical.contact.hostile_contact_impedance.active_mode",
+            get_contact(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
             execution.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
         ),
         "hybrid_v2": {
-            key: float(get_contact_model(("hybrid_v2", key), default))
+            key: float(get_contact(("hybrid_v2", key), default))
             for key, default in {
                 "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
                 "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
                 "forward_damping_strength": execution.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
-            }.items()
-        },
-        "intent_unified_spacing_v1": {
-            key: float(get_contact_model(("intent_unified_spacing_v1", key), default))
-            for key, default in {
-                "scale": execution.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
-                "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
             }.items()
         },
     }
@@ -1282,27 +1049,6 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
             f"got {contact_cfg['fire_optimal_range_ratio']}"
         )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
-    contact_cfg["fsr_enabled"] = contact_cfg["fsr_strength"] > 0.0
-
-    observer_cfg = {
-        "bridge": {
-            "theta_split": float(get_event_bridge("theta_split", execution.BRIDGE_THETA_SPLIT_DEFAULT)),
-            "theta_env": float(get_event_bridge("theta_env", execution.BRIDGE_THETA_ENV_DEFAULT)),
-            "sustain_ticks": int(get_event_bridge("sustain_ticks", execution.BRIDGE_SUSTAIN_TICKS_DEFAULT)),
-        },
-        "collapse_shadow": {
-            key: cast(get_collapse_shadow(key, default))
-            for key, (cast, default) in {
-                "theta_conn_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT),
-                "theta_coh_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT),
-                "theta_force_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT),
-                "theta_attr_default": (float, execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT),
-                "attrition_window": (int, execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT),
-                "sustain_ticks": (int, execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT),
-                "min_conditions": (int, execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT),
-            }.items()
-        },
-    }
 
     execution_cfg = {
         "steps": run_cfg["max_time_steps"],
@@ -1314,8 +1060,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
     }
     simulation_runtime_cfg = {
-        "decision_source": run_cfg["runtime_decision_source_effective"],
-        "movement_model": movement_cfg["model_effective"],
+        "movement_model": movement_cfg["model"],
         "movement": movement_cfg,
         "contact": {
             **contact_cfg,
@@ -1325,185 +1070,100 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     }
     simulation_observer_cfg = {
         "enabled": run_cfg["observer_enabled"],
-        "bridge": observer_cfg["bridge"],
-        "collapse_shadow": observer_cfg["collapse_shadow"],
-        "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
+        "tick_timing_enabled": shared_context["tick_timing_enabled"],
         "runtime_diag_enabled": False,
     }
 
     return {
         "initial_state": initial_state,
-        "engine_cls": execution.TestModeEngineTickSkeleton,
         "execution_cfg": execution_cfg,
         "runtime_cfg": simulation_runtime_cfg,
         "observer_cfg": simulation_observer_cfg,
         "fleet_a_data": fleet_a_data,
         "fleet_b_data": fleet_b_data,
+        "fleet_a_parameters": fleet_a_parameters,
+        "fleet_b_parameters": fleet_b_parameters,
         "summary": {
             "effective_random_seed": effective_random_seed,
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
-            "test_mode": run_cfg["test_mode"],
-            "test_mode_name": run_cfg["test_mode_name"],
-            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
-            "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
-            "movement_model_effective": movement_cfg["model_effective"],
-            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
-            "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
-            "v4a_soft_morphology_relaxation_effective": float(
-                movement_cfg["v4a_soft_morphology_relaxation_effective"]
-            ),
-            "v4a_shape_vs_advance_strength_effective": float(
-                movement_cfg["v4a_shape_vs_advance_strength_effective"]
-            ),
-            "v4a_heading_relaxation_effective": float(
-                movement_cfg["v4a_heading_relaxation_effective"]
-            ),
-            "v4a_battle_standoff_hold_band_ratio_effective": float(
-                movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
-            ),
-            "v4a_battle_target_front_strip_gap_bias_effective": float(
-                movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"]
-            ),
-            "v4a_battle_hold_weight_strength_effective": float(
-                movement_cfg["v4a_battle_hold_weight_strength_effective"]
-            ),
-            "v4a_battle_relation_lead_ticks_effective": float(
-                movement_cfg["v4a_battle_relation_lead_ticks_effective"]
-            ),
-            "v4a_battle_hold_relaxation_effective": float(
-                movement_cfg["v4a_battle_hold_relaxation_effective"]
-            ),
-            "v4a_battle_approach_drive_relaxation_effective": float(
-                movement_cfg["v4a_battle_approach_drive_relaxation_effective"]
-            ),
-            "v4a_battle_near_contact_internal_stability_blend_effective": float(
-                movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"]
-            ),
-            "v4a_battle_near_contact_speed_relaxation_effective": float(
-                movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
-            ),
-            "v4a_engaged_speed_scale_effective": float(
-                movement_cfg["v4a_engaged_speed_scale_effective"]
-            ),
-            "v4a_attack_speed_lateral_scale_effective": float(
-                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
-            ),
-            "v4a_attack_speed_backward_scale_effective": float(
-                movement_cfg["v4a_attack_speed_backward_scale_effective"]
-            ),
-            "battle_restore_bridge_active": bool(battle_restore_bridge_active),
-            "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
-            "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
-            "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
+            "movement_model": movement_cfg["model"],
             "hostile_contact_impedance_mode": contact_cfg["hostile_contact_impedance_mode"],
-            "fire_optimal_range_ratio_effective": float(contact_cfg["fire_optimal_range_ratio"]),
-            "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
-            "export_battle_report": False,
         },
     }
 
 
 def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict | None = None) -> dict:
-    settings = (
-        settings_override
-        if settings_override is not None
-        else settings_api.load_layered_test_run_settings(base_dir)
-    )
-    get_battlefield = partial(settings_api.get_battlefield_setting, settings)
+    """Build the maintained neutral fixture prepared payload for run_active_surface()."""
+    shared_context = _prepare_shared_simulation_context(base_dir, settings_override=settings_override)
+    settings = shared_context["settings"]
     get_fixture = partial(settings_api.get_fixture_setting, settings)
-    get_observer = partial(settings_api.get_observer_setting, settings)
-    get_run = partial(settings_api.get_run_control_setting, settings)
     get_runtime = partial(settings_api.get_runtime_setting, settings)
-    get_runtime_metatype = partial(settings_api.get_runtime_metatype_setting, settings)
-    get_unit = partial(settings_api.get_unit_setting, settings)
 
     active_mode = _require_choice(
         "fixture.active_mode",
         get_fixture(("active_mode",), execution.FIXTURE_MODE_BATTLE),
         execution.FIXTURE_MODE_LABELS,
     )
-    if active_mode != execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1:
+    if active_mode != execution.FIXTURE_MODE_NEUTRAL:
         raise ValueError(
-            "prepare_neutral_transit_fixture requires fixture.active_mode=neutral_transit_v1, "
+            "prepare_neutral_transit_fixture requires fixture.active_mode=neutral, "
             f"got {active_mode!r}"
         )
-    common_context = _load_common_scenario_context(
-        base_dir,
-        settings,
-        get_battlefield=get_battlefield,
-        get_run=get_run,
-        get_runtime_metatype=get_runtime_metatype,
-    )
-    archetypes = common_context["archetypes"]
-    metatype_settings = common_context["metatype_settings"]
-    effective_random_seed = common_context["effective_random_seed"]
-    effective_metatype_random_seed = common_context["effective_metatype_random_seed"]
-    effective_background_map_seed = common_context["effective_background_map_seed"]
+    archetypes = shared_context["archetypes"]
+    metatype_settings = shared_context["metatype_settings"]
+    effective_random_seed = shared_context["effective_random_seed"]
+    effective_metatype_random_seed = shared_context["effective_metatype_random_seed"]
+    effective_background_map_seed = shared_context["effective_background_map_seed"]
 
     archetype_rng = random.Random(int(effective_metatype_random_seed))
     fleet_data = resolve_fleet_archetype_data(
         archetypes,
         metatype_settings,
-        str(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_archetype_id"), "default")),
+        str(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "fleet_archetype_id"), "default")),
         rng=archetype_rng,
     )
-    fleet_params = to_personality_parameters(fleet_data)
+    fleet_parameters = to_personality_parameters(fleet_data)
 
-    battlefield_cfg = common_context["battlefield_cfg"]
+    battlefield_cfg = shared_context["battlefield_cfg"]
     default_origin_x = max(1.0, battlefield_cfg["arena_size"] * DEFAULT_SPAWN_MARGIN_RATIO)
     default_origin_y = battlefield_cfg["arena_size"] * 0.5
     origin_x, origin_y = (
         float(value)
         for value in get_fixture(
-            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "origin_xy"),
+            (execution.FIXTURE_MODE_NEUTRAL, "origin_xy"),
             (default_origin_x, default_origin_y),
         )
     )
     objective_x, objective_y = (
         float(value)
         for value in get_fixture(
-            (execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "objective_point_xy"),
+            (execution.FIXTURE_MODE_NEUTRAL, "objective_point_xy"),
             (battlefield_cfg["arena_size"] - default_origin_x, default_origin_y),
         )
     )
-    fleet_size = int(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "fleet_size"), 100))
-    fleet_aspect_ratio = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "aspect_ratio"), 4.0))
-    stop_radius = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "stop_radius"), 2.0))
-    facing_angle_deg = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1, "facing_angle_deg"), 0.0))
+    fleet_size = int(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "fleet_size"), 100))
+    fleet_aspect_ratio = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "aspect_ratio"), 4.0))
+    stop_radius = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "stop_radius"), 2.0))
+    facing_angle_deg = float(get_fixture((execution.FIXTURE_MODE_NEUTRAL, "facing_angle_deg"), 0.0))
 
     if stop_radius < 0.0:
-        raise ValueError(f"fixture.neutral_transit_v1.stop_radius must be >= 0, got {stop_radius}")
+        raise ValueError(f"fixture.neutral.stop_radius must be >= 0, got {stop_radius}")
 
-    run_cfg = _build_run_cfg(
-        get_run,
-        get_runtime,
-        test_mode_name_override=execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
-    )
-    movement_cfg = _build_movement_cfg(
-        get_runtime,
-        runtime_decision_source_effective=run_cfg["runtime_decision_source_effective"],
-        test_mode=run_cfg["test_mode"],
-    )
-    v4a_reference_cfg = _resolve_v4a_reference_cfg(
-        settings,
-        get_runtime,
-        movement_model_effective=movement_cfg["model_effective"],
-    )
-    movement_cfg["expected_reference_spacing_effective"] = float(v4a_reference_cfg["expected_reference_spacing"])
-    movement_cfg["reference_layout_mode_effective"] = str(v4a_reference_cfg["reference_layout_mode"])
+    run_cfg = shared_context["run_cfg"]
+    movement_cfg = shared_context["movement_cfg"]
+    v4a_reference_cfg = shared_context["v4a_reference_cfg"]
 
-    unit_cfg = _build_unit_cfg(get_unit, get_runtime)
+    unit_cfg = shared_context["unit_cfg"]
     unit_spacing = float(v4a_reference_cfg["expected_reference_spacing"])
     if fleet_aspect_ratio <= 0.0 or unit_spacing <= 0.0:
         raise ValueError(
-            "fixture.neutral_transit_v1.aspect_ratio and expected reference spacing must be > 0, "
+            "fixture.neutral.aspect_ratio and expected reference spacing must be > 0, "
             f"got aspect_ratio={fleet_aspect_ratio}, spacing={unit_spacing}"
         )
 
     initial_state = build_single_fleet_initial_state(
-        fleet_params=fleet_params,
         fleet_size=fleet_size,
         fleet_aspect_ratio=fleet_aspect_ratio,
         unit_spacing=unit_spacing,
@@ -1525,7 +1185,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         "plot_diagnostics_enabled": True,
         "post_elimination_extra_ticks": run_cfg["post_resolution_hold_steps"],
         "fixture": {
-            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
+            "active_mode": execution.FIXTURE_MODE_NEUTRAL,
             "fleet_id": "A",
             "objective_contract_3d": {
                 "anchor_point_xyz": (objective_x, objective_y, 0.0),
@@ -1537,8 +1197,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         },
     }
     simulation_runtime_cfg = {
-        "decision_source": run_cfg["runtime_decision_source_effective"],
-        "movement_model": movement_cfg["model_effective"],
+        "movement_model": movement_cfg["model"],
         "movement": movement_cfg,
         "contact": {
             "attack_range": unit_cfg["attack_range"],
@@ -1546,7 +1205,6 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "fire_quality_alpha": 0.0,
             "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
             "contact_hysteresis_h": 0.0,
-            "fsr_strength": 0.0,
             "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
             "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
             "hybrid_v2": {
@@ -1554,104 +1212,30 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
                 "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
                 "forward_damping_strength": execution.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
             },
-            "intent_unified_spacing_v1": {
-                "scale": execution.HOSTILE_INTENT_UNIFIED_SPACING_SCALE_DEFAULT,
-                "strength": execution.HOSTILE_INTENT_UNIFIED_SPACING_STRENGTH_DEFAULT,
-            },
             "ch_enabled": False,
-            "fsr_enabled": False,
             "separation_radius": float(v4a_reference_cfg["physical_min_spacing"]),
         },
-        "boundary": _build_boundary_cfg(get_runtime),
+        "boundary": shared_context["boundary_cfg"],
     }
     simulation_observer_cfg = {
         "enabled": run_cfg["observer_enabled"],
-        "bridge": {
-            "theta_split": execution.BRIDGE_THETA_SPLIT_DEFAULT,
-            "theta_env": execution.BRIDGE_THETA_ENV_DEFAULT,
-            "sustain_ticks": execution.BRIDGE_SUSTAIN_TICKS_DEFAULT,
-        },
-        "collapse_shadow": {
-            "theta_conn_default": execution.COLLAPSE_V2_SHADOW_THETA_CONN_DEFAULT,
-            "theta_coh_default": execution.COLLAPSE_V2_SHADOW_THETA_COH_DEFAULT,
-            "theta_force_default": execution.COLLAPSE_V2_SHADOW_THETA_FORCE_DEFAULT,
-            "theta_attr_default": execution.COLLAPSE_V2_SHADOW_THETA_ATTR_DEFAULT,
-            "attrition_window": execution.COLLAPSE_V2_SHADOW_ATTRITION_WINDOW_DEFAULT,
-            "sustain_ticks": execution.COLLAPSE_V2_SHADOW_SUSTAIN_TICKS_DEFAULT,
-            "min_conditions": execution.COLLAPSE_V2_SHADOW_MIN_CONDITIONS_DEFAULT,
-        },
-        "tick_timing_enabled": bool(get_observer("tick_timing_enabled", True)),
+        "tick_timing_enabled": shared_context["tick_timing_enabled"],
         "runtime_diag_enabled": True,
     }
 
     return {
         "initial_state": initial_state,
-        "engine_cls": execution.TestModeEngineTickSkeleton,
         "execution_cfg": execution_cfg,
         "runtime_cfg": simulation_runtime_cfg,
         "observer_cfg": simulation_observer_cfg,
         "fleet_data": fleet_data,
+        "fleet_parameters": fleet_parameters,
         "summary": {
             "effective_random_seed": effective_random_seed,
             "effective_metatype_random_seed": effective_metatype_random_seed,
             "effective_background_map_seed": effective_background_map_seed,
-            "test_mode": run_cfg["test_mode"],
-            "test_mode_name": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
-            "runtime_decision_source_requested": run_cfg["runtime_decision_source_requested"],
-            "runtime_decision_source_effective": run_cfg["runtime_decision_source_effective"],
-            "movement_model_effective": movement_cfg["model_effective"],
-            "v4a_restore_strength_effective": float(movement_cfg["v4a_restore_strength_effective"]),
-            "v4a_reference_surface_mode_effective": str(movement_cfg["v4a_reference_surface_mode_effective"]),
-            "v4a_soft_morphology_relaxation_effective": float(
-                movement_cfg["v4a_soft_morphology_relaxation_effective"]
-            ),
-            "v4a_shape_vs_advance_strength_effective": float(
-                movement_cfg["v4a_shape_vs_advance_strength_effective"]
-            ),
-            "v4a_heading_relaxation_effective": float(
-                movement_cfg["v4a_heading_relaxation_effective"]
-            ),
-            "v4a_battle_standoff_hold_band_ratio_effective": float(
-                movement_cfg["v4a_battle_standoff_hold_band_ratio_effective"]
-            ),
-            "v4a_battle_target_front_strip_gap_bias_effective": float(
-                movement_cfg["v4a_battle_target_front_strip_gap_bias_effective"]
-            ),
-            "v4a_battle_hold_weight_strength_effective": float(
-                movement_cfg["v4a_battle_hold_weight_strength_effective"]
-            ),
-            "v4a_battle_relation_lead_ticks_effective": float(
-                movement_cfg["v4a_battle_relation_lead_ticks_effective"]
-            ),
-            "v4a_battle_hold_relaxation_effective": float(
-                movement_cfg["v4a_battle_hold_relaxation_effective"]
-            ),
-            "v4a_battle_approach_drive_relaxation_effective": float(
-                movement_cfg["v4a_battle_approach_drive_relaxation_effective"]
-            ),
-            "v4a_battle_near_contact_internal_stability_blend_effective": float(
-                movement_cfg["v4a_battle_near_contact_internal_stability_blend_effective"]
-            ),
-            "v4a_battle_near_contact_speed_relaxation_effective": float(
-                movement_cfg["v4a_battle_near_contact_speed_relaxation_effective"]
-            ),
-            "v4a_engaged_speed_scale_effective": float(
-                movement_cfg["v4a_engaged_speed_scale_effective"]
-            ),
-            "v4a_attack_speed_lateral_scale_effective": float(
-                movement_cfg["v4a_attack_speed_lateral_scale_effective"]
-            ),
-            "v4a_attack_speed_backward_scale_effective": float(
-                movement_cfg["v4a_attack_speed_backward_scale_effective"]
-            ),
-            "expected_reference_spacing_effective": float(v4a_reference_cfg["expected_reference_spacing"]),
-            "physical_min_spacing_effective": float(v4a_reference_cfg["physical_min_spacing"]),
-            "reference_layout_mode_effective": str(v4a_reference_cfg["reference_layout_mode"]),
+            "movement_model": movement_cfg["model"],
             "hostile_contact_impedance_mode": simulation_runtime_cfg["contact"]["hostile_contact_impedance_mode"],
-            "fire_optimal_range_ratio_effective": float(simulation_runtime_cfg["contact"]["fire_optimal_range_ratio"]),
-            "animate": False,
             "observer_enabled": run_cfg["observer_enabled"],
-            "export_battle_report": False,
-            "active_mode": execution.FIXTURE_MODE_NEUTRAL_TRANSIT_V1,
         },
     }

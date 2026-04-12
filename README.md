@@ -7,9 +7,9 @@ This repository is the engineering workspace for the Python runtime line (Phase 
 ## Project Status
 
 - Current execution baseline: `v5.0-alpha5`
-- Current movement baseline: `v3a` (`exp_precontact_centroid_probe`, `centroid_probe_scale = 0.5`)
-- Current runtime cohesion decision source baseline: `v3_test @ 1.1`
-- `v2` is retained as legacy runtime cohesion / collapse reference
+- Current movement baseline: `v4a`
+- Maintained `test_run` mainline no longer supports explicit `v3a` movement execution
+- Current maintained runtime cohesion geometry: fixed `v3_test`
 - Runtime language: `Python 3.11`
 - Governance model: App thread = governance; VS Code/Codex thread = engineering execution
 
@@ -46,18 +46,13 @@ Per tick:
   - normalization and initialization utilities
 - `runtime/engine_skeleton.py`
   - deterministic tick execution and layer implementations
-- `runtime/engine_driver_dummy.py`
-  - controlled run harness
 - `test_run/`
-  - local scenario runner, visualization entrypoints, run settings, BRF builder
-  - `test_run/battle_report_builder.py`
-    - BRF markdown assembly and tactical narrative helpers
+  - local scenario runner and run settings
 - `archetypes/`
   - runtime archetype data and metatype generation settings
 - `analysis/`
   - report standards: `analysis/engineering_reports/_standards/`
   - dated report packs: `analysis/engineering_reports/developments/YYYYMMDD/`
-  - exported battle reports: `analysis/exports/battle_reports/YYYYMMDD/`
   - exported videos: `analysis/exports/videos/`
 - `canonical/`
   - frozen governance/mapping/canonical references (read-only layer)
@@ -70,7 +65,7 @@ Use the current settings file:
 
 - `test_run/test_run_v1_0.settings.json`
 
-This file is the local visualization/observation profile.  
+This file is the local layered test-run profile.
 Governed experiment baselines should follow phase report settings (for example `analysis/phase_v_default.settings.json`).
 
 Run:
@@ -79,21 +74,11 @@ Run:
 .\.venv_check\Scripts\python.exe .\test_run\test_run_v1_0.py
 ```
 
-Artifact output conventions:
-
-- Battle report markdown exports default to:
-  - `analysis/exports/battle_reports/YYYYMMDD/`
-  - filename: `<topic>_<YYYYMMDD_HHMMSS>_Battle_Report_Framework_v1.0.md`
-- Video exports default root:
-  - `analysis/exports/videos/`
-  - runtime appends timestamp to generated filename to avoid overwrite.
-
 ## Configuration Notes
 
 - `test_run/test_run_v1_0.settings.json` active runtime structure:
   - `runtime.selectors`
   - `runtime.movement`
-  - `runtime.semantics`
   - `runtime.physical`
   - `runtime.observer`
 - Recommended demo spacing:
@@ -101,17 +86,11 @@ Artifact output conventions:
 - Density stress mode:
   - `runtime.physical.movement_low_level.min_unit_spacing = 1.0`
 - Fire quality anisotropy defaults (documented freeze):
-  - `runtime.physical.fire_control.fire_quality_alpha = 0.1`
-  - `runtime.physical.fire_control.alpha_safe_max = 0.15` (documentation-level bound)
+  - `runtime.physical.fire_control.fire_quality_alpha = 0.33`
+  - `runtime.physical.fire_control.alpha_safe_max = 1.0` (documentation-level current runtime clamp)
 - Runtime feature toggles (canonical):
-  - `runtime.physical.contact_model.contact_hysteresis_h <= 0` => CH disabled
-  - `runtime.physical.contact_model.fsr_strength <= 0` => FSR disabled
-  - Only `contact_hysteresis_h` / `fsr_strength` are used for runtime enable semantics
-- Current runtime collapse-signal semantics baseline:
-  - `runtime.selectors.cohesion_decision_source = baseline`
-  - baseline currently resolves to `v3_test`
-  - `runtime.semantics.collapse_signal.v3_connect_radius_multiplier = 1.1`
-  - `runtime.semantics.collapse_signal.v3_r_ref_radius_multiplier = 1.0`
+  - `runtime.physical.contact.contact_hysteresis_h <= 0` => CH disabled
+- Current maintained runtime cohesion line uses a fixed `v3_test` geometry on the active mainline.
 - Current exposed low-level movement knob:
   - `runtime.physical.movement_low_level.alpha_sep`
 - Hard-coded movement/projection constant still retained in engine:

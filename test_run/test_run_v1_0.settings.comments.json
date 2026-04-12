@@ -1,14 +1,14 @@
 {
   "fixture": {
-    "active_mode": "Test-only harness mode selector: battle | neutral_transit_v1. This is the only activation switch; default should remain battle so the maintained battle path stays unchanged.",
-    "neutral_transit_v1": {
+    "active_mode": "Test-only harness mode selector: battle | neutral. This is the only activation switch; default should remain battle so the maintained battle path stays unchanged.",
+    "neutral": {
       "objective_point_xy": "Single objective point as [x, y] for fixture-only objective injection. This is not canonical runtime target semantics.",
-      "stop_radius": "Fixture-only completion radius around objective_point_xy. Simulation stops when the single fleet centroid enters this radius.",
+      "stop_radius": "Neutral-only objective termination radius around objective_point_xy. It is used for objective-reached judgment and late clamp/termination semantics; it is not the battle hold mechanism.",
       "fleet_archetype_id": "Single-fleet archetype top-level key in archetypes/archetypes_v1_5.json (or 'default').",
-      "fleet_size": "Single-fleet initial unit count for neutral_transit_v1.",
-      "aspect_ratio": "Single-fleet initial formation col/row ratio for neutral_transit_v1.",
-      "origin_xy": "Single-fleet initial formation center anchor as [x, y] for neutral_transit_v1.",
-      "facing_angle_deg": "Single-fleet initial facing angle in degrees for neutral_transit_v1. 0=+X, 90=+Y."
+      "fleet_size": "Single-fleet initial unit count for neutral.",
+      "aspect_ratio": "Single-fleet initial formation col/row ratio for neutral.",
+      "origin_xy": "Single-fleet initial formation center anchor as [x, y] for neutral.",
+      "facing_angle_deg": "Single-fleet initial facing angle in degrees for neutral. 0=+X, 90=+Y."
     }
   },
   "fleet": {
@@ -28,64 +28,47 @@
     "initial_fleet_b_facing_angle_deg": "Fleet B initial facing angle in degrees. 0=+X, 90=+Y."
   },
   "visualization": {
-    "display_language": "Label language for plot names: 'EN' or 'ZH'.",
-    "animate": "Enable battlefield animation and frame capture.",
-    "plot_profile": "Plot selector: auto | baseline | extended. auto follows the effective cohesion source: v3_test => v3 plots, v2 => v2 plots. Explicit extended is only valid when the effective source is v3_test.",
-    "auto_zoom_2d": "Auto zoom battlefield view during animation (update every 50 ticks; true/false).",
-    "vector_display_mode": "Unit arrow direction mode: effective=post-projection displacement; free=pre-projection composite vector; attack=current attack-target direction (fallback effective if no target); composite=angle-bisector of attack and effective (fallback effective if no target).",
-    "show_attack_target_lines": "Visual-only toggle. Draw thin red lines each frame from attacker center (post-tick position) to current target center (post-tick position).",
-    "tick_plots_follow_battlefield_tick": "Visual-only toggle. If true, all tick-based plots unfold progressively with Battlefield tick; if false, full trajectories are shown immediately.",
-    "plot_smoothing_ticks": "Display-only smoothing window for non-Alive plots. Default 5 ticks. Raw telemetry/export values remain unchanged.",
-    "animation_play_speed": "Animation playback speed multiplier. 1.0 is baseline (historical default equals 100ms/frame when interval=100).",
-    "animation_frame_interval_ms": "Base animation playback interval per rendered frame in milliseconds (before play-speed multiplier).",
+    "display_language": "Display language for human-facing fleet/commander names used by the maintained 3D replay path. Supported values: EN | ZH.",
     "print_tick_summary": "Print per-tick summary logs to console."
   },
   "runtime": {
     "metatype": {
-      "settings_path": "Path to metatype generation config (default: archetypes/metatype_settings.json; Yang template + runtime sampling rules; Yang is not a canonical fixed archetype).",
-      "random_seed": "Random seed for metatype generation (Yang exploration commander / sampler). If omitted, falls back to run_control.random_seed. If -1, use true randomness."
+      "settings_path": "Path to metatype config (default: archetypes/metatype_settings.json; Yang display/identity template plus scenario-level sampling rules). These sampled personality values are retained only on the high-level prepared surface and do not enter maintained runtime mechanisms.",
+      "random_seed": "Random seed for scenario-level metatype/Yang sampling. If omitted, falls back to run_control.random_seed. If -1, use true randomness. This seed does not activate any runtime personality mechanism."
     },
     "selectors": {
-      "movement_model": "Runtime movement selector: baseline | v3a | v4a. baseline remains the maintained baseline (currently v3a). v4a is the bounded subtractive experimental line and should only be used when test_mode=2; current testonly layer may set it as the explicit test-mode default without changing the baseline.",
-      "cohesion_decision_source": "Runtime cohesion decision source selector: baseline | v2 | v3_test. baseline currently resolves to v3_test @ 1.1. test_mode=0/1 remap runtime to the current baseline source; test_mode=2 permits explicit legacy selection."
+      "movement_model": "Runtime movement selector for the maintained test_run mainline. The public selector is now v4a only; baseline and v3a have been retired."
     },
     "movement": {
       "v4a": {
-        "restore_strength": "Active v4a restore/cohesion bridge strength in [0.0, 1.0]. This surface reuses the runtime v3_test centroid-probe carrier inside v4a. 1.0 disables the bridge-specific attenuation and falls back to the base read; values below 1.0 enable exp_precontact_centroid_probe with the given scale.",
-        "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
-        "reference_layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
-        "reference_surface_mode": "Reference-surface generator mode for the v4a line. rigid_slots preserves the current exact dead-slot continuation read; soft_morphology_v1 switches to the bounded planar soft-morphology carrier.",
-        "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous.",
-        "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
-        "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots.",
-        "battle_standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
-        "battle_target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
-        "battle_hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
-        "battle_relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
-        "battle_hold_relaxation": "Raw-to-current relaxation for the near-contact v4a relation family in (0.0, 1.0]. This smooths battle_relation_gap, close_drive, brake_drive, and hold_weight before they affect active battle behavior.",
-        "battle_approach_drive_relaxation": "Raw-to-current relaxation for the near-contact v4a approach-drive path in (0.0, 1.0]. Kept separate so forward approach authority can lag or follow the signed relation at a different pace than hold/brake state.",
-        "battle_near_contact_internal_stability_blend": "Near-contact internal-speed unification blend in [0.0, 1.0]. Scales how strongly hold-weight pulls forward_transport_speed_scale back toward 1.0 and shape_speed_scale back toward a fleet-level advance floor while battle relation is active.",
-        "battle_near_contact_speed_relaxation": "Per-unit near-contact speed relaxation in (0.0, 1.0]. Smooths unit.max_speed toward transition_speed_target after the internal-stability blend has adjusted per-unit speed factors.",
-        "engaged_speed_scale": "Unit-level engaged speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
-        "attack_speed_lateral_scale": "Directional movement allowance for engaged units whose attack direction is lateral to their current orientation. Forward attack interpolates from this value up toward 1.0.",
-        "attack_speed_backward_scale": "Directional movement allowance for engaged units whose attack direction is backward relative to their current orientation. Must be <= attack_speed_lateral_scale."
-      },
-      "v3a": {
-        "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
-        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe on the v3a line. v4a no longer reads this setting directly; current v4a restore behavior instead uses its own restore_strength surface while still reusing the same underlying runtime carrier under v3_test.",
-        "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
-        "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
-        "odw_posture_bias": {
-          "enabled": "Enable bounded ODW posture-bias prototype inside v3a parallel/lateral pressure redistribution. v4a subtractive validation intentionally ignores this branch.",
-          "k": "Prototype ODW posture-bias gain. Recommended bounded exploration range: 0.2..0.4. Effective only when enabled=true and movement_model=v3a.",
-          "clip_delta": "Single clip half-width around 1.0 for ODW parallel-pressure scaling. 0.2 means clip to [0.8,1.2]; 1.0 means clip to [0.0,2.0]. Effective only when enabled=true and movement_model=v3a."
+        "restore": {
+          "strength": "Active v4a restore-strength seam in [0.0, 1.0]. Current v4a read is direct: restore_term = restore_strength * normalize(restore_vector). This seam no longer uses formation_rigidity, pursuit_drive, mobility_bias, or any hidden native scale. Current v4a movement also no longer depends on the old runtime cohesion decision source (`v2` vs `v3_test`) for this seam."
+        },
+        "reference": {
+          "expected_reference_spacing": "Expected/reference formation spacing for the v4a line. This is distinct from runtime.physical.movement_low_level.min_unit_spacing, which remains the physical-layer minimum spacing.",
+          "layout_mode": "Reference formation layout mode for the v4a line. Supported values are rect_centered_1.0 and rect_centered_4.0. This target reference aspect is distinct from the fleet's initial spawned aspect ratio.",
+          "surface_mode": "Current v4a-internal reference-surface seam. It remains candidate-specific because future movement candidates may coexist with v4a for a time; it is not a general movement/formation owner.",
+          "soft_morphology_relaxation": "Fleet-level morphology relaxation for the soft_morphology_v1 carrier in (0.0, 1.0]. Higher values contract toward the alive-ratio target envelope faster; lower values keep the morphology response softer and more continuous."
+        },
+        "transition": {
+          "shape_vs_advance_strength": "Continuous v4a transition seam in [0.0, 1.0]. Higher values reduce pure objective-chasing more aggressively when morphology error is large, leaving more movement budget for shape transition before arrival/hold.",
+          "heading_relaxation": "Continuous v4a heading-realization seam in (0.0, 1.0]. Higher values let the fleet heading follow desired target direction faster; lower values keep heading change more inertial and reduce abrupt transition pivots."
+        },
+        "battle": {
+          "standoff_hold_band_ratio": "Fleet-level battle standoff hold-band ratio in [0.0, 1.0]. Sets the width of the near-d* no-chase band as a fraction of attack_range.",
+          "target_front_strip_gap_bias": "Single v4a near-contact correction bias added to the base target front-strip gap. Current base read is max(0, fire_optimal_range - expected_reference_spacing), where fire_optimal_range = attack_range * fire_optimal_range_ratio. Negative values bring the battle relation inward; positive values push it outward. This is the last-stage correction term on target gap semantics, not a scaling of fleet-body geometry or of the final control error.",
+          "hold_weight_strength": "Battle-first reversible hold suppression strength in [0.0, 1.0]. 0.0 disables d*-hold suppression entirely; 1.0 applies the full bounded near-d* approach suppression. If fleets are pulled far apart again, hold weakens automatically and pre-contact-like approach resumes.",
+          "relation_lead_ticks": "Near-contact signed-relation lead window in ticks. Together with unit max_speed, this sets how early fleets begin to decelerate before target front-strip gap is reached.",
+          "hold_relaxation": "Raw-to-current relaxation for the near-contact v4a relation family in (0.0, 1.0]. This smooths battle_relation_gap, close_drive, brake_drive, and hold_weight before they affect active battle behavior.",
+          "approach_drive_relaxation": "Raw-to-current relaxation for the near-contact v4a approach-drive path in (0.0, 1.0]. Kept separate so forward approach authority can lag or follow the signed relation at a different pace than hold/brake state.",
+          "near_contact_internal_stability_blend": "Near-contact internal-speed unification blend in [0.0, 1.0]. Scales how strongly hold-weight pulls forward_transport_speed_scale back toward 1.0 and shape_speed_scale back toward a fleet-level advance floor while battle relation is active.",
+          "near_contact_speed_relaxation": "Per-unit near-contact speed relaxation in (0.0, 1.0]. Smooths unit.max_speed toward transition_speed_target after the internal-stability blend has adjusted per-unit speed factors."
+        },
+        "engagement": {
+          "engaged_speed_scale": "Current v4a candidate seam for engaged-movement speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
+          "attack_speed_lateral_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is lateral to current orientation. Forward attack interpolates from this value up toward 1.0.",
+          "attack_speed_backward_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is backward relative to current orientation. Must be <= attack_speed_lateral_scale."
         }
-      }
-    },
-    "semantics": {
-      "collapse_signal": {
-        "v3_connect_radius_multiplier": "Semantic connectivity-radius multiplier for runtime source v3_test. Current baseline-confirmed working value is 1.1.",
-        "v3_r_ref_radius_multiplier": "Scale-reference multiplier for runtime source v3_test. Keep at 1.0 unless a dedicated semantics review explicitly opens this second-stage variable."
       }
     },
     "physical": {
@@ -103,52 +86,28 @@
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
         "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
       },
-      "contact_model": {
+      "contact": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
-        "fsr_strength": "FSR per-tick relaxation strength. Runtime clamp is [0.0, 0.3]. fsr_strength<=0 disables FSR.",
         "hostile_contact_impedance": {
-          "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2 | intent_unified_spacing_v1.",
+          "active_mode": "Test-only hostile contact-impedance selector: off | hybrid_v2.",
           "hybrid_v2": {
             "radius_multiplier": "v2 hybrid local influence radius as a multiplier of min_unit_spacing.",
             "repulsion_max_disp_ratio": "v2 hybrid-only per-tick max hostile-repulsion displacement as a ratio of min_unit_spacing.",
             "forward_damping_strength": "v2 hybrid damping fraction removable from positive forward displacement at full local hostile proximity."
-          },
-          "intent_unified_spacing_v1": {
-            "scale": "Hostile occupancy / penetration-lookahead radius as a multiplier of min_unit_spacing for intent-layer penetration bias with unified final spacing resolution.",
-            "strength": "Continuous intent-layer penetration-bias strength applied before movement, with final spacing left to the unified baseline feasibility-resolution layer."
           }
         }
       }
     },
     "observer": {
-      "tick_timing_enabled": "Observer telemetry toggle for per-tick wall-clock elapsed time recording inside test_run. true records tick_elapsed_ms for each simulation tick; false skips timing capture. This is harness/runtime-observation only and does not change battle semantics.",
-      "event_bridge": {
-        "theta_split": "Tier-2 Formation Cut bridge threshold on split_separation (Channel-T condition).",
-        "theta_env": "Tier-2 Pocket Formation bridge threshold on angle_coverage (Channel-T condition).",
-        "sustain_ticks": "Sustain ticks required for Tier-2 bridge events (both cut/pocket)."
-      },
-      "collapse_shadow": {
-        "theta_conn_default": "Fallback theta_conn default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_coh_default": "Fallback theta_coh default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_force_default": "Fallback theta_force default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "theta_attr_default": "Fallback theta_attr default for collapse_v2_shadow when quantile threshold cannot be formed.",
-        "attrition_window": "Collapse_v2_shadow AttritionMomentum window W (ticks).",
-        "sustain_ticks": "Collapse_v2_shadow sustain S (ticks).",
-        "min_conditions": "Collapse_v2_shadow pressure condition threshold: minimum true conditions among 4 signals."
-      },
-      "report_inference": {
-        "strategic_inflection_sustain_ticks": "Sustain ticks for strategic inflection detection in BRF narrative (HP-size lead).",
-        "tactical_swing_sustain_ticks": "Sustain ticks for tactical swing clustering in BRF narrative (alive lead).",
-        "tactical_swing_min_amplitude": "Minimum absolute alive-lead amplitude for tactical swing clustering.",
-        "tactical_swing_min_gap_ticks": "Minimum tick gap used to merge nearby tactical swing crossings into one cluster."
-      }
+      "tick_timing_enabled": "Observer telemetry toggle for per-tick wall-clock elapsed time recording inside test_run. true records tick_elapsed_ms for each simulation tick; false skips timing capture. This is the single maintained runtime.observer switch and does not change battle semantics."
     }
   },
   "run_control": {
     "max_time_steps": "Maximum simulation ticks. If <=0, run until the first resolved stop condition (battle elimination or fixture objective arrival), then keep running for run_control.post_resolution_hold_steps more ticks, capped at 999 ticks.",
-    "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral_transit_v1 objective-arrival hold. Must be >= 0.",
+    "post_resolution_hold_steps": "Extra ticks to keep running after the first resolved stop condition. Used for both battle winner hold and neutral objective-arrival hold. Must be >= 0.",
     "random_seed": "General visualization seed (non-map). If -1, use true randomness.",
-    "test_mode": "Execution permission switch. 0/default: baseline runtime only. 1/observe: baseline runtime + observer/event/BRF. 2/test: explicit legacy/experimental runtime selectors permitted."
+    "symmetric_movement_sync_enabled": "Harness-side symmetric movement merge switch. This is a run-level execution control that removes cross-fleet sequential-update bias without touching frozen runtime.",
+    "observer_enabled": "Run-level observer/diagnostic capture switch for maintained test_run surfaces. true enables maintained observer telemetry and diagnostic exports; false keeps the run headless/quiet unless another explicit export path is requested."
   },
   "battlefield": {
     "arena_size": "Square battlefield size (0..arena_size).",

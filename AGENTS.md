@@ -53,6 +53,14 @@ The following layers are read-only:
 No modification allowed.
 No reinterpretation allowed.
 
+Any exception to a frozen layer requires:
+
+- explicit Human file-level approval
+- a named line of work
+- scope that stays local to that approval
+
+Such an exception does not generalize to nearby files or broader restructuring.
+
 AGENTS must not duplicate detailed governance doctrine, reporting standards, or template-operational rules.
 Those belong in the authoritative canonical / governance / `_standards` documents.
 
@@ -70,15 +78,32 @@ AGENTS must reference it without duplicating its detailed workflow.
 
 ---
 
-## R-04 - No Silent Refactor
+## R-04 - Ownership Truth and No Silent Refactor
 
 Codex must not:
 
-- Change architecture silently
-- Rename modules
-- Merge layers
-- Move logic between files
-- Adjust parameter meaning
+- change architecture silently
+- rename modules
+- merge layers
+- move logic between files
+- adjust parameter meaning
+
+Before changing active mechanism behavior, Codex must identify:
+
+- the active owner
+- any transitional bridge / carrier
+- any stale or historical surface that is no longer active
+
+Codex must not claim that a parameter path, carrier, or mechanism family is:
+
+- dead
+- retired
+- native
+- no longer depended on
+
+unless the current active code path has been verified.
+
+If comments, settings reference text, or local records no longer match active mechanism reality, Codex must correct that mismatch explicitly.
 
 Any structural suggestion must be discussed first.
 
@@ -103,6 +128,17 @@ Before writing code, Codex must:
 3. Confirm target file(s)
 4. Wait for approval if scope expands
 
+When analyzing or modifying active mechanism code under Human review, Codex must
+surface concrete implementation detail before or alongside edits so Human can
+inspect the source directly. This means identifying, as applicable:
+
+- active owner
+- exact target file(s)
+- formula or value path being changed
+- concrete variables / branches involved
+
+Do not hide mechanism reasoning behind high-level summaries alone.
+
 ---
 
 ## R-07 - Thread Sustainability (TS) Self-Check
@@ -114,37 +150,37 @@ Codex must perform a TS self-check:
 
 `Substantial turn` means any turn that:
 
-- Edits files
-- Runs multi-step experiments
-- Changes the execution plan materially
+- edits files
+- runs multi-step experiments
+- changes the execution plan materially
 
 If TS risk is detected, Codex must pause and propose thread migration.
 
 TS risk signals include:
 
-- Noisy/duplicative context reducing reasoning quality
-- Objectives split across multiple topics
-- Repeated context re-establishment
-- Evidence/log volume too large for reliable continuity
+- noisy or duplicative context reducing reasoning quality
+- objectives split across multiple topics
+- repeated context re-establishment
+- evidence or log volume too large for reliable continuity
 
 When migration is proposed, Codex must provide a `TS Migration Input` bundle with:
 
-- Objective and requested outcomes
-- Completed / in-progress / pending status
-- Critical constraints (AGENTS, frozen layers, governance boundaries)
-- Files changed and why
-- Validation evidence (commands/runs/key outputs)
-- Open risks and unknowns
-- Recommended next 1-3 actions
+- objective and requested outcomes
+- completed / in-progress / pending status
+- critical constraints (AGENTS, frozen layers, governance boundaries)
+- files changed and why
+- validation evidence (commands, runs, key outputs)
+- open risks and unknowns
+- recommended next 1-3 actions
 
 Default persistence requirement for migration:
 
-- Create a handoff package folder under `archive/ts_handoff_archive/TS_HANDOFF_<YYYYMMDD_HHMMSS>/`
-- Save one markdown handoff file in that package folder
-- Handoff filename pattern: `TS_HANDOFF_<YYYYMMDD_HHMMSS>.md`
-- Put all migration attachments in the same package folder
-- Do not generate or persist `test_run_v1_0_headless.log` / `test_run_v1_0_headless_timed.log` as TS migration artifacts
-- The handoff file must include baseline anchor, workspace state, reproducible validation commands, and carried governance constraints
+- create a handoff package folder under `docs/archive/ts_handoff_archive/TS_HANDOFF_<YYYYMMDD_HHMMSS>/`
+- save one markdown handoff file in that package folder
+- handoff filename pattern: `TS_HANDOFF_<YYYYMMDD_HHMMSS>.md`
+- put all migration attachments in the same package folder
+- do not generate or persist `test_run_v1_0_headless.log` / `test_run_v1_0_headless_timed.log` as TS migration artifacts
+- the handoff file must include baseline anchor, workspace state, reproducible validation commands, and carried governance constraints
 
 ---
 
@@ -154,13 +190,13 @@ Codex must not silently hide invalid input, invalid intermediate values, or ille
 
 If a value is invalid and the request/spec does not explicitly authorize fallback behavior, Codex must:
 
-- Expose the invalid value clearly
-- Prefer failing fast over silently continuing
-- Explain the impact if the process is allowed to continue
+- expose the invalid value clearly
+- prefer failing fast over silently continuing
+- explain the impact if the process is allowed to continue
 
 Allowed exception:
 
-- Explicitly bounded normalization/clamping that is already part of the requested/runtime semantics
+- explicitly bounded normalization or clamping that is already part of the requested or runtime semantics
 
 ---
 
@@ -168,14 +204,14 @@ Allowed exception:
 
 Codex must:
 
-- Commit/push only when explicitly requested by human
-- Stage only files within approved scope
-- Keep unrelated dirty files out of commit
-- Provide a short pre-commit summary (files + intent)
-- Run minimal relevant checks before commit
-- Use clear commit messages tied to requested scope
-- Push without force by default (`git push`)
-- Never force-push or amend unless explicitly requested
+- commit and push only when explicitly requested by Human
+- stage only files within approved scope
+- keep unrelated dirty files out of commit
+- provide a short pre-commit summary (files plus intent)
+- run minimal relevant checks before commit
+- use clear commit messages tied to requested scope
+- push without force by default (`git push`)
+- never force-push or amend unless explicitly requested
 
 If remote push fails, Codex must report exact failure and stop.
 
@@ -183,7 +219,7 @@ If remote push fails, Codex must report exact failure and stop.
 
 ## R-10 - Subtraction-First Cleanup Rule
 
-For cleanup / simplification work, Codex must prefer:
+For cleanup or simplification work, Codex must prefer:
 
 - deletion over additive indirection
 - direct shrinkage of the human-facing entrypoint over redistribution of weight
@@ -194,17 +230,25 @@ For cleanup / simplification work, Codex must prefer:
 The following do **not** count as simplification unless explicitly requested and clearly justified:
 
 - adding single-use passthrough wrappers
-- adding builder/helper layers whose main role is parameter transfer
+- adding builder or helper layers whose main role is parameter transfer
 - moving logic into more helper functions without materially shrinking the caller
 - converting direct code into orchestration scaffolding while total reading burden stays flat or increases
-- adding compatibility / fallback branches during a cleanup turn
+- adding compatibility or fallback branches during a cleanup turn
 
 When claiming simplification, Codex must be able to state concretely:
 
 - what visibly became smaller
 - what interface became narrower
 - what default stdout became quieter
-- what fallback / indirection was actually removed
+- what fallback or indirection was actually removed
+
+For regression repair after a Human-confirmed good/bad window exists, Codex must:
+
+1. use the Human-confirmed window as the highest-trust anchor
+2. perform subtraction-first isolation
+3. isolate one mechanism group at a time before adding another
+
+Chronology notes, intuition, or guessed commit timing are not proof of causality.
 
 ---
 
@@ -216,19 +260,19 @@ If a change is a `major item`, Codex must record it in a new independent documen
 
 - active mechanism availability
 - default experiment protocol or geometry baseline
-- runtime/observer interpretation boundary
+- runtime or observer interpretation boundary
 - public `test_run` configuration interface
-- formal retirement / freeze / deprecation status of a mechanism or parameter path
+- formal retirement, freeze, or deprecation status of a mechanism or parameter path
 
 Rules:
 
-- Do not back-edit old `analysis` to make it match later mechanism reality
-- Do not treat `LOCAL_CHANGES` as the only record for major items
-- Create or append a separate dated record document
-- State scope clearly:
-  - baseline/runtime
-  - test-only / harness-only
-  - protocol / policy only
+- do not back-edit old `analysis` to make it match later mechanism reality
+- do not treat `LOCAL_CHANGES` as the only record for major items
+- create or append a separate dated record document
+- state scope clearly:
+  - baseline or runtime
+  - test-only or harness-only
+  - protocol or policy only
 
 ---
 
@@ -236,11 +280,11 @@ Rules:
 
 For DOE or repeated experiment execution:
 
-- If total runs exceed `20`, execute in batches of at most `20`
-- The first batch may run in foreground
-- Remaining batches should run in background
+- if total runs exceed `20`, execute in batches of at most `20`
+- the first batch may run in foreground
+- remaining batches should run in background
 
-Detailed batch/checkpoint/reporting workflow belongs in the DOE `_standards`, not in AGENTS.
+Detailed batch, checkpoint, and reporting workflow belongs in the DOE `_standards`, not in AGENTS.
 
 ---
 
@@ -253,13 +297,13 @@ Before any remote push, Codex must update:
 
 Update scope for these two files is strictly high-level and path-oriented:
 
-- key features / subsystem purpose (brief)
-- key code paths / entry files / config files
+- key features or subsystem purpose (brief)
+- key code paths, entry files, config files
 - current mechanism availability status at high level
 
 Do not place governance doctrine details, report templates, or execution standards into these files.
 
-If no meaningful repo-structure/mechanism change happened in the scoped push, Codex must explicitly confirm they were reviewed and no update was needed.
+If no meaningful repo-structure or mechanism change happened in the scoped push, Codex must explicitly confirm they were reviewed and no update was needed.
 
 ---
 
@@ -291,6 +335,14 @@ For structural cleanup or architecture-adjacent tasks, Codex must default to the
 3. Small Edit
 4. Review
 
+For mechanism debugging, cleanup, or ownership clarification work, Codex must
+prefer sufficiently deep static code-path / owner analysis before dynamic test
+execution. Dynamic testing is validation of a narrowed hypothesis, not a
+replacement for code-path truth audit.
+
+If a requested mechanism-cleanup turn tries to skip static owner analysis
+without a bounded reason, Codex should push back.
+
 Codex must not jump directly from vague cleanup intent to broad autonomous rewrite.
 
 During cleanup work, Codex should prefer:
@@ -305,8 +357,6 @@ over:
 - broad speculative restructuring
 - pattern-driven helper proliferation
 - large unsupervised multi-file rewrites
-
----
 
 Codex operates under supervised engineering mode.
 Human is system architect.
