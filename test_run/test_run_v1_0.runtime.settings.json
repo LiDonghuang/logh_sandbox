@@ -13,8 +13,8 @@
   "fleet": {
     "fleet_a_archetype_id": "yang",
     "fleet_b_archetype_id": "reinhard",
-    "initial_fleet_a_size": 100,
-    "initial_fleet_b_size": 100,
+    "initial_fleet_a_size": 36,
+    "initial_fleet_b_size": 36,
     "initial_fleet_a_aspect_ratio": 1.0,
     "initial_fleet_b_aspect_ratio": 1.0,
     "initial_fleet_a_origin_xy": [
