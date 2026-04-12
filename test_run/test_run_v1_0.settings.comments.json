@@ -72,7 +72,7 @@
       },
       "v3a": {
         "experiment": "v3a experiment selector: base | exp_precontact_centroid_probe. This test-only subtree belongs in the layered testonly settings surface, not the normal runtime layer.",
-        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe. v4a currently reuses this direct-cohesion probe unchanged.",
+        "centroid_probe_scale": "Centroid probe scale in [0.0,1.0]. Effective only when experiment=exp_precontact_centroid_probe on the v3a line. v4a no longer reads this setting directly; current v4a restore behavior instead uses its own restore_strength surface while still reusing the same underlying runtime carrier under v3_test.",
         "pre_tl_target_substrate": "Legacy harness/test-only local enemy-reference substrate for pre-TL target evaluation on the older line. Supported set: nearest5_centroid (default), soft_local_weighted, soft_local_weighted_tight, weighted_local, local_cluster. The current v4a far-field battle carrier instead reads battle target as global enemy relation + d* and does not use these local enemy semantics in Layer A.",
         "symmetric_movement_sync_enabled": "Test-run harness-side symmetric movement merge. true removes cross-fleet sequential-update bias without modifying frozen runtime.",
         "odw_posture_bias": {
@@ -99,9 +99,9 @@
         "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
       },
       "fire_control": {
-        "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect; 0.1 is current recommended default.",
+        "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect. Runtime currently reads angle quality as max(0, 1 + alpha * cos(theta)), so front-facing quality is 1+alpha and fully backward quality is 1-alpha before other modifiers.",
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
-        "alpha_safe_max": "Documented safe upper bound for fire_quality_alpha: 0.15 (governance note)."
+        "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
       },
       "contact_model": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
