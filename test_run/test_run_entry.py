@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+# 1. Entry bootstrap for local test_run execution.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -10,6 +11,7 @@ from test_run import test_run_execution as execution
 from test_run import test_run_scenario as scenario
 
 
+# 2. Small validation / stdout helpers kept near the CLI surface.
 def _require_choice(name: str, raw_value, allowed: set[str]) -> str:
     value = str(raw_value).strip().lower()
     if value not in allowed:
@@ -47,6 +49,7 @@ def run_active_surface(
     execution_overrides: dict | None = None,
     emit_summary: bool = True,
 ) -> dict:
+    """Entry/orchestration host for prepared scenario -> run_simulation."""
     active_base_dir = base_dir or Path(__file__).resolve().parent
     prepared = (
         prepared_override
@@ -89,6 +92,7 @@ def run_active_surface(
     }
 
 
+# 3. Fixture-specific entry mode.
 def _run_neutral_fixture(*, base_dir: Path, settings: dict) -> None:
     prepared = scenario.prepare_neutral_transit_fixture(base_dir, settings_override=settings)
     print_tick_summary = bool(settings_api.get_visualization_setting(settings, "print_tick_summary", True))
@@ -151,6 +155,7 @@ def _run_neutral_fixture(*, base_dir: Path, settings: dict) -> None:
         )
 
 
+# 4. CLI main path: load settings -> choose mode -> prepare -> run.
 def main() -> None:
     base_dir = Path(__file__).resolve().parent
     settings = settings_api.load_layered_test_run_settings(base_dir)

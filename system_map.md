@@ -29,7 +29,11 @@ Authority: Reference only, not canonical semantics authority
 Current maintained runtime read:
 
 - maintained movement model is `v4a` only
-- maintained `integrate_movement()` hot path is runtime-owned again
+- maintained tick-stage ownership is runtime-owned again:
+  - `step`
+  - `evaluate_target`
+  - `integrate_movement`
+  - `resolve_combat`
 - active `v4a` restore is direct:
   - `restore_term = restore_strength * normalize(restore_vector)`
 - active `v4a` no longer depends on:
@@ -47,9 +51,9 @@ Current maintained runtime read:
 - `test_run/test_run_scenario.py`
   - settings resolution and scenario/effective-surface build
 - `test_run/test_run_execution.py`
-  - maintained execution host
+  - maintained execution/orchestration host
   - shared `v4a` movement-family host for `battle` and `neutral`
-  - battle/fixture bundles remain as carriers, but maintained movement hot-path ownership is back in runtime
+  - battle/fixture bundles remain as carriers, while maintained tick semantics are back in runtime
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers only
 - `test_run/settings_accessor.py`
@@ -100,6 +104,8 @@ Current viewer read:
 - Panda3D viewer is replay/view only
 - viewer still consumes `visualization.display_language`
 - viewer-facing fleet geometry now consumes the maintained `fleet_body_summary` replay contract
+- `app.py` owns viewer orchestration / playback / HUD cadence
+- `unit_renderer.py` owns bounded rendering carriers
 - no old 2D viz / BRF surface remains in the active mainline
 
 ### 6. Documentation / Records Layer
@@ -132,9 +138,9 @@ Do **not** read the active tree as still owning:
 
 ## Active Debts Still Worth Watching
 
-- large maintained hot-path functions that need structural tightening
+- large maintained files that may still benefit from bounded same-file layering review
 - remaining legacy wording in comments/reference surfaces
-- deeper harness/runtime geometry unification beyond `fleet_body_summary` Phase 1
+- formation-only design and ownership simplification as a separate next carrier
 
 ## Interpretation Guardrails
 

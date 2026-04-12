@@ -16,14 +16,18 @@ from panda3d.core import (
 
 from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
 
+# =========================================================
+# File-level renderer constants
+# =========================================================
+
 FIRE_LINK_MODES = {"disabled", "enabled"}
-FIRE_LINK_ALPHA = 0.24
-FIRE_LINK_THICKNESS = 1.25
+FIRE_LINK_ALPHA = 0.2
+FIRE_LINK_THICKNESS = 0.2
 FIRE_LINK_CENTER_OFFSET = 0.5
-FIRE_LINK_PULSE_SPACING = 1.00
-FIRE_LINK_PULSE_LENGTH = 0.75
-FIRE_LINK_BASE_SPEED_PER_SECOND = 0.50
-FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 1.00
+FIRE_LINK_PULSE_SPACING = 2.7
+FIRE_LINK_PULSE_LENGTH = 0.3
+FIRE_LINK_BASE_SPEED_PER_SECOND = 5.0
+FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.2
 FIRE_LINK_BEAM_SPREAD = 0.10
 FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.10
 FIRE_LINK_BEAM_COUNT_BY_BUCKET = {
@@ -66,7 +70,7 @@ CLUSTER_VISIBLE_INDICES_BY_BUCKET = {
 CLUSTER_SHIP_COLOR = (0.36, 0.38, 0.42, 1.0)
 CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
-CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.75, 1.0)
+CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.6, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
 CLUSTER_SWAY_AMPLITUDE_X = 0.04
 CLUSTER_SWAY_AMPLITUDE_Y = 0.05
@@ -102,6 +106,10 @@ FLEET_HALO_LAYERS = (
     (0.7, 6.1, 0.10),
 )
 
+
+# =========================================================
+# Pure color / geometry helpers
+# =========================================================
 
 def _hex_to_rgba(color: str) -> tuple[float, float, float, float]:
     normalized = str(color).strip().lstrip("#")
@@ -266,6 +274,10 @@ def _build_cluster_ship_sway_profiles() -> tuple[dict[str, float], ...]:
     )
 
 
+# =========================================================
+# Viewer-local mesh template builders
+# =========================================================
+
 def _build_wedge_template(name: str) -> NodePath:
     vertex_format = GeomVertexFormat.getV3()
     vertex_data = GeomVertexData(name, vertex_format, Geom.UHStatic)
@@ -385,6 +397,11 @@ def _build_cluster_ship_template(name: str) -> NodePath:
 
 
 class UnitRenderer:
+    """Maintained viewer-local unit/overlay renderer for replay playback."""
+
+    # -----------------------------------------------------
+    # A. renderer bootstrap / public control surface
+    # -----------------------------------------------------
     def __init__(self, parent: NodePath, replay: ReplayBundle, *, fire_link_mode: str = "enabled") -> None:
         self._parent = parent.attachNewNode("unit_renderer")
         self._replay = replay
@@ -428,6 +445,9 @@ class UnitRenderer:
             raise ValueError(f"DUAL_LAYER_DISTANCE_BY_LEVEL must be non-decreasing; got {self._dual_layer_distances!r}.")
         self._sync_objective_marker()
 
+    # -----------------------------------------------------
+    # B. viewer overlay / fire-link / halo support
+    # -----------------------------------------------------
     def _build_fleet_halo_baselines(self) -> dict[str, tuple[float, float]]:
         if not self._replay.frames:
             return {}
@@ -469,6 +489,18 @@ class UnitRenderer:
 
     def set_playback_active(self, playback_active: bool) -> None:
         self._playback_active = bool(playback_active)
+
+    def set_replay(self, replay: ReplayBundle) -> None:
+        # App-facing replay swap seam: refresh renderer-owned carriers without
+        # exposing renderer-private storage to the viewer host.
+        self._replay = replay
+        self._fleet_halo_baselines = self._build_fleet_halo_baselines()
+        self._fleet_halo_state = {}
+        self._current_frame = None
+        self._next_fire_link_frame = None
+        self._fire_link_position_alpha = 0.0
+        self._last_fire_link_signature = None
+        self._sync_objective_marker()
 
     def refresh_fire_links(
         self,
@@ -748,7 +780,7 @@ class UnitRenderer:
             segments_count=OBJECTIVE_MARKER_SEGMENTS,
         )
 
-    def _sync_fleet_halos(
+    def sync_fleet_halos(
         self,
         frame: ViewerFrame,
         *,
@@ -816,6 +848,9 @@ class UnitRenderer:
                 halo_np.removeNode()
             del self._fleet_halo_nodes[stale_fleet_id]
 
+    # -----------------------------------------------------
+    # C. per-frame unit transforms
+    # -----------------------------------------------------
     def sync_frame(self, frame: ViewerFrame, *, pulse_phase: float = 0.0) -> None:
         self.set_fire_link_pulse_phase(pulse_phase)
         self._current_frame = frame
@@ -876,7 +911,7 @@ class UnitRenderer:
             self._cluster_ship_sway_restored.pop(stale_key, None)
             self._cluster_ship_visible_masks.pop(stale_key, None)
 
-        self._sync_fleet_halos(frame)
+        self.sync_fleet_halos(frame)
 
     def apply_interpolated_transforms(
         self,

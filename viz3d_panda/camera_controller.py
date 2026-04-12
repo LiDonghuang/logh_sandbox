@@ -8,6 +8,10 @@ from panda3d.core import Point2, Point3
 from viz3d_panda.replay_source import ViewerFrame
 
 
+# =========================================================
+# File-level camera-control constants
+# =========================================================
+
 RESET_VIEW_KEY_EVENTS = ("`", "~")
 DEFAULT_TOPDOWN_YAW_DEGREES = 0.0
 DEFAULT_TOPDOWN_PITCH_DEGREES = -89.0
@@ -26,6 +30,11 @@ TRACKED_CAMERA_BLEND_GEAR5 = 0.34
 
 
 class OrbitCameraController:
+    """Viewer-local orbit/pan/tracking camera controller for replay playback."""
+
+    # -----------------------------------------------------
+    # A. input wiring / mouse interaction
+    # -----------------------------------------------------
     def __init__(self, app: ShowBase, *, arena_size: float) -> None:
         self._app = app
         self._arena_size = float(arena_size)
@@ -58,6 +67,9 @@ class OrbitCameraController:
 
         self.reset()
 
+    # -----------------------------------------------------
+    # B. shared geometry / tracking helpers
+    # -----------------------------------------------------
     def _mouse_pos(self) -> tuple[float, float] | None:
         watcher = getattr(self._app, "mouseWatcherNode", None)
         if watcher is None or not watcher.hasMouse():
@@ -363,6 +375,9 @@ class OrbitCameraController:
             )
         return True
 
+    # -----------------------------------------------------
+    # C. public camera control surface
+    # -----------------------------------------------------
     def set_playback_level_index(self, playback_level_index: int) -> None:
         self._playback_level_index = max(0, int(playback_level_index))
 

@@ -3,6 +3,10 @@ from __future__ import annotations
 from panda3d.core import AmbientLight, DirectionalLight, LineSegs, NodePath, TransparencyAttrib
 
 
+# =========================================================
+# Viewer scene assembly helpers
+# =========================================================
+
 def _attach_lights(root: NodePath) -> None:
     ambient = AmbientLight("viewer_ambient")
     ambient.setColor((0.50, 0.54, 0.60, 1.0))
@@ -69,6 +73,7 @@ def _attach_axes(root: NodePath, *, arena_size: float) -> None:
 
 
 def build_scene(root: NodePath, *, arena_size: float) -> NodePath:
+    """Build the bounded viewer-local scene shell for replay playback."""
     arena_size = float(arena_size)
     scene_root = root.attachNewNode("viewer_scene")
     _attach_lights(scene_root)

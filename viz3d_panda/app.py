@@ -39,6 +39,10 @@ from viz3d_panda.scene_builder import build_scene
 from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
 
+# =========================================================
+# File-level viewer app constants
+# =========================================================
+
 WINDOW_TITLE = "LOGH dev_v2.0 Panda3D Viewer Scaffold"
 AVATAR_DIR = Path(__file__).resolve().parents[1] / "visual" / "avatars"
 PLAYBACK_FPS_LEVELS = (2.0, 4.0, 6.0, 10.0, 20.0)
@@ -103,6 +107,10 @@ CJK_FONT_CANDIDATES = (
     Path("C:/Windows/Fonts/simsun.ttc"),
 )
 
+
+# =========================================================
+# File-level viewer helpers
+# =========================================================
 
 def _resolve_avatar_image_path(avatar_id: object, *, preferred_size: str | None = None) -> Path | None:
     stem = str(avatar_id).strip() if avatar_id is not None else ""
@@ -421,6 +429,11 @@ def _trim_invalid_terminal_camera_take_samples(
 
 
 class FleetViewerApp(ShowBase):
+    """Maintained Panda3D playback host for a prebuilt viewer replay bundle."""
+
+    # -----------------------------------------------------
+    # A. bootstrap / shared viewer state
+    # -----------------------------------------------------
     def __init__(
         self,
         replay: ReplayBundle,
@@ -544,6 +557,9 @@ class FleetViewerApp(ShowBase):
         self.go_to_frame(0)
         self.taskMgr.add(self._tick, "fleet_viewer_tick")
 
+    # -----------------------------------------------------
+    # B. camera-take recording / playback support
+    # -----------------------------------------------------
     def _set_display_timing(self, *, position_alpha: float, pulse_phase: float) -> None:
         self._current_display_position_alpha = max(0.0, min(1.0, float(position_alpha)))
         self._current_display_pulse_phase = max(0.0, min(1.0, float(pulse_phase)))
@@ -741,7 +757,7 @@ class FleetViewerApp(ShowBase):
                 next_frame,
                 alpha=position_alpha,
             )
-            self._unit_renderer._sync_fleet_halos(
+            self._unit_renderer.sync_fleet_halos(
                 frame,
                 next_frame=next_frame,
                 position_alpha=position_alpha,
@@ -756,6 +772,9 @@ class FleetViewerApp(ShowBase):
         self._refresh_overlay()
         self._refresh_camera_take_overlay()
 
+    # -----------------------------------------------------
+    # C. playback controls / viewer toggles
+    # -----------------------------------------------------
     def _adjust_playback_speed(self, delta: int) -> None:
         next_index = max(0, min(len(PLAYBACK_FPS_LEVELS) - 1, self._playback_level_index + int(delta)))
         self._playback_level_index = next_index
@@ -786,7 +805,7 @@ class FleetViewerApp(ShowBase):
         if reloaded_replay is None:
             raise ValueError(f"direction-mode cache missing required mode {next_mode!r}.")
         self._replay = reloaded_replay
-        self._unit_renderer._replay = reloaded_replay
+        self._unit_renderer.set_replay(reloaded_replay)
         self._current_frame_index = max(0, min(current_frame_index, len(self._replay.frames) - 1))
         self._playing = current_playing
         self._set_display_timing(position_alpha=current_position_alpha, pulse_phase=current_pulse_phase)
@@ -859,6 +878,9 @@ class FleetViewerApp(ShowBase):
         self._sync_corner_avatar_cards(frame)
         self._sync_fleet_avatar_overlays()
 
+    # -----------------------------------------------------
+    # D. avatar / HUD overlay support
+    # -----------------------------------------------------
     def _build_avatar_overlays(self) -> None:
         raw_avatars = self._replay.metadata.get("fleet_avatars", {})
         if not isinstance(raw_avatars, dict):
@@ -1407,6 +1429,9 @@ class FleetViewerApp(ShowBase):
         self._control_text.setText("\n".join(control_lines))
         self._align_hud_block_to_bottom(self._control_text, line_count=len(control_lines), side="right")
 
+    # -----------------------------------------------------
+    # E. main playback loop
+    # -----------------------------------------------------
     def _tick(self, task):
         dt = ClockObject.getGlobalClock().getDt()
         if self._camera_take_notice_seconds_remaining > 0.0:
@@ -1448,7 +1473,7 @@ class FleetViewerApp(ShowBase):
                         next_frame,
                         alpha=smoothing_alpha,
                     )
-                    self._unit_renderer._sync_fleet_halos(
+                    self._unit_renderer.sync_fleet_halos(
                         current_frame,
                         next_frame=next_frame,
                         position_alpha=smoothing_alpha,
@@ -1493,6 +1518,10 @@ class FleetViewerApp(ShowBase):
         return task.cont
 
 
+# =========================================================
+# File-level export / CLI surface
+# =========================================================
+
 def _configure_window(*, title: str, width: int, height: int, offscreen: bool = False) -> None:
     loadPrcFileData("", "notify-level-display error")
     loadPrcFileData("", "notify-level-windisplay error")
@@ -1512,6 +1541,7 @@ def export_camera_take_video(
     window_height: int,
     offscreen: bool,
 ) -> None:
+    """Render a saved camera take to mp4 through the bounded viewer path."""
     take_path, take_payload = _load_camera_take_payload(str(camera_take_path_text))
     replay_request = dict(take_payload["replay_request"])
     if output_mp4_path_text is None:
@@ -1745,6 +1775,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry for interactive Panda3D replay playback."""
     args = _parse_args(argv)
 
     if args.camera_take_output is None:

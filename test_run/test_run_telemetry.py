@@ -4,10 +4,12 @@ from collections.abc import Mapping
 from runtime.runtime_v0_1 import BattleState
 
 
+# 1. Small telemetry-only numeric helpers.
 def _clamp01(value: float) -> float:
     return min(1.0, max(0.0, value))
 
 
+# 2. Geometry/intermix metrics derived from runtime state snapshots.
 def compute_hostile_intermix_metrics(
     state: BattleState,
     separation_radius: float,
@@ -75,6 +77,7 @@ def compute_hostile_intermix_metrics(
     }
 
 
+# 3. Runtime debug payload flattening for observer/execution consumers.
 def extract_runtime_debug_payload(diag_tick: dict) -> dict:
     if not isinstance(diag_tick, dict):
         return {}

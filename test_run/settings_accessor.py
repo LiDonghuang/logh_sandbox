@@ -7,6 +7,7 @@ MISSING = object()
 DEFAULT_TEST_RUN_RUNTIME_SETTINGS_PATH = "test_run/test_run_v1_0.runtime.settings.json"
 DEFAULT_TEST_RUN_TESTONLY_SETTINGS_PATH = "test_run/test_run_v1_0.testonly.settings.json"
 
+# 1. Runtime-facing path maps used by the public accessor surface.
 RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
@@ -100,6 +101,7 @@ OBSERVER_SETTING_PATHS = {
 }
 
 
+# 2. Layered settings loading and fail-fast path resolution.
 def load_json_file(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
@@ -124,6 +126,7 @@ def resolve_optional_json_path(configured_path: str, default_path: str) -> Path:
 
 
 def load_layered_test_run_settings(base_dir: Path) -> dict:
+    """Load base + required layer files without silent fallback."""
     base_settings_path = base_dir / "test_run_v1_0.settings.json"
     settings = load_json_file(base_settings_path)
     if not isinstance(settings, dict):
@@ -160,6 +163,7 @@ def load_layered_test_run_settings(base_dir: Path) -> dict:
     return settings
 
 
+# 3. Shared nested lookup helpers for the public accessors below.
 def get_section_setting(settings: dict, section: str, key: str, default):
     section_data = settings.get(section, {})
     if isinstance(section_data, dict) and key in section_data:
@@ -176,6 +180,7 @@ def get_nested_mapping_value(data: dict, path: tuple[str, ...], default=MISSING)
     return current
 
 
+# 4. Public accessor surface for harness/scenario callers.
 def get_visualization_setting(settings: dict, key: str, default):
     section = settings.get("visualization", {})
     if isinstance(section, dict) and key in section:

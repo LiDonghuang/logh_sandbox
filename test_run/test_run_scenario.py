@@ -49,6 +49,7 @@ PERSONALITY_PARAM_KEYS = (
 DEFAULT_METATYPE_SETTINGS_PATH = "archetypes/metatype_settings.json"
 
 
+# 1. High-level archetype / metatype inputs retained above runtime state.
 def load_metatype_settings(settings: dict) -> dict:
     configured_path = str(
         settings_api.get_runtime_metatype_setting(settings, "settings_path", DEFAULT_METATYPE_SETTINGS_PATH)
@@ -223,6 +224,8 @@ def resolve_fleet_archetype_data(
     )
 
 
+# PersonalityParameters remains a high-level prepared payload only; it does not
+# flow back into maintained runtime state evolution on the current mainline.
 def to_personality_parameters(data: dict) -> PersonalityParameters:
     return PersonalityParameters(
         archetype_id=data["name"],
@@ -334,8 +337,6 @@ def clamp(v: float, lo: float, hi: float) -> float:
 
 
 def _direction_from_angle_deg(angle_deg: float) -> tuple[float, float]:
-    import math
-
     theta = math.radians(float(angle_deg))
     return (math.cos(theta), math.sin(theta))
 
@@ -390,6 +391,7 @@ def _resolve_point_setting(
     )
 
 
+# 2. Shared scenario-preparation context and config builders.
 def _load_common_scenario_context(
     settings: dict,
     *,
@@ -454,6 +456,7 @@ def _prepare_shared_simulation_context(
     *,
     settings_override: dict | None = None,
 ) -> dict:
+    """Shared harness-side preparation for both battle and neutral scenario owners."""
     settings = (
         settings_override
         if settings_override is not None
@@ -720,6 +723,7 @@ def _resolve_v4a_reference_cfg(get_runtime) -> dict:
     }
 
 
+# 3. Initial-state geometry builders.
 def _spawn_formation_units(
     *,
     units: dict[str, UnitState],
@@ -914,7 +918,9 @@ def build_single_fleet_initial_state(
     )
 
 
+# 4. Public prepared-scenario owners consumed by test_run entry/execution.
 def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = None) -> dict:
+    """Build the maintained battle-mode prepared payload for run_active_surface()."""
     shared_context = _prepare_shared_simulation_context(base_dir, settings_override=settings_override)
     settings = shared_context["settings"]
     get_contact = partial(settings_api.get_contact_test_setting, settings)
@@ -1089,6 +1095,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
 
 
 def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict | None = None) -> dict:
+    """Build the maintained neutral fixture prepared payload for run_active_surface()."""
     shared_context = _prepare_shared_simulation_context(base_dir, settings_override=settings_override)
     settings = shared_context["settings"]
     get_fixture = partial(settings_api.get_fixture_setting, settings)

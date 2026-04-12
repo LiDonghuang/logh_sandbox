@@ -10,6 +10,10 @@ from test_run import test_run_scenario as scenario
 from test_run import settings_accessor as settings_api
 
 
+# =========================================================
+# File-level viewer replay constants
+# =========================================================
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TEST_RUN_BASE_DIR = PROJECT_ROOT / "test_run"
 DEFAULT_FRAME_STRIDE = 1
@@ -50,6 +54,10 @@ POSTURE_MOVEMENT_MEMORY_BIAS = 0.22
 POSTURE_MAX_TURN_RADIANS = math.radians(18.0)
 
 
+# =========================================================
+# Settings / source normalization helpers
+# =========================================================
+
 def _resolve_display_language(settings: dict) -> str:
     language = str(settings_api.get_visualization_setting(settings, "display_language", "EN")).upper()
     return language if language in {"EN", "ZH"} else "EN"
@@ -64,6 +72,10 @@ def _resolve_full_name(data: dict, language: str, fallback: str) -> str:
         return str(display_name)
     return str(fallback)
 
+
+# =========================================================
+# Replay payload types
+# =========================================================
 
 @dataclass(frozen=True)
 class ViewerUnitState:
@@ -99,6 +111,10 @@ class ReplayBundle:
     fleet_colors: dict[str, str]
     metadata: dict[str, Any]
 
+
+# =========================================================
+# Viewer-local replay parsing and direction-readout helpers
+# =========================================================
 
 def _parse_unit_point(raw_point: Any, *, fleet_id: str) -> ViewerUnitState:
     if not isinstance(raw_point, (list, tuple)) or len(raw_point) < 9:
@@ -596,6 +612,10 @@ def _resolve_display_frames(
     return tuple(resolved_frames)
 
 
+# =========================================================
+# Public replay bundle / loading surface
+# =========================================================
+
 def build_replay_bundle(
     *,
     source_kind: str,
@@ -606,6 +626,7 @@ def build_replay_bundle(
     metadata: dict[str, Any] | None = None,
     vector_display_mode: str = "effective",
 ) -> ReplayBundle:
+    """Normalize captured test_run frames into the maintained viewer replay surface."""
     if not position_frames:
         raise ValueError("position_frames is empty; viewer bootstrap requires captured frame data.")
 
@@ -685,6 +706,7 @@ def rebuild_replay_direction_mode(
     direction_mode: str,
     direction_mode_source: str = "override",
 ) -> ReplayBundle:
+    """Rebuild viewer-local headings without changing the underlying replay facts."""
     normalized_direction_mode = _normalize_viewer_direction_mode(direction_mode)
     if normalized_direction_mode == VIEWER_DIRECTION_MODE_SETTINGS:
         raise ValueError("rebuild_replay_direction_mode requires an explicit non-settings direction mode.")
@@ -713,6 +735,7 @@ def load_viewer_replay(
     frame_stride: int = DEFAULT_FRAME_STRIDE,
     direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
 ) -> ReplayBundle:
+    """Run the bounded test_run surface and return a viewer-local replay bundle."""
     if frame_stride < 1:
         raise ValueError(f"frame_stride must be >= 1, got {frame_stride}.")
     if max_steps is not None and not isinstance(max_steps, int):

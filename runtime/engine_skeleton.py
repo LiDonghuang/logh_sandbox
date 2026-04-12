@@ -62,7 +62,474 @@ def _direction_delta_degrees(
     return math.degrees(math.acos(dot_value))
 
 
+class _ContactImpedanceSupport:
+    """Internal runtime support for hostile-contact impedance bookkeeping."""
+
+    @staticmethod
+    def resolve_mode(engine: "EngineTickSkeleton") -> str:
+        raw_mode = str(
+            getattr(
+                engine,
+                "HOSTILE_CONTACT_IMPEDANCE_MODE",
+                HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
+            )
+        ).strip().lower()
+        if raw_mode not in HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS:
+            allowed_text = ", ".join(sorted(HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS))
+            raise ValueError(
+                "HOSTILE_CONTACT_IMPEDANCE_MODE must be one of "
+                f"{{{allowed_text}}}, got {raw_mode!r}"
+            )
+        return raw_mode
+
+    @staticmethod
+    def _compute_fleet_enemy_axes(
+        engine: "EngineTickSkeleton",
+        state: BattleState,
+    ) -> dict[str, tuple[float, float]]:
+        axes: dict[str, tuple[float, float]] = {}
+        fleet_centroids: dict[str, tuple[float, float]] = {}
+        for fleet_id, fleet in state.fleets.items():
+            alive_units = [
+                state.units[uid]
+                for uid in fleet.unit_ids
+                if uid in state.units and float(state.units[uid].hit_points) > 0.0
+            ]
+            fleet_centroids[fleet_id] = engine._compute_position_centroid(alive_units)
+        for fleet_id, (cx, cy) in fleet_centroids.items():
+            enemy_centroids = [
+                pos for other_fleet_id, pos in fleet_centroids.items() if other_fleet_id != fleet_id
+            ]
+            if not enemy_centroids:
+                axes[fleet_id] = (0.0, 0.0)
+                continue
+            enemy_cx = sum(pos[0] for pos in enemy_centroids) / float(len(enemy_centroids))
+            enemy_cy = sum(pos[1] for pos in enemy_centroids) / float(len(enemy_centroids))
+            axis, _ = engine._normalize_direction(enemy_cx - cx, enemy_cy - cy)
+            axes[fleet_id] = axis
+        return axes
+
+    @staticmethod
+    def _compute_unit_hostile_proximity(
+        engine: "EngineTickSkeleton",
+        state: BattleState,
+        impedance_radius: float,
+    ) -> tuple[dict[str, float], dict[str, list[tuple[str, float, float, float, float]]]]:
+        alive_units = [
+            unit for unit in state.units.values() if float(unit.hit_points) > 0.0
+        ]
+        proximity_by_unit = {unit.unit_id: 0.0 for unit in alive_units}
+        pair_terms_by_unit = {unit.unit_id: [] for unit in alive_units}
+        radius_sq = impedance_radius * impedance_radius
+        for i in range(len(alive_units)):
+            unit_i = alive_units[i]
+            for j in range(i + 1, len(alive_units)):
+                unit_j = alive_units[j]
+                if unit_i.fleet_id == unit_j.fleet_id:
+                    continue
+                dx = float(unit_i.position.x) - float(unit_j.position.x)
+                dy = float(unit_i.position.y) - float(unit_j.position.y)
+                distance_sq = (dx * dx) + (dy * dy)
+                if distance_sq > radius_sq:
+                    continue
+                if distance_sq > 1e-12:
+                    distance = math.sqrt(distance_sq)
+                    nx = dx / distance
+                    ny = dy / distance
+                else:
+                    nx, ny = EngineTickSkeleton._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
+                    distance = 0.0
+                proximity = engine._clamp01(1.0 - (distance / impedance_radius))
+                weight = proximity * proximity
+                proximity_by_unit[unit_i.unit_id] = engine._clamp01(proximity_by_unit[unit_i.unit_id] + weight)
+                proximity_by_unit[unit_j.unit_id] = engine._clamp01(proximity_by_unit[unit_j.unit_id] + weight)
+                pair_terms_by_unit[unit_i.unit_id].append((unit_j.unit_id, nx, ny, proximity, weight))
+                pair_terms_by_unit[unit_j.unit_id].append((unit_i.unit_id, -nx, -ny, proximity, weight))
+        return proximity_by_unit, pair_terms_by_unit
+
+    @staticmethod
+    def apply(
+        engine: "EngineTickSkeleton",
+        pre_state: BattleState,
+        moved_state: BattleState,
+    ) -> BattleState:
+        mode = _ContactImpedanceSupport.resolve_mode(engine)
+        if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_OFF:
+            engine.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": False,
+                "active": False,
+                "pair_count": 0,
+                "radius": 0.0,
+            }
+            return moved_state
+        radius_multiplier = max(
+            1e-6,
+            float(
+                getattr(
+                    engine,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
+                )
+            ),
+        )
+        repulsion_max_disp_ratio = max(
+            0.0,
+            float(
+                getattr(
+                    engine,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
+                )
+            ),
+        )
+        forward_damping_strength = engine._clamp01(
+            float(
+                getattr(
+                    engine,
+                    "HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH",
+                    HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
+                )
+            )
+        )
+        impedance_radius = float(engine.separation_radius) * radius_multiplier
+        if impedance_radius <= 1e-12:
+            engine.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": False,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "mean_proximity": 0.0,
+                "mean_forward_damping": 0.0,
+                "mean_repulsion_displacement": 0.0,
+                "max_repulsion_displacement": 0.0,
+            }
+            return moved_state
+
+        alive_units = [
+            unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0
+        ]
+        if len(alive_units) <= 1:
+            engine.debug_last_hostile_contact_impedance = {
+                "mode": mode,
+                "enabled": True,
+                "active": False,
+                "pair_count": 0,
+                "radius": impedance_radius,
+                "mean_proximity": 0.0,
+                "mean_forward_damping": 0.0,
+                "mean_repulsion_displacement": 0.0,
+                "max_repulsion_displacement": 0.0,
+            }
+            return moved_state
+
+        fleet_axes = _ContactImpedanceSupport._compute_fleet_enemy_axes(engine, moved_state)
+        proximity_by_unit, pair_terms_by_unit = _ContactImpedanceSupport._compute_unit_hostile_proximity(
+            engine,
+            moved_state,
+            impedance_radius,
+        )
+        updated_units = dict(moved_state.units)
+        repulsion_sum = 0.0
+        repulsion_max = 0.0
+        repulsion_count = 0
+        damping_sum = 0.0
+        damping_count = 0
+        max_repulsion_disp = float(engine.separation_radius) * repulsion_max_disp_ratio
+        pair_count = sum(len(terms) for terms in pair_terms_by_unit.values()) // 2
+
+        for unit in alive_units:
+            pre_unit = pre_state.units.get(unit.unit_id)
+            if pre_unit is None:
+                continue
+            axis_x, axis_y = fleet_axes.get(unit.fleet_id, (0.0, 0.0))
+            dx_move = float(unit.position.x) - float(pre_unit.position.x)
+            dy_move = float(unit.position.y) - float(pre_unit.position.y)
+            forward_disp = (dx_move * axis_x) + (dy_move * axis_y)
+            residual_x = dx_move
+            residual_y = dy_move
+            if abs(forward_disp) > 1e-12:
+                residual_x -= forward_disp * axis_x
+                residual_y -= forward_disp * axis_y
+
+            local_proximity = engine._clamp01(proximity_by_unit.get(unit.unit_id, 0.0))
+            damping_factor = 1.0
+            if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 and forward_disp > 0.0:
+                damping_factor = 1.0 - (engine._clamp01(forward_damping_strength * local_proximity))
+                forward_disp *= damping_factor
+                damping_sum += (1.0 - damping_factor)
+                damping_count += 1
+
+            repulsion_x = 0.0
+            repulsion_y = 0.0
+            if (
+                mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2
+                and max_repulsion_disp > 0.0
+                and local_proximity > 0.0
+            ):
+                for _, nx, ny, _, weight in pair_terms_by_unit.get(unit.unit_id, []):
+                    repulsion_x += nx * weight
+                    repulsion_y += ny * weight
+                repulsion_norm = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
+                if repulsion_norm > 1e-12:
+                    scale = max_repulsion_disp * local_proximity / repulsion_norm
+                    repulsion_x *= scale
+                    repulsion_y *= scale
+                    repulsion_disp = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
+                    repulsion_sum += repulsion_disp
+                    repulsion_count += 1
+                    if repulsion_disp > repulsion_max:
+                        repulsion_max = repulsion_disp
+
+            new_dx = (forward_disp * axis_x) + residual_x + repulsion_x
+            new_dy = (forward_disp * axis_y) + residual_y + repulsion_y
+            updated_units[unit.unit_id] = replace(
+                unit,
+                position=Vec2(
+                    x=float(pre_unit.position.x) + new_dx,
+                    y=float(pre_unit.position.y) + new_dy,
+                ),
+            )
+
+        engine.debug_last_hostile_contact_impedance = {
+            "mode": mode,
+            "enabled": True,
+            "active": pair_count > 0,
+            "pair_count": pair_count,
+            "radius": impedance_radius,
+            "mean_proximity": (
+                sum(proximity_by_unit.values()) / float(max(1, len(proximity_by_unit)))
+            ),
+            "mean_forward_damping": (damping_sum / damping_count) if damping_count > 0 else 0.0,
+            "mean_repulsion_displacement": (repulsion_sum / repulsion_count) if repulsion_count > 0 else 0.0,
+            "max_repulsion_displacement": repulsion_max,
+            "repulsion_max_disp_ratio": repulsion_max_disp_ratio,
+            "forward_damping_strength": forward_damping_strength,
+        }
+        return replace(moved_state, units=updated_units)
+
+
+class _MovementDiagSupport:
+    """Internal runtime support for observer-facing movement diagnostics."""
+
+    @staticmethod
+    def build_diag4_payload(
+        engine: "EngineTickSkeleton",
+        *,
+        state: BattleState,
+        updated_units: dict,
+        final_positions: dict,
+        r_sep: float,
+        r_sep_sq: float,
+        attack_range_sq: float,
+    ) -> dict:
+        diag_surface = engine._diag_surface
+        top_k_raw = int(diag_surface["diag4_topk"])
+        if top_k_raw < 1:
+            top_k = 1
+        elif top_k_raw > 50:
+            top_k = 50
+        else:
+            top_k = top_k_raw
+
+        module_a_topk = {}
+        for fleet_id, fleet in state.fleets.items():
+            alive_unit_ids = [
+                unit_id
+                for unit_id in fleet.unit_ids
+                if unit_id in final_positions
+            ]
+            if not alive_unit_ids:
+                module_a_topk[fleet_id] = []
+                continue
+
+            cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
+            cy = sum(final_positions[unit_id][1] for unit_id in alive_unit_ids) / len(alive_unit_ids)
+
+            radius_by_unit = {}
+            for unit_id in alive_unit_ids:
+                ux, uy = final_positions[unit_id]
+                dx = ux - cx
+                dy = uy - cy
+                radius_by_unit[unit_id] = math.sqrt((dx * dx) + (dy * dy))
+
+            ranked_units = sorted(
+                alive_unit_ids,
+                key=lambda uid: radius_by_unit.get(uid, 0.0),
+                reverse=True,
+            )
+            candidates = []
+            for unit_id in ranked_units[:top_k]:
+                ux, uy = final_positions[unit_id]
+                neighbor_sep = 0
+                neighbor_contact = 0
+                for ally_id in alive_unit_ids:
+                    if ally_id == unit_id:
+                        continue
+                    vx, vy = final_positions[ally_id]
+                    dx = vx - ux
+                    dy = vy - uy
+                    if (dx * dx) + (dy * dy) <= r_sep_sq:
+                        neighbor_sep += 1
+                for enemy_id, (ex, ey) in final_positions.items():
+                    enemy_unit = updated_units.get(enemy_id)
+                    if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
+                        continue
+                    dx = ex - ux
+                    dy = ey - uy
+                    if (dx * dx) + (dy * dy) <= attack_range_sq:
+                        neighbor_contact += 1
+                candidates.append(
+                    {
+                        "unit_id": unit_id,
+                        "radius": radius_by_unit.get(unit_id, 0.0),
+                        "neighbor_count_sep": neighbor_sep,
+                        "neighbor_count_contact": neighbor_contact,
+                        "rolling_in_contact_ratio": 0.0,
+                    }
+                )
+            module_a_topk[fleet_id] = candidates
+
+        return {
+            "module_a": {
+                "top_k": top_k,
+                "neighbor_radius_sep": r_sep,
+                "neighbor_radius_contact": engine.attack_range,
+                "topk_candidates": module_a_topk,
+            },
+        }
+
+    @staticmethod
+    def build_pending(
+        engine: "EngineTickSkeleton",
+        *,
+        state: BattleState,
+        updated_units: dict,
+        tentative_positions: dict,
+        delta_position: dict,
+        projection_pairs_count: int,
+        boundary_force_events_count_tick: int,
+        r_sep: float,
+        r_sep_sq: float,
+        attack_range_sq: float,
+        final_positions: dict,
+        diag4_enabled: bool,
+        legality_reference_surface_count: int,
+        legality_feasible_surface_count: int,
+        legality_middle_stage_active: bool,
+        legality_handoff_ready: bool,
+    ) -> dict:
+        projection_eps = 1e-9
+        projection_displacement_sum = 0.0
+        projection_displacement_max = 0.0
+        projection_displacement_count = 0
+        corrected_unit_count = 0
+        for unit_id in tentative_positions:
+            dx_proj, dy_proj = delta_position[unit_id]
+            displacement = math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
+            projection_displacement_sum += displacement
+            projection_displacement_count += 1
+            if displacement > projection_displacement_max:
+                projection_displacement_max = displacement
+            if displacement > projection_eps:
+                corrected_unit_count += 1
+        if projection_displacement_count > 0:
+            projection_displacement_mean = projection_displacement_sum / projection_displacement_count
+            corrected_unit_ratio = corrected_unit_count / projection_displacement_count
+        else:
+            projection_displacement_mean = 0.0
+            corrected_unit_ratio = 0.0
+
+        pending = {
+            "tick": state.tick,
+            "projection": {
+                "max_projection_displacement": projection_displacement_max,
+                "mean_projection_displacement": projection_displacement_mean,
+                "corrected_unit_ratio": corrected_unit_ratio,
+                "projection_pairs_count": projection_pairs_count,
+            },
+            "boundary_soft": {
+                "boundary_force_events_count_tick": boundary_force_events_count_tick,
+            },
+            "legality": {
+                "reference_surface_count": int(legality_reference_surface_count),
+                "feasible_surface_count": int(legality_feasible_surface_count),
+                "middle_stage_active": bool(legality_middle_stage_active),
+                "handoff_ready": bool(legality_handoff_ready),
+            },
+        }
+
+        if diag4_enabled:
+            pending["diag4"] = _MovementDiagSupport.build_diag4_payload(
+                engine,
+                state=state,
+                updated_units=updated_units,
+                final_positions=final_positions,
+                r_sep=r_sep,
+                r_sep_sq=r_sep_sq,
+                attack_range_sq=attack_range_sq,
+            )
+        return pending
+
+    @staticmethod
+    def flush_pending(
+        engine: "EngineTickSkeleton",
+        *,
+        diag_enabled: bool,
+        state: BattleState,
+        updated_units: dict,
+        tentative_positions: dict,
+        delta_position: dict,
+        projection_pairs_count: int,
+        boundary_force_events_count_tick: int,
+        r_sep: float,
+        r_sep_sq: float,
+        attack_range_sq: float,
+        final_positions: dict,
+        diag4_enabled: bool,
+        legality_reference_surface_count: int,
+        legality_feasible_surface_count: int,
+        legality_middle_stage_active: bool,
+        legality_handoff_ready: bool,
+        fixture_trace_fleet_id: str,
+        fixture_trace_units_pending: dict | None,
+    ) -> None:
+        # Diagnostics flush is passive bookkeeping, not maintained movement math.
+        if not diag_enabled:
+            engine._debug_state["diag_pending"] = None
+            return
+
+        pending_diag = _MovementDiagSupport.build_pending(
+            engine,
+            state=state,
+            updated_units=updated_units,
+            tentative_positions=tentative_positions,
+            delta_position=delta_position,
+            projection_pairs_count=projection_pairs_count,
+            boundary_force_events_count_tick=boundary_force_events_count_tick,
+            r_sep=r_sep,
+            r_sep_sq=r_sep_sq,
+            attack_range_sq=attack_range_sq,
+            final_positions=final_positions,
+            diag4_enabled=diag4_enabled,
+            legality_reference_surface_count=legality_reference_surface_count,
+            legality_feasible_surface_count=legality_feasible_surface_count,
+            legality_middle_stage_active=legality_middle_stage_active,
+            legality_handoff_ready=legality_handoff_ready,
+        )
+        if fixture_trace_units_pending is not None:
+            pending_diag["fixture_terminal_trace"] = {
+                "fleet_id": str(fixture_trace_fleet_id),
+                "units": fixture_trace_units_pending,
+            }
+        engine._debug_state["diag_pending"] = pending_diag
+
+
 class EngineTickSkeleton:
+    """Maintained runtime canonical owner."""
+
+    # A. Runtime surfaces and debug host.
     def __init__(
         self,
         attack_range: float = 3.0,
@@ -108,6 +575,7 @@ class EngineTickSkeleton:
             "diag_timeseries": [],
         }
 
+    # B. Visible stage pipeline.
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
         next_state = self.evaluate_cohesion(snapshot)
@@ -117,7 +585,7 @@ class EngineTickSkeleton:
             moved_state = EngineTickSkeleton._integrate_movement_symmetric_merge(self, next_state)
         else:
             moved_state = self.integrate_movement(next_state)
-        moved_state = EngineTickSkeleton._apply_hostile_contact_impedance(self, next_state, moved_state)
+        moved_state = _ContactImpedanceSupport.apply(self, next_state, moved_state)
         moved_state = EngineTickSkeleton._apply_fixture_terminal_late_clamp(self, next_state, moved_state)
         return self.resolve_combat(moved_state)
 
@@ -381,6 +849,7 @@ class EngineTickSkeleton:
         norm = math.sqrt((sx * sx) + (sy * sy))
         return (sx / norm, sy / norm)
 
+    # C. Runtime-side bridge/reference support.
     @staticmethod
     def _resolve_v4a_reference_surface(
         state: BattleState,
@@ -1792,6 +2261,7 @@ class EngineTickSkeleton:
     def evaluate_utility(self, state: BattleState) -> BattleState:
         return state
 
+    # Short stage-private runtime helpers stay close to the stage owner.
     def _integrate_movement_symmetric_merge(self, state: BattleState) -> BattleState:
         fleet_ids = list(state.fleets.keys())
         if len(fleet_ids) <= 1:
@@ -1828,243 +2298,6 @@ class EngineTickSkeleton:
             last_target_direction=merged_last_target_direction,
             last_engagement_intensity=merged_last_engagement_intensity,
         )
-
-    def _resolve_hostile_contact_impedance_mode(self) -> str:
-        raw_mode = str(
-            getattr(
-                self,
-                "HOSTILE_CONTACT_IMPEDANCE_MODE",
-                HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT,
-            )
-        ).strip().lower()
-        if raw_mode not in HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS:
-            allowed_text = ", ".join(sorted(HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS))
-            raise ValueError(
-                "HOSTILE_CONTACT_IMPEDANCE_MODE must be one of "
-                f"{{{allowed_text}}}, got {raw_mode!r}"
-            )
-        return raw_mode
-
-    def _compute_fleet_enemy_axes(self, state: BattleState) -> dict[str, tuple[float, float]]:
-        axes: dict[str, tuple[float, float]] = {}
-        fleet_centroids: dict[str, tuple[float, float]] = {}
-        for fleet_id, fleet in state.fleets.items():
-            alive_units = [
-                state.units[uid]
-                for uid in fleet.unit_ids
-                if uid in state.units and float(state.units[uid].hit_points) > 0.0
-            ]
-            fleet_centroids[fleet_id] = self._compute_position_centroid(alive_units)
-        for fleet_id, (cx, cy) in fleet_centroids.items():
-            enemy_centroids = [
-                pos for other_fleet_id, pos in fleet_centroids.items() if other_fleet_id != fleet_id
-            ]
-            if not enemy_centroids:
-                axes[fleet_id] = (0.0, 0.0)
-                continue
-            enemy_cx = sum(pos[0] for pos in enemy_centroids) / float(len(enemy_centroids))
-            enemy_cy = sum(pos[1] for pos in enemy_centroids) / float(len(enemy_centroids))
-            axis, _ = self._normalize_direction(enemy_cx - cx, enemy_cy - cy)
-            axes[fleet_id] = axis
-        return axes
-
-    def _compute_unit_hostile_proximity(
-        self,
-        state: BattleState,
-        impedance_radius: float,
-    ) -> tuple[dict[str, float], dict[str, list[tuple[str, float, float, float, float]]]]:
-        alive_units = [
-            unit for unit in state.units.values() if float(unit.hit_points) > 0.0
-        ]
-        proximity_by_unit = {unit.unit_id: 0.0 for unit in alive_units}
-        pair_terms_by_unit = {unit.unit_id: [] for unit in alive_units}
-        radius_sq = impedance_radius * impedance_radius
-        for i in range(len(alive_units)):
-            unit_i = alive_units[i]
-            for j in range(i + 1, len(alive_units)):
-                unit_j = alive_units[j]
-                if unit_i.fleet_id == unit_j.fleet_id:
-                    continue
-                dx = float(unit_i.position.x) - float(unit_j.position.x)
-                dy = float(unit_i.position.y) - float(unit_j.position.y)
-                distance_sq = (dx * dx) + (dy * dy)
-                if distance_sq > radius_sq:
-                    continue
-                if distance_sq > 1e-12:
-                    distance = math.sqrt(distance_sq)
-                    nx = dx / distance
-                    ny = dy / distance
-                else:
-                    nx, ny = EngineTickSkeleton._stable_pair_direction(unit_i.unit_id, unit_j.unit_id)
-                    distance = 0.0
-                proximity = self._clamp01(1.0 - (distance / impedance_radius))
-                weight = proximity * proximity
-                proximity_by_unit[unit_i.unit_id] = self._clamp01(proximity_by_unit[unit_i.unit_id] + weight)
-                proximity_by_unit[unit_j.unit_id] = self._clamp01(proximity_by_unit[unit_j.unit_id] + weight)
-                pair_terms_by_unit[unit_i.unit_id].append((unit_j.unit_id, nx, ny, proximity, weight))
-                pair_terms_by_unit[unit_j.unit_id].append((unit_i.unit_id, -nx, -ny, proximity, weight))
-        return proximity_by_unit, pair_terms_by_unit
-
-    def _apply_hostile_contact_impedance(
-        self,
-        pre_state: BattleState,
-        moved_state: BattleState,
-    ) -> BattleState:
-        mode = EngineTickSkeleton._resolve_hostile_contact_impedance_mode(self)
-        if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_OFF:
-            self.debug_last_hostile_contact_impedance = {
-                "mode": mode,
-                "enabled": False,
-                "active": False,
-                "pair_count": 0,
-                "radius": 0.0,
-            }
-            return moved_state
-        radius_multiplier = max(
-            1e-6,
-            float(
-                getattr(
-                    self,
-                    "HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER",
-                    HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
-                )
-            ),
-        )
-        repulsion_max_disp_ratio = max(
-            0.0,
-            float(
-                getattr(
-                    self,
-                    "HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO",
-                    HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
-                )
-            ),
-        )
-        forward_damping_strength = self._clamp01(
-            float(
-                getattr(
-                    self,
-                    "HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH",
-                    HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
-                )
-            )
-        )
-        impedance_radius = float(self.separation_radius) * radius_multiplier
-        if impedance_radius <= 1e-12:
-            self.debug_last_hostile_contact_impedance = {
-                "mode": mode,
-                "enabled": False,
-                "active": False,
-                "pair_count": 0,
-                "radius": impedance_radius,
-                "mean_proximity": 0.0,
-                "mean_forward_damping": 0.0,
-                "mean_repulsion_displacement": 0.0,
-                "max_repulsion_displacement": 0.0,
-            }
-            return moved_state
-
-        alive_units = [
-            unit for unit in moved_state.units.values() if float(unit.hit_points) > 0.0
-        ]
-        if len(alive_units) <= 1:
-            self.debug_last_hostile_contact_impedance = {
-                "mode": mode,
-                "enabled": True,
-                "active": False,
-                "pair_count": 0,
-                "radius": impedance_radius,
-                "mean_proximity": 0.0,
-                "mean_forward_damping": 0.0,
-                "mean_repulsion_displacement": 0.0,
-                "max_repulsion_displacement": 0.0,
-            }
-            return moved_state
-
-        fleet_axes = EngineTickSkeleton._compute_fleet_enemy_axes(self, moved_state)
-        proximity_by_unit, pair_terms_by_unit = EngineTickSkeleton._compute_unit_hostile_proximity(
-            self,
-            moved_state,
-            impedance_radius,
-        )
-        updated_units = dict(moved_state.units)
-        repulsion_sum = 0.0
-        repulsion_max = 0.0
-        repulsion_count = 0
-        damping_sum = 0.0
-        damping_count = 0
-        max_repulsion_disp = float(self.separation_radius) * repulsion_max_disp_ratio
-        pair_count = sum(len(terms) for terms in pair_terms_by_unit.values()) // 2
-
-        for unit in alive_units:
-            pre_unit = pre_state.units.get(unit.unit_id)
-            if pre_unit is None:
-                continue
-            axis_x, axis_y = fleet_axes.get(unit.fleet_id, (0.0, 0.0))
-            dx_move = float(unit.position.x) - float(pre_unit.position.x)
-            dy_move = float(unit.position.y) - float(pre_unit.position.y)
-            forward_disp = (dx_move * axis_x) + (dy_move * axis_y)
-            residual_x = dx_move
-            residual_y = dy_move
-            if abs(forward_disp) > 1e-12:
-                residual_x -= forward_disp * axis_x
-                residual_y -= forward_disp * axis_y
-
-            local_proximity = self._clamp01(proximity_by_unit.get(unit.unit_id, 0.0))
-            damping_factor = 1.0
-            if mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2 and forward_disp > 0.0:
-                damping_factor = 1.0 - (self._clamp01(forward_damping_strength * local_proximity))
-                forward_disp *= damping_factor
-                damping_sum += (1.0 - damping_factor)
-                damping_count += 1
-
-            repulsion_x = 0.0
-            repulsion_y = 0.0
-            if (
-                mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2
-                and max_repulsion_disp > 0.0
-                and local_proximity > 0.0
-            ):
-                for _, nx, ny, _, weight in pair_terms_by_unit.get(unit.unit_id, []):
-                    repulsion_x += nx * weight
-                    repulsion_y += ny * weight
-                repulsion_norm = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
-                if repulsion_norm > 1e-12:
-                    scale = max_repulsion_disp * local_proximity / repulsion_norm
-                    repulsion_x *= scale
-                    repulsion_y *= scale
-                    repulsion_disp = math.sqrt((repulsion_x * repulsion_x) + (repulsion_y * repulsion_y))
-                    repulsion_sum += repulsion_disp
-                    repulsion_count += 1
-                    if repulsion_disp > repulsion_max:
-                        repulsion_max = repulsion_disp
-
-            new_dx = (forward_disp * axis_x) + residual_x + repulsion_x
-            new_dy = (forward_disp * axis_y) + residual_y + repulsion_y
-            updated_units[unit.unit_id] = replace(
-                unit,
-                position=Vec2(
-                    x=float(pre_unit.position.x) + new_dx,
-                    y=float(pre_unit.position.y) + new_dy,
-                ),
-            )
-
-        self.debug_last_hostile_contact_impedance = {
-            "mode": mode,
-            "enabled": True,
-            "active": pair_count > 0,
-            "pair_count": pair_count,
-            "radius": impedance_radius,
-            "mean_proximity": (
-                sum(proximity_by_unit.values()) / float(max(1, len(proximity_by_unit)))
-            ),
-            "mean_forward_damping": (damping_sum / damping_count) if damping_count > 0 else 0.0,
-            "mean_repulsion_displacement": (repulsion_sum / repulsion_count) if repulsion_count > 0 else 0.0,
-            "max_repulsion_displacement": repulsion_max,
-            "repulsion_max_disp_ratio": repulsion_max_disp_ratio,
-            "forward_damping_strength": forward_damping_strength,
-        }
-        return replace(moved_state, units=updated_units)
 
     def _apply_fixture_terminal_late_clamp(
         self,
@@ -2148,213 +2381,7 @@ class EngineTickSkeleton:
                         row["late_clamp_dy"] = float(late_clamp_dy)
         return moved_state
 
-    def _build_movement_diag4_payload(
-        self,
-        *,
-        state: BattleState,
-        updated_units: dict,
-        final_positions: dict,
-        r_sep: float,
-        r_sep_sq: float,
-        attack_range_sq: float,
-    ) -> dict:
-        diag_surface = self._diag_surface
-        top_k_raw = int(diag_surface["diag4_topk"])
-        if top_k_raw < 1:
-            top_k = 1
-        elif top_k_raw > 50:
-            top_k = 50
-        else:
-            top_k = top_k_raw
-
-        module_a_topk = {}
-        for fleet_id, fleet in state.fleets.items():
-            alive_unit_ids = [
-                unit_id
-                for unit_id in fleet.unit_ids
-                if unit_id in final_positions
-            ]
-            if not alive_unit_ids:
-                module_a_topk[fleet_id] = []
-                continue
-
-            cx = sum(final_positions[unit_id][0] for unit_id in alive_unit_ids) / len(alive_unit_ids)
-            cy = sum(final_positions[unit_id][1] for unit_id in alive_unit_ids) / len(alive_unit_ids)
-
-            radius_by_unit = {}
-            for unit_id in alive_unit_ids:
-                ux, uy = final_positions[unit_id]
-                dx = ux - cx
-                dy = uy - cy
-                radius_by_unit[unit_id] = math.sqrt((dx * dx) + (dy * dy))
-
-            ranked_units = sorted(
-                alive_unit_ids,
-                key=lambda uid: radius_by_unit.get(uid, 0.0),
-                reverse=True,
-            )
-            candidates = []
-            for unit_id in ranked_units[:top_k]:
-                ux, uy = final_positions[unit_id]
-                neighbor_sep = 0
-                neighbor_contact = 0
-                for ally_id in alive_unit_ids:
-                    if ally_id == unit_id:
-                        continue
-                    vx, vy = final_positions[ally_id]
-                    dx = vx - ux
-                    dy = vy - uy
-                    if (dx * dx) + (dy * dy) <= r_sep_sq:
-                        neighbor_sep += 1
-                for enemy_id, (ex, ey) in final_positions.items():
-                    enemy_unit = updated_units.get(enemy_id)
-                    if enemy_unit is None or enemy_unit.fleet_id == fleet_id:
-                        continue
-                    dx = ex - ux
-                    dy = ey - uy
-                    if (dx * dx) + (dy * dy) <= attack_range_sq:
-                        neighbor_contact += 1
-                candidates.append(
-                    {
-                        "unit_id": unit_id,
-                        "radius": radius_by_unit.get(unit_id, 0.0),
-                        "neighbor_count_sep": neighbor_sep,
-                        "neighbor_count_contact": neighbor_contact,
-                        "rolling_in_contact_ratio": 0.0,
-                    }
-                )
-            module_a_topk[fleet_id] = candidates
-
-        return {
-            "module_a": {
-                "top_k": top_k,
-                "neighbor_radius_sep": r_sep,
-                "neighbor_radius_contact": self.attack_range,
-                "topk_candidates": module_a_topk,
-            },
-        }
-
-    def _build_movement_diag_pending(
-        self,
-        *,
-        state: BattleState,
-        updated_units: dict,
-        tentative_positions: dict,
-        delta_position: dict,
-        projection_pairs_count: int,
-        boundary_force_events_count_tick: int,
-        r_sep: float,
-        r_sep_sq: float,
-        attack_range_sq: float,
-        final_positions: dict,
-        diag4_enabled: bool,
-        legality_reference_surface_count: int,
-        legality_feasible_surface_count: int,
-        legality_middle_stage_active: bool,
-        legality_handoff_ready: bool,
-    ) -> dict:
-        projection_eps = 1e-9
-        projection_displacement_sum = 0.0
-        projection_displacement_max = 0.0
-        projection_displacement_count = 0
-        corrected_unit_count = 0
-        for unit_id in tentative_positions:
-            dx_proj, dy_proj = delta_position[unit_id]
-            displacement = math.sqrt((dx_proj * dx_proj) + (dy_proj * dy_proj))
-            projection_displacement_sum += displacement
-            projection_displacement_count += 1
-            if displacement > projection_displacement_max:
-                projection_displacement_max = displacement
-            if displacement > projection_eps:
-                corrected_unit_count += 1
-        if projection_displacement_count > 0:
-            projection_displacement_mean = projection_displacement_sum / projection_displacement_count
-            corrected_unit_ratio = corrected_unit_count / projection_displacement_count
-        else:
-            projection_displacement_mean = 0.0
-            corrected_unit_ratio = 0.0
-
-        pending = {
-            "tick": state.tick,
-            "projection": {
-                "max_projection_displacement": projection_displacement_max,
-                "mean_projection_displacement": projection_displacement_mean,
-                "corrected_unit_ratio": corrected_unit_ratio,
-                "projection_pairs_count": projection_pairs_count,
-            },
-            "boundary_soft": {
-                "boundary_force_events_count_tick": boundary_force_events_count_tick,
-            },
-            "legality": {
-                "reference_surface_count": int(legality_reference_surface_count),
-                "feasible_surface_count": int(legality_feasible_surface_count),
-                "middle_stage_active": bool(legality_middle_stage_active),
-                "handoff_ready": bool(legality_handoff_ready),
-            },
-        }
-
-        if diag4_enabled:
-            pending["diag4"] = self._build_movement_diag4_payload(
-                state=state,
-                updated_units=updated_units,
-                final_positions=final_positions,
-                r_sep=r_sep,
-                r_sep_sq=r_sep_sq,
-                attack_range_sq=attack_range_sq,
-            )
-        return pending
-
-    def _flush_movement_diag_pending(
-        self,
-        *,
-        diag_enabled: bool,
-        state: BattleState,
-        updated_units: dict,
-        tentative_positions: dict,
-        delta_position: dict,
-        projection_pairs_count: int,
-        boundary_force_events_count_tick: int,
-        r_sep: float,
-        r_sep_sq: float,
-        attack_range_sq: float,
-        final_positions: dict,
-        diag4_enabled: bool,
-        legality_reference_surface_count: int,
-        legality_feasible_surface_count: int,
-        legality_middle_stage_active: bool,
-        legality_handoff_ready: bool,
-        fixture_trace_fleet_id: str,
-        fixture_trace_units_pending: dict | None,
-    ) -> None:
-        # Diagnostics flush is passive bookkeeping, not maintained movement math.
-        if not diag_enabled:
-            self._debug_state["diag_pending"] = None
-            return
-
-        pending_diag = self._build_movement_diag_pending(
-            state=state,
-            updated_units=updated_units,
-            tentative_positions=tentative_positions,
-            delta_position=delta_position,
-            projection_pairs_count=projection_pairs_count,
-            boundary_force_events_count_tick=boundary_force_events_count_tick,
-            r_sep=r_sep,
-            r_sep_sq=r_sep_sq,
-            attack_range_sq=attack_range_sq,
-            final_positions=final_positions,
-            diag4_enabled=diag4_enabled,
-            legality_reference_surface_count=legality_reference_surface_count,
-            legality_feasible_surface_count=legality_feasible_surface_count,
-            legality_middle_stage_active=legality_middle_stage_active,
-            legality_handoff_ready=legality_handoff_ready,
-        )
-        if fixture_trace_units_pending is not None:
-            pending_diag["fixture_terminal_trace"] = {
-                "fleet_id": str(fixture_trace_fleet_id),
-                "units": fixture_trace_units_pending,
-            }
-        self._debug_state["diag_pending"] = pending_diag
-
+    # D. Maintained runtime stage owners.
     def integrate_movement(self, state: BattleState) -> BattleState:
         state = self._prepare_v4a_bridge_state(state)
         movement_surface = self._movement_surface
@@ -2928,7 +2955,8 @@ class EngineTickSkeleton:
             legality_feasible_positions = {}
         legality_handoff_ready = bool(legality_feasible_positions)
 
-        self._flush_movement_diag_pending(
+        _MovementDiagSupport.flush_pending(
+            self,
             diag_enabled=diag_enabled,
             state=state,
             updated_units=updated_units,

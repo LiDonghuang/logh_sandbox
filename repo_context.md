@@ -12,21 +12,23 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Phase Focus
 
-- The current mainline is **post-incident cleanup and old-family retirement** on top of the recovered `dev_v2.1` anchor.
-- Active work has moved from restore/targeting repair into **subtraction-first cleanup**:
-  - `v4a.restore_strength` is now a direct runtime seam
+- The current mainline is now **post-cleanup structural tightening** on top of the recovered `dev_v2.1` anchor.
+- The just-completed engineering wave moved from old-family retirement into owner recovery and readability/layering tightening:
+  - `EngineTickSkeleton` is again the maintained active tick owner
+  - `run_simulation()` remains the maintained execution/orchestration owner
   - `battle` and `neutral` share the maintained `v4a` movement family, differing only by objective source
   - maintained battle gap now uses `fire_optimal_range` rather than raw `attack_range`
-  - old 2D viz / BRF / maintained `v3a` execution surfaces have been removed from the active mainline
+  - old 2D viz / BRF / maintained `v3a` execution surfaces are no longer part of the active mainline
 - Current emphasis is:
   - active-owner truth
-  - old-family retirement in bounded slices
-  - continued shrinkage of settings / runtime / harness surfaces
-- This subtraction-first cleanup phase is now treated as **phase-complete**.
-- The next planned phase is:
-  - hot-path structural tightening
-  - not compute optimization
-  - not formation-line implementation yet
+  - human-readable maintained hot paths
+  - same-file internal layering before new file fan-out
+  - bounded viewer-local structural hygiene
+- The large subtraction-first cleanup phase is treated as complete.
+- The current pushable wave is:
+  - post-cleanup owner recovery
+  - same-file structural tightening in runtime / `test_run` / VIZ
+- Formation-line work remains separate and should not be read as part of this structural-optimization wave.
 
 ## Key Entry Documents
 
@@ -75,8 +77,9 @@ Authority: Reference only, not canonical semantics authority
   - settings resolution, effective-surface preparation, and scenario build
 - `test_run/test_run_execution.py`
   - maintained battle / neutral harness execution host
+  - maintained execution/orchestration owner
   - shared `v4a` movement-family host for both `battle` and `neutral`
-  - runtime now owns `integrate_movement()` again; harness supplies battle/fixture bundle carriers
+  - runtime now owns the maintained tick hot path again; harness supplies preparation, bundle carriers, and observation packaging
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics
@@ -104,6 +107,8 @@ Current viewer read:
 - 3D viewer remains replay/view only
 - 3D still consumes `visualization.display_language`
 - viewer-facing fleet geometry now reads the maintained `fleet_body_summary` export produced by `test_run`
+- `app.py` owns viewer orchestration / playback / camera / HUD cadence
+- `unit_renderer.py` owns bounded rendering carriers
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths

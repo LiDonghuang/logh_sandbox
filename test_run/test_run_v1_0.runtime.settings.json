@@ -13,17 +13,18 @@
   "fleet": {
     "fleet_a_archetype_id": "yang",
     "fleet_b_archetype_id": "reinhard",
-    "initial_fleet_a_size": 36,
-    "initial_fleet_b_size": 36,
+    "initial_fleet_a_size": 100,
+    "initial_fleet_b_size": 100
+    ,
     "initial_fleet_a_aspect_ratio": 1.0,
     "initial_fleet_b_aspect_ratio": 1.0,
     "initial_fleet_a_origin_xy": [
-      100.0,
-      100.0
+      150.0,
+      150.0
     ],
     "initial_fleet_b_origin_xy": [
-      300.0,
-      300.0
+      250.0,
+      250.0
     ],
     "initial_fleet_a_facing_angle_deg": 45.0,
     "initial_fleet_b_facing_angle_deg": 225.0

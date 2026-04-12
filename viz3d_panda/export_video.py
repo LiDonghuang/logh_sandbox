@@ -7,6 +7,10 @@ from typing import Sequence
 from viz3d_panda.app import DEFAULT_CAMERA_TAKE_OUTPUT_PATH, export_camera_take_video
 
 
+# =========================================================
+# File-level export presets
+# =========================================================
+
 DEFAULT_EXPORT_FFMPEG_EXE = Path(
     ".venv_check/Lib/site-packages/imageio_ffmpeg/binaries/ffmpeg-win-x86_64-v7.1.exe"
 )
@@ -17,6 +21,10 @@ EXPORT_PRESET_SETTINGS: dict[str, tuple[int, int, int]] = {
 }
 DEFAULT_EXPORT_PRESET = "standard"
 
+
+# =========================================================
+# CLI parsing / export entrypoint
+# =========================================================
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="LOGH dev_v2.0 Panda3D camera-take offline export")
@@ -71,6 +79,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """CLI entry for offline Panda3D camera-take export."""
     args = _parse_args(argv)
     preset_fps, preset_width, preset_height = EXPORT_PRESET_SETTINGS[str(args.preset)]
     export_fps = int(preset_fps if args.export_fps is None else args.export_fps)
