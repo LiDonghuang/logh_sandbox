@@ -459,6 +459,19 @@ class _MovementDiagSupport:
                 "handoff_ready": bool(legality_handoff_ready),
             },
         }
+        bridge_diag_by_fleet = engine._debug_state.get("v4a_bridge_diag", {})
+        if isinstance(bridge_diag_by_fleet, Mapping) and bridge_diag_by_fleet:
+            pending["v4a_bridge"] = {
+                "fleets": {
+                    str(fleet_id): {
+                        "transition_advance_share": float(
+                            row.get("transition_advance_share", 0.0)
+                        ),
+                    }
+                    for fleet_id, row in bridge_diag_by_fleet.items()
+                    if isinstance(row, Mapping)
+                }
+            }
 
         if diag4_enabled:
             pending["diag4"] = _MovementDiagSupport.build_diag4_payload(
@@ -573,6 +586,7 @@ class EngineTickSkeleton:
         self._debug_state = {
             "diag_pending": None,
             "diag_timeseries": [],
+            "v4a_bridge_diag": {},
         }
 
     # B. Visible stage pipeline.
@@ -776,6 +790,24 @@ class EngineTickSkeleton:
             sum(float(unit.position.x) for unit in units) * inv_n,
             sum(float(unit.position.y) for unit in units) * inv_n,
         )
+
+    @staticmethod
+    def _compute_orientation_heading(
+        units: Sequence[UnitState],
+        *,
+        fallback_hat_xy: tuple[float, float],
+    ) -> tuple[float, float]:
+        if not units:
+            return fallback_hat_xy
+        heading_sum_x = sum(float(unit.orientation_vector.x) for unit in units)
+        heading_sum_y = sum(float(unit.orientation_vector.y) for unit in units)
+        heading_hat_xy, heading_norm = EngineTickSkeleton._normalize_direction(
+            heading_sum_x,
+            heading_sum_y,
+        )
+        if heading_norm <= 0.0:
+            return fallback_hat_xy
+        return heading_hat_xy
 
     @staticmethod
     def _normalize_direction(dx: float, dy: float) -> tuple[tuple[float, float], float]:
@@ -1201,6 +1233,7 @@ class EngineTickSkeleton:
     # Harness still prepares battle/fixture bundles, but the maintained v4a
     # movement pre-shaping now runs inside the runtime owner before movement.
     def _prepare_v4a_bridge_state(self, state: BattleState) -> BattleState:
+        self._debug_state["v4a_bridge_diag"] = {}
         movement_surface = self._movement_surface
         movement_model = str(movement_surface.get("model", "v4a")).strip().lower()
         if movement_model != "v4a" or len(state.fleets) <= 0:
@@ -1247,6 +1280,7 @@ class EngineTickSkeleton:
             return state
 
         movement_state = state
+        bridge_diag_by_fleet = self._debug_state["v4a_bridge_diag"]
         terminal_active = bool(bundle.get("formation_terminal_active", False))
         hold_active = bool(bundle.get("formation_hold_active", False))
         engagement_geometry_active_current = self._clamp01(
@@ -1264,15 +1298,15 @@ class EngineTickSkeleton:
                 raw_target_dy,
             )
             raw_target_magnitude = math.sqrt((raw_target_dx * raw_target_dx) + (raw_target_dy * raw_target_dy))
-            current_heading = bundle.get("movement_heading_current_xy", current_forward_hat_xy)
-            if not isinstance(current_heading, (list, tuple)) or len(current_heading) < 2:
-                current_heading = current_forward_hat_xy
-            current_heading_hat, current_heading_norm = EngineTickSkeleton._normalize_direction(
-                float(current_heading[0]) if len(current_heading) >= 1 else float(current_forward_hat_xy[0]),
-                float(current_heading[1]) if len(current_heading) >= 2 else float(current_forward_hat_xy[1]),
+            heading_units = [
+                state.units[unit_id]
+                for unit_id in state.fleets[lead_fleet_id].unit_ids
+                if unit_id in state.units and float(state.units[unit_id].hit_points) > 0.0
+            ]
+            current_heading_hat = EngineTickSkeleton._compute_orientation_heading(
+                heading_units,
+                fallback_hat_xy=current_forward_hat_xy,
             )
-            if current_heading_norm <= 0.0:
-                current_heading_hat = current_forward_hat_xy
             desired_heading_hat = raw_target_hat if raw_target_norm > 0.0 else current_forward_hat_xy
             heading_relaxation = max(1e-6, min(1.0, float(bundle["heading_relaxation"])))
             current_heading_hat = EngineTickSkeleton._relax_direction(
@@ -1280,7 +1314,6 @@ class EngineTickSkeleton:
                 desired_heading_hat,
                 heading_relaxation,
             )
-            bundle["movement_heading_current_xy"] = current_heading_hat
             shape_vs_advance_strength = max(0.0, min(1.0, float(bundle["shape_vs_advance_strength"])))
             shape_error_current = max(
                 0.0,
@@ -1295,7 +1328,9 @@ class EngineTickSkeleton:
                 advance_share = 0.0
             if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
                 advance_share = 1.0
-            bundle["transition_advance_share"] = float(advance_share)
+            bridge_diag_by_fleet[lead_fleet_id] = {
+                "transition_advance_share": float(advance_share),
+            }
             updated_last_target_direction = dict(state.last_target_direction)
             if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
                 updated_last_target_direction[lead_fleet_id] = (

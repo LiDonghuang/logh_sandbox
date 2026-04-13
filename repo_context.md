@@ -13,7 +13,7 @@ Authority: Reference only, not canonical semantics authority
 ## Current Phase Focus
 
 - The cleanup and structural-tightening wave has been merged into `dev_v2.1`.
-- The current dedicated carrier is now **formation-only review and owner/path simplification planning** on top of that merged anchor.
+- The current dedicated carrier is now **formation-only review plus bounded execution slices** on top of that merged anchor.
 - The just-completed engineering wave moved from old-family retirement into owner recovery and readability/layering tightening:
   - `EngineTickSkeleton` is again the maintained active tick owner
   - `run_simulation()` remains the maintained execution/orchestration owner
@@ -23,12 +23,13 @@ Authority: Reference only, not canonical semantics authority
 - Current emphasis is:
   - active-owner truth for Formation
   - coarse-body vs locomotion boundary clarification
-  - bounded Formation-only review before mechanism redesign
+  - bounded Formation-only execution slices after owner/path audit
   - viewer-local adjustments staying separate from runtime doctrine
 - The large subtraction-first cleanup phase is treated as complete.
 - The current pushable carrier is:
-  - formation-only owner/path audit and next-slice planning
-  - plus a small bounded viewer-local adjustment already present in the working scope
+  - formation-only owner/path audit
+  - first bounded runtime-side owner-reroot slices
+  - governance review of visible runtime behavior change before further reroot
 
 ## Key Entry Documents
 
@@ -62,6 +63,9 @@ Authority: Reference only, not canonical semantics authority
   - maintained runtime movement now accepts only `v4a`
   - active `v4a` restore is direct:
     - `restore_term = restore_strength * normalize(restore_vector)`
+  - current formation-only execution slices now include:
+    - runtime-side derivation of transition heading from live unit orientation state
+    - runtime debug/export ownership for `transition_advance_share`
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
     - `cohesion_decision_source`
@@ -80,6 +84,7 @@ Authority: Reference only, not canonical semantics authority
   - maintained execution/orchestration owner
   - shared `v4a` movement-family host for both `battle` and `neutral`
   - runtime now owns the maintained tick hot path again; harness supplies preparation, bundle carriers, and observation packaging
+  - current formation-only slice removed cold bundle residues and narrowed `transition_advance_share` to observer/debug readout
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics

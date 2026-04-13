@@ -49,7 +49,6 @@ V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0 = "rect_centered_1.0"
 V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0 = "rect_centered_4.0"
 V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT = 0.20
 V4A_MORPHOLOGY_AXIS_RELAXATION_DEFAULT = 0.12
-V4A_SOFT_MORPHOLOGY_BAND_COUNT = 3
 V4A_CENTER_WING_DIFFERENTIAL_DEFAULT = 0.0
 V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT = 0.35
 V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT = 0.65
@@ -245,35 +244,6 @@ def _build_reference_slot_offsets_local(
             )
             unit_index += 1
     return offsets_local
-
-
-def _assign_soft_morphology_band_identity(
-    offsets_by_id: Mapping[str, tuple[float, float]],
-) -> dict[str, tuple[int, int]]:
-    records = [
-        (str(unit_id), float(offset_local[0]), float(offset_local[1]))
-        for unit_id, offset_local in offsets_by_id.items()
-    ]
-    if not records:
-        return {}
-    band_identity_by_id: dict[str, list[int]] = {}
-    sorted_forward = sorted(records, key=lambda item: (item[1], item[2], item[0]))
-    sorted_lateral = sorted(records, key=lambda item: (item[2], item[1], item[0]))
-    total_count = len(records)
-    for index, (record_id, _, _) in enumerate(sorted_forward):
-        band_identity_by_id.setdefault(str(record_id), [1, 1])[0] = min(
-            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-        )
-    for index, (record_id, _, _) in enumerate(sorted_lateral):
-        band_identity_by_id.setdefault(str(record_id), [1, 1])[1] = min(
-            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-        )
-    return {
-        str(record_id): (int(bands[0]), int(bands[1]))
-        for record_id, bands in band_identity_by_id.items()
-    }
 
 
 def _compute_morphology_material_phase(
@@ -836,7 +806,6 @@ class _FixtureExecutionSupport:
         target_forward_phase_by_unit, target_lateral_phase_by_unit, _, _ = _compute_morphology_material_phase(
             reference_offsets_local
         )
-        band_identity_by_unit = _assign_soft_morphology_band_identity(actual_offsets_local)
         return {
             "initial_forward_hat_xy": primary_axis_xy,
             "initial_secondary_hat_xy": secondary_axis_xy,
@@ -899,19 +868,10 @@ class _FixtureExecutionSupport:
             **motion_cfg,
             "center_wing_differential_target": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
             "center_wing_differential_current": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
-            "movement_heading_current_xy": primary_axis_xy,
             "shape_error_current": 0.0,
             "actual_forward_extent": float(forward_extent_initial),
             "actual_lateral_extent": float(lateral_extent_initial),
             "stop_within_radius": False,
-            "initial_material_forward_phase_by_unit": {
-                str(unit_id): float(phase)
-                for unit_id, phase in initial_forward_phase_by_unit.items()
-            },
-            "initial_material_lateral_phase_by_unit": {
-                str(unit_id): float(phase)
-                for unit_id, phase in initial_lateral_phase_by_unit.items()
-            },
             "target_material_forward_phase_by_unit": {
                 str(unit_id): float(phase)
                 for unit_id, phase in target_forward_phase_by_unit.items()
@@ -927,10 +887,6 @@ class _FixtureExecutionSupport:
             "current_material_lateral_phase_by_unit": {
                 str(unit_id): float(phase)
                 for unit_id, phase in initial_lateral_phase_by_unit.items()
-            },
-            "band_identity_by_unit": {
-                str(unit_id): (int(bands[0]), int(bands[1]))
-                for unit_id, bands in band_identity_by_unit.items()
             },
         }
 
@@ -1278,8 +1234,28 @@ def run_simulation(
     center_wing_position_history = _per_fleet_series()
     posture_persistence_state = {fleet_id: {"sign": 0, "length": 0} for fleet_id in fleet_ids}
 
+    def _read_v4a_bridge_float(
+        diag_tick: Mapping[str, Any],
+        fleet_id: str,
+        key: str,
+        fallback: float,
+    ) -> float:
+        bridge_diag = diag_tick.get("v4a_bridge", {}) if isinstance(diag_tick, Mapping) else {}
+        if not isinstance(bridge_diag, Mapping):
+            return float(fallback)
+        bridge_fleets = bridge_diag.get("fleets", {})
+        if not isinstance(bridge_fleets, Mapping):
+            return float(fallback)
+        fleet_diag = bridge_fleets.get(str(fleet_id), {})
+        if not isinstance(fleet_diag, Mapping):
+            return float(fallback)
+        return float(fleet_diag.get(key, fallback))
+
     # Observer/frame packaging stays local to the orchestrator.
-    def _build_focus_indicator_payload(current_state: BattleState) -> dict[str, dict[str, float]]:
+    def _build_focus_indicator_payload(
+        current_state: BattleState,
+        runtime_diag_tick: Mapping[str, Any],
+    ) -> dict[str, dict[str, float]]:
         focus_payload: dict[str, dict[str, float]] = {}
         bundle_entries: dict[str, Mapping[str, Any]] = {}
         if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL:
@@ -1369,7 +1345,12 @@ def run_simulation(
                 "lateral_current": float(bundle.get("lateral_extent_current", float("nan"))),
                 "actual_lateral": float(bundle.get("actual_lateral_extent", float("nan"))),
                 "shape_err": float(bundle.get("shape_error_current", float("nan"))),
-                "advance_share": float(bundle.get("transition_advance_share", float("nan"))),
+                "advance_share": _read_v4a_bridge_float(
+                    runtime_diag_tick,
+                    fleet_id,
+                    "transition_advance_share",
+                    float("nan"),
+                ),
                 "relation_gap": float(bundle.get("battle_relation_gap_current", float("nan"))),
                 "approach_drive": float(bundle.get("battle_approach_drive_current", float("nan"))),
                 "close_drive": float(bundle.get("battle_close_drive_current", float("nan"))),
@@ -1462,7 +1443,7 @@ def run_simulation(
             frame["targets"] = targets
         runtime_diag_tick = getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
         runtime_debug = extract_runtime_debug_payload(runtime_diag_tick)
-        focus_indicators = _build_focus_indicator_payload(current_state)
+        focus_indicators = _build_focus_indicator_payload(current_state, runtime_diag_tick)
         if focus_indicators:
             runtime_debug["focus_indicators"] = focus_indicators
         frame["fleet_body_summary"] = _build_fleet_body_summary_for_state(current_state)
@@ -1601,7 +1582,12 @@ def run_simulation(
                 float(fixture_reference_bundle.get("shape_error_current", 0.0))
             )
             fixture_metrics["transition_advance_share"].append(
-                float(fixture_reference_bundle.get("transition_advance_share", 1.0))
+                _read_v4a_bridge_float(
+                    runtime_diag_tick,
+                    fixture_fleet_id,
+                    "transition_advance_share",
+                    0.0,
+                )
             )
             fixture_metrics["legality_reference_surface_count"].append(
                 int(fixture_runtime_debug.get("legality_reference_surface_count", 0))

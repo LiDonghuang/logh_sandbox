@@ -36,6 +36,10 @@ Current maintained runtime read:
   - `resolve_combat`
 - active `v4a` restore is direct:
   - `restore_term = restore_strength * normalize(restore_vector)`
+- the current dedicated branch is a Formation-only carrier for owner/path simplification plus bounded execution review
+- the current branch-local Formation slices include:
+  - runtime-side heading derivation from live unit orientation state
+  - runtime debug/export ownership of `transition_advance_share`
 - active `v4a` no longer depends on:
   - maintained `v3a` movement branch body
   - `cohesion_decision_source`
@@ -43,7 +47,6 @@ Current maintained runtime read:
   - FSR in the active `v4a` path
 - targeting is opened in bounded form inside `resolve_combat()`
 - the merged cleanup/structural-tightening wave is complete on `dev_v2.1`
-- the current dedicated branch is a Formation-only carrier for owner/path simplification review
 
 ### 3. Maintained Harness Spine
 
@@ -67,6 +70,7 @@ Current maintained harness read:
 - `stop_radius` is neutral-only objective termination semantics
 - battle gap base now uses `fire_optimal_range`
 - `test_mode` is retired from the maintained public surface
+- harness-side bundle state is being narrowed where runtime/observer already own the active path
 
 ### 4. Settings Layer
 
@@ -142,7 +146,7 @@ Do **not** read the active tree as still owning:
 
 - large maintained files that may still benefit from bounded same-file layering review
 - remaining legacy wording in comments/reference surfaces
-- formation-only design and ownership simplification as the current separate carrier
+- formation-only owner-reroot follow-up after the first visible runtime behavior change
 
 ## Interpretation Guardrails
 
