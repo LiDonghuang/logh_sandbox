@@ -28,8 +28,11 @@
   - The current targeting candidate consumes:
     - `runtime.physical.fire_control.fire_quality_alpha`
     - `runtime.physical.fire_control.fire_optimal_range_ratio`
-  - `attack_range` remains max range; `fire_optimal_range_ratio` defines the full-quality inner band and `fire_quality_alpha` defines the directional fire-quality modifier.
+    - `runtime.physical.fire_control.fire_cone_half_angle_deg`
+  - `attack_range` remains max range; `fire_cone_half_angle_deg` defines the forward candidate gate, `fire_optimal_range_ratio` defines the full-quality inner band, and `fire_quality_alpha` defines the directional fire-quality modifier after a target has been selected.
   - Current read:
+    - candidate enemies outside the forward cone are excluded before selection
+    - selected target is the nearest surviving enemy inside the cone
     - `angle_quality = max(0, 1 + fire_quality_alpha * cos(theta))`
     - `range_quality = 1.0` inside the inner optimal band, then linearly decays to `0.0` at `attack_range`
 

@@ -55,6 +55,7 @@
       "fire_control": {
         "fire_quality_alpha": 0.33,
         "fire_optimal_range_ratio": 0.5,
+        "fire_cone_half_angle_deg": 30.0,
         "alpha_safe_max": 1.0
       },
       "contact": {

@@ -12,6 +12,7 @@ RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
     "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
+    "fire_cone_half_angle_deg": ("physical", "fire_control", "fire_cone_half_angle_deg"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
     "contact_hysteresis_h": ("physical", "contact", "contact_hysteresis_h"),
     "boundary_enabled": ("physical", "boundary", "enabled"),

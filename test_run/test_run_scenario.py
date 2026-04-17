@@ -760,6 +760,7 @@ def _spawn_formation_units(
                 hit_points=unit_max_hit_points,
                 max_hit_points=unit_max_hit_points,
                 max_speed=unit_speed,
+                reference_max_speed=unit_speed,
                 orientation_vector=Vec2(x=dir_xy[0], y=dir_xy[1]),
             )
             unit_ids.append(unit_id)
@@ -1027,6 +1028,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "damage_per_tick": unit_cfg["damage_per_tick"],
         "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
         "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
+        "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
         "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
@@ -1047,6 +1049,11 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         raise ValueError(
             "runtime.physical.fire_control.fire_optimal_range_ratio must be within [0.0, 1.0], "
             f"got {contact_cfg['fire_optimal_range_ratio']}"
+        )
+    if not math.isfinite(contact_cfg["fire_cone_half_angle_deg"]) or not 0.0 <= contact_cfg["fire_cone_half_angle_deg"] <= 180.0:
+        raise ValueError(
+            "runtime.physical.fire_control.fire_cone_half_angle_deg must be finite and within [0.0, 180.0], "
+            f"got {contact_cfg['fire_cone_half_angle_deg']}"
         )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
 
@@ -1204,6 +1211,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "damage_per_tick": unit_cfg["damage_per_tick"],
             "fire_quality_alpha": 0.0,
             "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
+            "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
             "contact_hysteresis_h": 0.0,
             "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
             "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,

@@ -11,12 +11,15 @@ It is a **formation-only mechanism optimization and boundary-clarification threa
 Use this document together with:
 
 - [TS_HANDOFF_20260412_144204.md](/e:/logh_sandbox/docs/archive/ts_handoff_archive/TS_HANDOFF_20260412_144204/TS_HANDOFF_20260412_144204.md)
+- [Formation_Owner_Path_Audit_20260412.md](/e:/logh_sandbox/analysis/engineering_reports/developments/20260412/Formation_Owner_Path_Audit_20260412.md)
+- [pr9_formation_cold_shell_subtraction_shortlist_note_20260412.md](/e:/logh_sandbox/analysis/engineering_reports/developments/20260412/pr9_formation_cold_shell_subtraction_shortlist_note_20260412.md)
+- [pr9_formation_coarse_body_boundary_lock_note_20260412.md](/e:/logh_sandbox/analysis/engineering_reports/developments/20260412/pr9_formation_coarse_body_boundary_lock_note_20260412.md)
 - PR #9 governance comment:
-  `Governance instruction — Formation-only direction on PR #9`
+  `Governance instruction - Formation-only direction on PR #9`
 
 ## 1. Current Formation Reality
 
-The maintained active path already moved past cleanup / owner recovery.
+The maintained active path already moved past cleanup and owner recovery.
 `PR #9` now deals with a narrower but harder question:
 
 - what Formation should still own
@@ -33,7 +36,7 @@ The main active Formation burden is currently in [engine_skeleton.py](/e:/logh_s
 
 These areas currently mix together:
 
-- coarse body geometry
+- coarse-body geometry
 - unit-level shaping carriers
 - transition budgeting
 - partial movement compensation
@@ -66,7 +69,7 @@ Current Formation still appears to own too much:
 - transition-budget layers
 - partial speed / movement compensation
 
-This is why the next thread should not think in terms of “small cleanup”.
+This is why the next thread should not think in terms of "small cleanup".
 The real task is boundary correction.
 
 ## 2. Latest Audit Conclusions
@@ -117,7 +120,7 @@ Do this before deleting code.
 Goal:
 
 - make the subtraction shortlist explicit
-- separate “safe deletion candidate” from “inactive shell pending decision”
+- separate "safe deletion candidate" from "inactive shell pending decision"
 
 Reason:
 
@@ -141,7 +144,7 @@ After the boundary is explicit, propose how current transition / compensation bu
 
 Reason:
 
-- otherwise the thread will collapse back into “Formation keeps everything and grows another helper layer”
+- otherwise the thread will collapse back into "Formation keeps everything and grows another helper layer"
 
 ### First likely code slice after approval
 
@@ -182,9 +185,83 @@ Recommended collaboration style:
 4. Keep suggestions concrete and narrow.
 5. When a choice has doctrine consequences, stop and surface the tradeoff instead of auto-deciding.
 
+### Response depth expectation
+
+The next thread should not become too terse when speaking to Human.
+
+If a note, audit, or shortlist is produced, the thread must not stop at:
+
+- "document created"
+- "see note"
+- "this is aligned"
+
+Instead, after creating or reading any document, explain in plain language:
+
+1. what the note actually concludes
+2. what changed in the current understanding
+3. what is safe to do next
+4. what is still not safe to touch yet
+
+The Human should not need to reverse-engineer the real conclusion from the document alone.
+
+### Mechanism explanation protocol
+
+When Human asks what a mechanism or field means, answer in this order:
+
+1. plain-language mechanism meaning
+2. active owner / code-path truth
+3. why it matters for the current decision
+4. whether it is:
+   - active core
+   - transitional baggage
+   - inactive shell
+   - safe deletion candidate
+
+Do not answer only with code references.
+Do not answer only with abstract architecture language.
+Combine both.
+
+### Document handoff protocol
+
+Whenever the thread writes a review note or audit note, follow it with a short spoken briefing to Human.
+
+That briefing should include:
+
+- the 2-4 most important conclusions
+- one sentence on why those conclusions matter now
+- one bounded next action recommendation
+
+The point of the document is to anchor precision, not to replace explanation.
+
+### Decision-support protocol
+
+When a decision is needed from Human or Governance:
+
+- present the decision in bounded terms
+- explain the consequence of each reasonable option
+- state your recommendation and why
+
+Do not offload the whole analysis burden back to Human.
+The thread should narrow the decision first.
+
+### Tone and supervision protocol
+
+The thread should behave like a careful engineering partner, not a detached summarizer.
+
+That means:
+
+- explain enough for Human to inspect confidently
+- say explicitly what is verified versus inferred
+- avoid hiding uncertainty behind compressed language
+- keep the pace calm and structured
+- do not confuse brevity with usefulness
+
+Short answers are fine only when the question is truly short.
+Mechanism-boundary questions usually need a little more explanation.
+
 In practice:
 
-- do not say “I cleaned this up”
+- do not say "I cleaned this up"
 - say exactly what becomes smaller or what ownership becomes truer
 - do not call something dead unless the active maintained path was verified
 - do not mix formation doctrine decisions with unrelated runtime/test_run/VIZ cleanup
@@ -244,9 +321,9 @@ The thread does **not** need to finish the whole formation redesign in one pass.
 
 ## 9. Final Guidance To The New Thread
 
-Do not inherit the old thread’s cleanup reflex blindly.
+Do not inherit the old thread's cleanup reflex blindly.
 
-Use the old thread’s strengths:
+Use the old thread's strengths:
 
 - careful owner truth
 - subtraction-first discipline

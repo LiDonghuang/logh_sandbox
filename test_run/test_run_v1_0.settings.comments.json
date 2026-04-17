@@ -84,6 +84,7 @@
       "fire_control": {
         "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect. Runtime currently reads angle quality as max(0, 1 + alpha * cos(theta)), so front-facing quality is 1+alpha and fully backward quality is 1-alpha before other modifiers.",
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
+        "fire_cone_half_angle_deg": "Forward fire-cone half-angle in degrees. Runtime target assignment now only considers enemies inside this cone before selecting the nearest valid target. Must be finite and within [0.0, 180.0].",
         "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
       },
       "contact": {

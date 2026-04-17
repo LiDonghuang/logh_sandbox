@@ -684,6 +684,7 @@ class _ExecutionWiringSupport:
         combat_surface = _require_engine_surface_dict(engine, "_combat_surface")
         combat_surface["fire_quality_alpha"] = float(contact_cfg["fire_quality_alpha"])
         combat_surface["fire_optimal_range_ratio"] = float(contact_cfg["fire_optimal_range_ratio"])
+        combat_surface["fire_cone_half_angle_deg"] = float(contact_cfg["fire_cone_half_angle_deg"])
         combat_surface["contact_hysteresis_h"] = float(contact_cfg["contact_hysteresis_h"])
         combat_surface["ch_enabled"] = bool(contact_cfg["ch_enabled"])
         boundary_surface = _require_engine_surface_dict(engine, "_boundary_surface")
@@ -987,10 +988,6 @@ def run_simulation(
         initial_state,
         last_target_direction={
             fleet_id: initial_state.last_target_direction.get(fleet_id, (0.0, 0.0))
-            for fleet_id in initial_state.fleets
-        },
-        last_engagement_intensity={
-            fleet_id: initial_state.last_engagement_intensity.get(fleet_id, 0.0)
             for fleet_id in initial_state.fleets
         },
     )
@@ -1542,7 +1539,10 @@ def run_simulation(
                 fleet_id=fixture_fleet_id,
                 centroid_x=centroid_x if math.isfinite(centroid_x) else 0.0,
                 centroid_y=centroid_y if math.isfinite(centroid_y) else 0.0,
-                target_direction=state.last_target_direction.get(fixture_fleet_id, (0.0, 0.0)),
+                target_direction=state.movement_command_direction.get(
+                    fixture_fleet_id,
+                    state.last_target_direction.get(fixture_fleet_id, (0.0, 0.0)),
+                ),
             )
             expected_position_map = (
                 expected_position_payload.get("expected_positions", {})
