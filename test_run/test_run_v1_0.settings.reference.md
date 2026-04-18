@@ -25,6 +25,11 @@
   - `runtime.observer.tick_timing_enabled` is the single observer-side switch for recording per-tick wall-clock elapsed time into telemetry; default is enabled and it does not change battle semantics.
   - `runtime.metatype.settings_path` and `runtime.metatype.random_seed` drive scenario-level Yang/metatype sampling only.
   - These metatype-derived values remain on the prepared high-level interface and do not enter maintained runtime/tick mechanisms.
+  - The current maintained low-level locomotion realization now consumes:
+    - `runtime.physical.movement_low_level.max_accel_per_tick`
+    - `runtime.physical.movement_low_level.max_decel_per_tick`
+    - `runtime.physical.movement_low_level.max_turn_deg_per_tick`
+    - `runtime.physical.movement_low_level.turn_speed_min_scale`
   - The current targeting candidate consumes:
     - `runtime.physical.fire_control.fire_quality_alpha`
     - `runtime.physical.fire_control.fire_optimal_range_ratio`
@@ -64,6 +69,8 @@
   - `intent_unified_spacing_v1` has been retired from the maintained mainline.
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
+    - `runtime.physical.movement_low_level.max_accel_per_tick` and `runtime.physical.movement_low_level.max_decel_per_tick` now define the maintained low-level speed-change ceiling below Formation
+    - `runtime.physical.movement_low_level.max_turn_deg_per_tick` and `runtime.physical.movement_low_level.turn_speed_min_scale` now define the maintained low-level heading/turn-speed realization seam below Formation
     - `runtime.movement.v4a.restore.strength` is the active v4a restore-strength seam
     - current direct read is:
       - `restore_term = restore_strength * normalize(restore_vector)`

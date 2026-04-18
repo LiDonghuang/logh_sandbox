@@ -79,6 +79,7 @@ class BattleState:
     fleets: Mapping[str, FleetState]
     last_fleet_cohesion_score: Mapping[str, float] = field(default_factory=dict)
     last_target_direction: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    last_engagement_intensity: Dict[str, float] = field(default_factory=dict)
     coarse_body_heading_current: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     movement_command_direction: Dict[str, Tuple[float, float]] = field(default_factory=dict)
 

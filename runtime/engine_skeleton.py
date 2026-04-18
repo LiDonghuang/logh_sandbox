@@ -36,6 +36,10 @@ V4A_ENGAGEMENT_GEOMETRY_RELAXATION_DEFAULT = 0.18
 V4A_EFFECTIVE_FIRE_AXIS_RELAXATION_DEFAULT = 0.16
 V4A_FIRE_AXIS_COHERENCE_RELAXATION_DEFAULT = 0.18
 V4A_FRONT_REORIENTATION_RELAXATION_DEFAULT = 0.18
+MOVEMENT_LOW_LEVEL_MAX_ACCEL_PER_TICK_DEFAULT = 0.25
+MOVEMENT_LOW_LEVEL_MAX_DECEL_PER_TICK_DEFAULT = 0.35
+MOVEMENT_LOW_LEVEL_MAX_TURN_DEG_PER_TICK_DEFAULT = 18.0
+MOVEMENT_LOW_LEVEL_TURN_SPEED_MIN_SCALE_DEFAULT = 0.35
 
 
 def _direction_delta_degrees(
@@ -573,6 +577,10 @@ class EngineTickSkeleton:
             "alpha_sep": 0.6,
             "model": "v4a",
             "v4a_restore_strength": 1.0,
+            "max_accel_per_tick": MOVEMENT_LOW_LEVEL_MAX_ACCEL_PER_TICK_DEFAULT,
+            "max_decel_per_tick": MOVEMENT_LOW_LEVEL_MAX_DECEL_PER_TICK_DEFAULT,
+            "max_turn_deg_per_tick": MOVEMENT_LOW_LEVEL_MAX_TURN_DEG_PER_TICK_DEFAULT,
+            "turn_speed_min_scale": MOVEMENT_LOW_LEVEL_TURN_SPEED_MIN_SCALE_DEFAULT,
         }
 
         # Active debug/reference knobs still used by maintained diagnostics.
@@ -813,6 +821,35 @@ class EngineTickSkeleton:
         return normalized_hat
 
     @staticmethod
+    def _rotate_direction_toward(
+        current_hat: tuple[float, float],
+        desired_hat: tuple[float, float],
+        max_turn_deg: float,
+    ) -> tuple[float, float]:
+        current_hat_norm, current_norm = EngineTickSkeleton._normalize_direction(
+            float(current_hat[0]),
+            float(current_hat[1]),
+        )
+        desired_hat_norm, desired_norm = EngineTickSkeleton._normalize_direction(
+            float(desired_hat[0]),
+            float(desired_hat[1]),
+        )
+        if desired_norm <= 0.0:
+            return current_hat_norm if current_norm > 0.0 else (1.0, 0.0)
+        if current_norm <= 0.0:
+            return desired_hat_norm
+        max_turn_rad = math.radians(max(0.0, min(180.0, float(max_turn_deg))))
+        if max_turn_rad >= (math.pi - 1e-12):
+            return desired_hat_norm
+        current_angle = math.atan2(float(current_hat_norm[1]), float(current_hat_norm[0]))
+        desired_angle = math.atan2(float(desired_hat_norm[1]), float(desired_hat_norm[0]))
+        delta_angle = (desired_angle - current_angle + math.pi) % (2.0 * math.pi) - math.pi
+        if abs(delta_angle) <= max_turn_rad:
+            return desired_hat_norm
+        next_angle = current_angle + (max_turn_rad if delta_angle > 0.0 else -max_turn_rad)
+        return (math.cos(next_angle), math.sin(next_angle))
+
+    @staticmethod
     def _compute_front_strip_depth(
         units: Sequence[UnitState],
         primary_hat_xy: tuple[float, float],
@@ -882,10 +919,7 @@ class EngineTickSkeleton:
         if resolved_norm <= 0.0:
             resolved_forward_hat = (1.0, 0.0)
 
-        target_direction = state.movement_command_direction.get(
-            fleet_id,
-            state.last_target_direction.get(fleet_id, resolved_forward_hat),
-        )
+        target_direction = state.last_target_direction.get(fleet_id, resolved_forward_hat)
         target_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
         target_y = float(target_direction[1]) if len(target_direction) >= 2 else 0.0
         target_forward_hat, target_norm = EngineTickSkeleton._normalize_direction(target_x, target_y)
@@ -1265,8 +1299,6 @@ class EngineTickSkeleton:
             return state
 
         movement_state = state
-        coarse_body_heading_current = dict(state.coarse_body_heading_current)
-        movement_command_direction = dict(state.movement_command_direction)
         bridge_diag_by_fleet = self._debug_state["v4a_bridge_diag"]
         terminal_active = bool(bundle.get("formation_terminal_active", False))
         hold_active = bool(bundle.get("formation_hold_active", False))
@@ -1277,7 +1309,10 @@ class EngineTickSkeleton:
             if terminal_active:
                 raw_target_direction = (0.0, 0.0)
             else:
-                raw_target_direction = state.last_target_direction.get(lead_fleet_id, (0.0, 0.0))
+                raw_target_direction = state.movement_command_direction.get(
+                    lead_fleet_id,
+                    state.last_target_direction.get(lead_fleet_id, (0.0, 0.0)),
+                )
             raw_target_dx = float(raw_target_direction[0]) if len(raw_target_direction) >= 1 else 0.0
             raw_target_dy = float(raw_target_direction[1]) if len(raw_target_direction) >= 2 else 0.0
             raw_target_hat, raw_target_norm = EngineTickSkeleton._normalize_direction(
@@ -1285,7 +1320,9 @@ class EngineTickSkeleton:
                 raw_target_dy,
             )
             raw_target_magnitude = math.sqrt((raw_target_dx * raw_target_dx) + (raw_target_dy * raw_target_dy))
-            current_heading = coarse_body_heading_current.get(lead_fleet_id, current_forward_hat_xy)
+            current_heading = bundle.get("movement_heading_current_xy", current_forward_hat_xy)
+            if not isinstance(current_heading, (list, tuple)) or len(current_heading) < 2:
+                current_heading = current_forward_hat_xy
             current_heading_hat, current_heading_norm = EngineTickSkeleton._normalize_direction(
                 float(current_heading[0]) if len(current_heading) >= 1 else float(current_forward_hat_xy[0]),
                 float(current_heading[1]) if len(current_heading) >= 2 else float(current_forward_hat_xy[1]),
@@ -1299,7 +1336,7 @@ class EngineTickSkeleton:
                 desired_heading_hat,
                 heading_relaxation,
             )
-            coarse_body_heading_current[lead_fleet_id] = current_heading_hat
+            bundle["movement_heading_current_xy"] = current_heading_hat
             shape_vs_advance_strength = max(0.0, min(1.0, float(bundle["shape_vs_advance_strength"])))
             shape_error_current = max(
                 0.0,
@@ -1314,23 +1351,29 @@ class EngineTickSkeleton:
                 advance_share = 0.0
             if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
                 advance_share = 1.0
+            bundle["transition_advance_share"] = float(advance_share)
             bridge_diag_by_fleet[lead_fleet_id] = {
                 "transition_advance_share": float(advance_share),
             }
+            updated_movement_command_direction = dict(state.movement_command_direction)
             if float(bundle.get("battle_relation_gap_current", float("nan"))) <= 0.0 and raw_target_magnitude > 0.0:
-                movement_command_direction[lead_fleet_id] = (
+                updated_movement_command_direction[lead_fleet_id] = (
                     float(raw_target_dx) * advance_share,
                     float(raw_target_dy) * advance_share,
                 )
             else:
-                movement_command_direction[lead_fleet_id] = (
+                updated_movement_command_direction[lead_fleet_id] = (
                     float(current_heading_hat[0]) * raw_target_magnitude * advance_share,
                     float(current_heading_hat[1]) * raw_target_magnitude * advance_share,
                 )
+            updated_last_engagement_intensity = dict(state.last_engagement_intensity)
+            updated_last_engagement_intensity[lead_fleet_id] = (
+                float(updated_last_engagement_intensity.get(lead_fleet_id, 0.0)) * advance_share
+            )
             movement_state = replace(
                 state,
-                coarse_body_heading_current=coarse_body_heading_current,
-                movement_command_direction=movement_command_direction,
+                movement_command_direction=updated_movement_command_direction,
+                last_engagement_intensity=updated_last_engagement_intensity,
             )
             movement_state = self._apply_v4a_transition_speed_realization(
                 movement_state,
@@ -1343,11 +1386,14 @@ class EngineTickSkeleton:
                 engagement_geometry_active_current=engagement_geometry_active_current,
             )
         if hold_active:
-            movement_command_direction[lead_fleet_id] = (0.0, 0.0)
+            updated_movement_command_direction = dict(state.movement_command_direction)
+            updated_movement_command_direction[lead_fleet_id] = (0.0, 0.0)
+            updated_last_engagement_intensity = dict(state.last_engagement_intensity)
+            updated_last_engagement_intensity[lead_fleet_id] = 0.0
             movement_state = replace(
                 state,
-                coarse_body_heading_current=coarse_body_heading_current,
-                movement_command_direction=movement_command_direction,
+                movement_command_direction=updated_movement_command_direction,
+                last_engagement_intensity=updated_last_engagement_intensity,
             )
             movement_state = self._apply_v4a_hold_speed_realization(
                 movement_state,
@@ -1428,17 +1474,20 @@ class EngineTickSkeleton:
             1e-6,
             min(1.0, float(bundle["battle_near_contact_speed_relaxation"])),
         )
+        transition_reference_max_speed_by_unit = bundle.get("transition_reference_max_speed_by_unit", {})
+        if not isinstance(transition_reference_max_speed_by_unit, Mapping):
+            transition_reference_max_speed_by_unit = {
+                str(unit_id): float(state.units[unit_id].max_speed)
+                for unit_id in state.fleets[fleet_id].unit_ids
+                if unit_id in state.units
+            }
+            bundle["transition_reference_max_speed_by_unit"] = dict(transition_reference_max_speed_by_unit)
         updated_units = dict(state.units)
         changed = False
-        for unit_id in state.fleets[fleet_id].unit_ids:
+        for unit_id, reference_speed in transition_reference_max_speed_by_unit.items():
             unit = updated_units.get(str(unit_id))
             if unit is None:
                 continue
-            if unit.hold_reference_max_speed is not None:
-                unit = replace(unit, hold_reference_max_speed=None)
-                updated_units[str(unit_id)] = unit
-                changed = True
-            reference_speed = float(unit.reference_max_speed)
             expected_position = expected_world_positions.get(str(unit_id))
             forward_transport_delta = 0.0
             if expected_position is None:
@@ -1560,19 +1609,20 @@ class EngineTickSkeleton:
         fleet_id: str,
         bundle: Mapping[str, object],
     ) -> BattleState:
+        hold_reference_max_speed_by_unit = bundle.get("formation_hold_reference_max_speed_by_unit", {})
+        if not isinstance(hold_reference_max_speed_by_unit, Mapping):
+            hold_reference_max_speed_by_unit = {
+                str(unit_id): float(state.units[unit_id].max_speed)
+                for unit_id in state.fleets[fleet_id].unit_ids
+                if unit_id in state.units
+            }
+            bundle["formation_hold_reference_max_speed_by_unit"] = dict(hold_reference_max_speed_by_unit)
         updated_units = dict(state.units)
         changed = False
-        for unit_id in state.fleets[fleet_id].unit_ids:
+        for unit_id, reference_speed in hold_reference_max_speed_by_unit.items():
             unit = updated_units.get(str(unit_id))
             if unit is None:
                 continue
-            hold_reference_speed = unit.hold_reference_max_speed
-            if hold_reference_speed is None:
-                hold_reference_speed = float(unit.max_speed)
-                unit = replace(unit, hold_reference_max_speed=float(hold_reference_speed))
-                updated_units[str(unit_id)] = unit
-                changed = True
-            reference_speed = float(hold_reference_speed)
             held_speed = float(reference_speed) * V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT
             if abs(float(unit.max_speed) - held_speed) <= 1e-9:
                 continue
@@ -1822,6 +1872,7 @@ class EngineTickSkeleton:
 
     def _evaluate_target_with_v4a_bridge(self, state: BattleState) -> BattleState:
         last_target_direction = {}
+        movement_command_direction = {}
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         fixture_active_mode = (
             str(fixture_cfg.get("active_mode", "battle")).strip().lower()
@@ -1867,12 +1918,15 @@ class EngineTickSkeleton:
 
             if not own_units:
                 last_target_direction[fleet_id] = (0.0, 0.0)
+                movement_command_direction[fleet_id] = (0.0, 0.0)
                 continue
             if neutral_fixture_terminal_hold_active:
                 last_target_direction[fleet_id] = (0.0, 0.0)
+                movement_command_direction[fleet_id] = (0.0, 0.0)
                 continue
             if (not neutral_fixture_objective_active) and (not enemy_units):
                 last_target_direction[fleet_id] = (0.0, 0.0)
+                movement_command_direction[fleet_id] = (0.0, 0.0)
                 continue
 
             centroid_x, centroid_y = self._compute_position_centroid(own_units)
@@ -2218,9 +2272,10 @@ class EngineTickSkeleton:
                     battle_bundle["battle_approach_drive_raw"] = float(approach_drive_raw)
                     battle_bundle["battle_approach_drive_current"] = float(approach_drive)
                 relation_drive = float(approach_drive - brake_drive)
+                forward_relation_drive = relation_drive
                 direction = (
-                    float(reference_direction_hat[0]) * relation_drive,
-                    float(reference_direction_hat[1]) * relation_drive,
+                    float(reference_direction_hat[0]) * float(forward_relation_drive),
+                    float(reference_direction_hat[1]) * float(forward_relation_drive),
                 )
                 intensity = float(abs(relation_drive))
             else:
@@ -2240,11 +2295,16 @@ class EngineTickSkeleton:
                     direction = (0.0, 0.0)
                     intensity = 0.0
 
-            last_target_direction[fleet_id] = direction
+            last_target_direction[fleet_id] = (
+                float(reference_direction_hat[0]),
+                float(reference_direction_hat[1]),
+            )
+            movement_command_direction[fleet_id] = direction
 
         return replace(
             state,
             last_target_direction=last_target_direction,
+            movement_command_direction=movement_command_direction,
         )
 
     def evaluate_target(self, state: BattleState) -> BattleState:
@@ -2259,6 +2319,7 @@ class EngineTickSkeleton:
             return self._evaluate_target_with_v4a_bridge(state)
 
         last_target_direction = {}
+        movement_command_direction = {}
 
         for fleet_id, fleet in state.fleets.items():
             own_units = [state.units[uid] for uid in fleet.unit_ids if uid in state.units]
@@ -2266,6 +2327,7 @@ class EngineTickSkeleton:
 
             if not own_units or not enemy_units:
                 last_target_direction[fleet_id] = (0.0, 0.0)
+                movement_command_direction[fleet_id] = (0.0, 0.0)
                 continue
 
             centroid_x = sum(unit.position.x for unit in own_units) / len(own_units)
@@ -2287,10 +2349,12 @@ class EngineTickSkeleton:
                 direction = (0.0, 0.0)
 
             last_target_direction[fleet_id] = direction
+            movement_command_direction[fleet_id] = direction
 
         return replace(
             state,
             last_target_direction=last_target_direction,
+            movement_command_direction=movement_command_direction,
         )
 
     # Retained as the canonical utility-layer seam after target evaluation; maintained mainline keeps it as a no-op.
@@ -2436,6 +2500,10 @@ class EngineTickSkeleton:
         sep_branch_eps = 1e-14
         sep_threshold_sq = r_sep_sq - sep_branch_eps
         alpha_sep = max(0.0, float(movement_surface["alpha_sep"]))
+        max_accel_per_tick = float(movement_surface["max_accel_per_tick"])
+        max_decel_per_tick = float(movement_surface["max_decel_per_tick"])
+        max_turn_deg_per_tick = float(movement_surface["max_turn_deg_per_tick"])
+        turn_speed_min_scale = float(movement_surface["turn_speed_min_scale"])
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
@@ -2688,7 +2756,6 @@ class EngineTickSkeleton:
                 one_sided_axial_restore_gate_active = False
                 if (
                     using_fixture_expected_position
-                    and fixture_step_magnitude_gate_active
                     and isinstance(fixture_expected_primary_axis_xy, (list, tuple))
                     and len(fixture_expected_primary_axis_xy) >= 2
                 ):
@@ -2712,19 +2779,17 @@ class EngineTickSkeleton:
                         + (cohesion_vector_y * restore_lateral_y)
                     )
                     cohesion_axial_gated = cohesion_axial_raw
-                    if cohesion_axial_raw < 0.0:
+                    if fixture_step_magnitude_gate_active and cohesion_axial_gated < 0.0:
                         one_sided_axial_restore_gate_active = True
-                        cohesion_axial_gated = cohesion_axial_raw * fixture_step_magnitude_gain
-                        cohesion_vector_x = (
-                            (cohesion_axial_gated * restore_axis_x)
-                            + (cohesion_lateral_raw * restore_lateral_x)
-                        )
-                        cohesion_vector_y = (
-                            (cohesion_axial_gated * restore_axis_y)
-                            + (cohesion_lateral_raw * restore_lateral_y)
-                        )
-                    else:
-                        cohesion_axial_gated = cohesion_axial_raw
+                        cohesion_axial_gated = cohesion_axial_gated * fixture_step_magnitude_gain
+                    cohesion_vector_x = (
+                        (cohesion_axial_gated * restore_axis_x)
+                        + (cohesion_lateral_raw * restore_lateral_x)
+                    )
+                    cohesion_vector_y = (
+                        (cohesion_axial_gated * restore_axis_y)
+                        + (cohesion_lateral_raw * restore_lateral_y)
+                    )
                 cohesion_norm_raw = math.sqrt((cohesion_vector_x * cohesion_vector_x) + (cohesion_vector_y * cohesion_vector_y))
                 cohesion_deadband_triggered = False
                 cohesion_norm = cohesion_norm_raw
@@ -2800,24 +2865,66 @@ class EngineTickSkeleton:
                 pre_projection_total_norm = 0.0
                 step_distance = 0.0
                 step_speed = 0.0
+                current_heading_hat, current_heading_norm = self._normalize_direction(
+                    float(unit.orientation_vector.x),
+                    float(unit.orientation_vector.y),
+                )
+                if current_heading_norm <= movement_eps:
+                    current_heading_hat = self._normalize_direction_with_fallback(
+                        float(movement_direction[0]),
+                        float(movement_direction[1]),
+                        1.0,
+                        0.0,
+                    )
+                desired_heading_hat = total_direction if total_norm > movement_eps else current_heading_hat
+                realized_heading_hat = self._rotate_direction_toward(
+                    current_heading_hat,
+                    desired_heading_hat,
+                    max_turn_deg_per_tick,
+                )
+                heading_alignment_for_speed = 1.0
                 if total_norm > movement_eps:
-                    step_distance = (unit.max_speed * state.dt) * fixture_step_magnitude_gain
-                    step_speed = unit.max_speed * fixture_step_magnitude_gain
-                if total_norm > movement_eps and step_distance > movement_eps:
-                    pre_projection_step_scale = step_distance / total_norm
-                    pre_projection_total_dx = total_direction[0] * step_distance
-                    pre_projection_total_dy = total_direction[1] * step_distance
+                    heading_alignment_for_speed = max(
+                        0.0,
+                        (float(realized_heading_hat[0]) * float(desired_heading_hat[0]))
+                        + (float(realized_heading_hat[1]) * float(desired_heading_hat[1])),
+                    )
+                desired_speed_scale = float(turn_speed_min_scale)
+                if total_norm > movement_eps:
+                    desired_speed_scale = float(turn_speed_min_scale) + (
+                        (1.0 - float(turn_speed_min_scale)) * float(heading_alignment_for_speed)
+                    )
+                desired_speed = float(unit.max_speed) * float(fixture_step_magnitude_gain) * float(desired_speed_scale)
+                current_speed = math.sqrt(
+                    (float(unit.velocity.x) * float(unit.velocity.x))
+                    + (float(unit.velocity.y) * float(unit.velocity.y))
+                )
+                if not math.isfinite(current_speed):
+                    current_speed = 0.0
+                max_accel_delta = float(max_accel_per_tick) * float(state.dt)
+                max_decel_delta = float(max_decel_per_tick) * float(state.dt)
+                if desired_speed >= current_speed:
+                    step_speed = min(float(desired_speed), float(current_speed) + float(max_accel_delta))
+                else:
+                    step_speed = max(float(desired_speed), float(current_speed) - float(max_decel_delta))
+                step_speed = max(0.0, float(step_speed))
+                step_distance = float(step_speed) * float(state.dt)
+                if total_norm > movement_eps:
+                    pre_projection_step_scale = step_distance / total_norm if step_distance > movement_eps else 0.0
+                if step_distance > movement_eps:
+                    pre_projection_total_dx = float(realized_heading_hat[0]) * step_distance
+                    pre_projection_total_dy = float(realized_heading_hat[1]) * step_distance
                     pre_projection_total_norm = math.sqrt(
                         (pre_projection_total_dx * pre_projection_total_dx)
                         + (pre_projection_total_dy * pre_projection_total_dy)
                     )
-                    orientation = Vec2(x=total_direction[0], y=total_direction[1])
+                    orientation = Vec2(x=float(realized_heading_hat[0]), y=float(realized_heading_hat[1]))
                     velocity = Vec2(
-                        x=total_direction[0] * step_speed,
-                        y=total_direction[1] * step_speed,
+                        x=float(realized_heading_hat[0]) * step_speed,
+                        y=float(realized_heading_hat[1]) * step_speed,
                     )
                 else:
-                    orientation = unit.orientation_vector
+                    orientation = Vec2(x=float(current_heading_hat[0]), y=float(current_heading_hat[1]))
                     velocity = Vec2(x=0.0, y=0.0)
 
                 new_position = Vec2(
@@ -2881,6 +2988,11 @@ class EngineTickSkeleton:
                         "boundary_contrib_dy": float(boundary_term_y * pre_projection_step_scale),
                         "step_magnitude_gate_active": bool(fixture_step_magnitude_gate_active),
                         "step_magnitude_gain": float(fixture_step_magnitude_gain),
+                        "locomotion_heading_alignment": float(heading_alignment_for_speed),
+                        "locomotion_desired_speed": float(desired_speed),
+                        "locomotion_realized_speed": float(step_speed),
+                        "locomotion_heading_x": float(realized_heading_hat[0]),
+                        "locomotion_heading_y": float(realized_heading_hat[1]),
                         "pre_projection_total_dx": float(pre_projection_total_dx),
                         "pre_projection_total_dy": float(pre_projection_total_dy),
                         "pre_projection_total_norm": float(pre_projection_total_norm),

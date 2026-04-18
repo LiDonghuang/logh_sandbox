@@ -291,6 +291,16 @@ def _resolved_viewer_source_for_replay(replay: ReplayBundle) -> str:
     raise ValueError(f"unsupported replay source kind for camera take export: {replay.source_kind!r}.")
 
 
+def _resolve_background_map_seed(replay: ReplayBundle) -> int:
+    summary = replay.metadata.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("ReplayBundle.metadata['summary'] must be a mapping for skybox selection.")
+    seed_value = summary.get("effective_background_map_seed")
+    if seed_value is None:
+        raise ValueError("ReplayBundle.metadata['summary']['effective_background_map_seed'] is required for skybox selection.")
+    return int(seed_value)
+
+
 def _build_camera_take_context(
     replay: ReplayBundle,
     *,
@@ -311,6 +321,7 @@ def _build_camera_take_context(
         "max_steps": int(replay.metadata.get("max_steps_effective", -1)),
         "frame_stride": int(replay.metadata.get("frame_stride", DEFAULT_FRAME_STRIDE)),
         "direction_mode": direction_mode,
+        "effective_background_map_seed": int(_resolve_background_map_seed(replay)),
         "playback_fps": float(playback_fps),
         "fire_link_mode": str(fire_link_mode),
         "window_width": int(window_width),
@@ -337,6 +348,7 @@ def _validate_camera_take_payload(payload: Any, *, source_path: Path) -> dict[st
         "max_steps",
         "frame_stride",
         "direction_mode",
+        "effective_background_map_seed",
         "playback_fps",
         "fire_link_mode",
         "window_width",
@@ -473,7 +485,14 @@ class FleetViewerApp(ShowBase):
         self._camera_take_notice_message = ""
         self._camera_take_notice_seconds_remaining = 0.0
 
-        self._scene_root = build_scene(self.render, arena_size=self._replay.arena_size)
+        self._scene_root = build_scene(
+            self.render,
+            arena_size=self._replay.arena_size,
+            background_map_seed=_resolve_background_map_seed(self._replay),
+        )
+        self._skybox_np = self._scene_root.find("**/viewer_skybox")
+        if self._skybox_np.isEmpty():
+            raise RuntimeError("viewer_scene is missing required child 'viewer_skybox'.")
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
         self._unit_renderer.set_playback_fps(self._playback_fps)
@@ -883,6 +902,7 @@ class FleetViewerApp(ShowBase):
     def _render_frame(self, frame: ViewerFrame, *, pulse_phase: float = 0.0) -> None:
         self._set_display_timing(position_alpha=0.0, pulse_phase=pulse_phase)
         self._unit_renderer.sync_frame(frame, pulse_phase=float(pulse_phase))
+        self._skybox_np.setPos(self.render, self.camera.getPos(self.render))
         self._unit_renderer.update_view(self.camera)
         self._sync_corner_avatar_cards(frame)
         self._sync_fleet_avatar_overlays()
@@ -1500,6 +1520,7 @@ class FleetViewerApp(ShowBase):
                         position_alpha=smoothing_alpha,
                         pulse_phase=smoothing_alpha if self._unit_renderer.fire_link_mode == "enabled" else 0.0,
                     )
+                    self._skybox_np.setPos(self.render, self.camera.getPos(self.render))
                     self._unit_renderer.update_view(self.camera)
                     self._sync_corner_avatar_cards(current_frame)
                     self._sync_fleet_avatar_overlays()
@@ -1521,6 +1542,7 @@ class FleetViewerApp(ShowBase):
         else:
             current_frame = self._replay.frames[self._current_frame_index]
             self._set_display_timing(position_alpha=0.0, pulse_phase=0.0)
+        self._skybox_np.setPos(self.render, self.camera.getPos(self.render))
         self._unit_renderer.update_view(self.camera)
         self._sync_corner_avatar_cards(current_frame)
         self._sync_fleet_avatar_overlays()
@@ -1579,6 +1601,7 @@ def export_camera_take_video(
         max_steps=int(replay_request["max_steps"]),
         frame_stride=int(replay_request["frame_stride"]),
         direction_mode=str(replay_request["direction_mode"]),
+        effective_background_map_seed=int(replay_request["effective_background_map_seed"]),
     )
     replay_summary = take_payload.get("replay_summary", {})
     if isinstance(replay_summary, dict):

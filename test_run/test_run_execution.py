@@ -681,6 +681,18 @@ class _ExecutionWiringSupport:
         movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
         movement_surface["model"] = "v4a"
         movement_surface["v4a_restore_strength"] = float(v4a_bundle_profile["restore_strength"])
+        for movement_key in (
+            "max_accel_per_tick",
+            "max_decel_per_tick",
+            "max_turn_deg_per_tick",
+            "turn_speed_min_scale",
+        ):
+            if movement_key not in movement_cfg:
+                raise ValueError(
+                    "run_simulation movement_cfg is missing required low-level locomotion key "
+                    f"{movement_key!r}"
+                )
+            movement_surface[movement_key] = float(movement_cfg[movement_key])
         combat_surface = _require_engine_surface_dict(engine, "_combat_surface")
         combat_surface["fire_quality_alpha"] = float(contact_cfg["fire_quality_alpha"])
         combat_surface["fire_optimal_range_ratio"] = float(contact_cfg["fire_optimal_range_ratio"])
@@ -869,6 +881,7 @@ class _FixtureExecutionSupport:
             **motion_cfg,
             "center_wing_differential_target": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
             "center_wing_differential_current": float(V4A_CENTER_WING_DIFFERENTIAL_DEFAULT),
+            "movement_heading_current_xy": primary_axis_xy,
             "shape_error_current": 0.0,
             "actual_forward_extent": float(forward_extent_initial),
             "actual_lateral_extent": float(lateral_extent_initial),
@@ -988,6 +1001,10 @@ def run_simulation(
         initial_state,
         last_target_direction={
             fleet_id: initial_state.last_target_direction.get(fleet_id, (0.0, 0.0))
+            for fleet_id in initial_state.fleets
+        },
+        last_engagement_intensity={
+            fleet_id: initial_state.last_engagement_intensity.get(fleet_id, 0.0)
             for fleet_id in initial_state.fleets
         },
     )
