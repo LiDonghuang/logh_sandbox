@@ -21,11 +21,11 @@ from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
 # =========================================================
 
 FIRE_LINK_MODES = {"disabled", "enabled"}
-FIRE_LINK_ALPHA = 0.2
-FIRE_LINK_THICKNESS = 0.2
+FIRE_LINK_ALPHA = 0.5
+FIRE_LINK_THICKNESS = 0.3
 FIRE_LINK_CENTER_OFFSET = 0.5
-FIRE_LINK_PULSE_SPACING = 2.7
-FIRE_LINK_PULSE_LENGTH = 0.3
+FIRE_LINK_PULSE_SPACING = 0.9
+FIRE_LINK_PULSE_LENGTH = 0.1
 FIRE_LINK_BASE_SPEED_PER_SECOND = 5.0
 FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.2
 FIRE_LINK_BEAM_SPREAD = 0.10
@@ -46,9 +46,9 @@ FIRE_LINK_BEAM_LAYOUTS = {
 }
 
 # Unit dual-layer appearance, ordered level 1 -> level 5.
-TOKEN_ALPHA_BY_LEVEL = (0.01, 0.10, 0.25, 0.50, 0.90)
-CLUSTER_ALPHA_BY_LEVEL = (0.90, 0.01, 0.0, 0.0, 0.0)
-DUAL_LAYER_DISTANCE_BY_LEVEL = (30.0, 60.0, 90.0, 120.0, 150.0)
+TOKEN_ALPHA_BY_LEVEL = (0.01, 0.2, 0.4, 0.6, 0.8)
+CLUSTER_ALPHA_BY_LEVEL = (0.9, 0.01, 0.0, 0.0, 0.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (5.0, 50.0, 100.0, 150.0, 200.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
@@ -72,10 +72,10 @@ CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
 CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.6, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
-CLUSTER_SWAY_AMPLITUDE_X = 0.04
-CLUSTER_SWAY_AMPLITUDE_Y = 0.05
-CLUSTER_SWAY_AMPLITUDE_Z = 0.03
-CLUSTER_SWAY_FREQUENCY = 0.1
+CLUSTER_SWAY_AMPLITUDE_X = 0.08
+CLUSTER_SWAY_AMPLITUDE_Y = 0.06
+CLUSTER_SWAY_AMPLITUDE_Z = 0.1
+CLUSTER_SWAY_FREQUENCY = 0.05
 CLUSTER_SWAY_CLOCK_SCALE = 1.0
 CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX = 2
 CLUSTER_LAYOUT_OFFSETS = (
@@ -414,6 +414,8 @@ class UnitRenderer:
         self._cluster_ship_sway_profiles = _build_cluster_ship_sway_profiles()
         self._cluster_ship_sway_restored: dict[str, bool] = {}
         self._cluster_ship_visible_masks: dict[str, tuple[bool, ...]] = {}
+        self._cluster_visibility_state: dict[str, bool] = {}
+        self._cluster_alpha_state: dict[str, float] = {}
         self._overlay_np = self._parent.attachNewNode("viewer_overlays")
         self._objective_marker_np = self._overlay_np.attachNewNode("viewer_objective_marker")
         self._fleet_halos_np = self._overlay_np.attachNewNode("viewer_fleet_halos")
@@ -428,6 +430,7 @@ class UnitRenderer:
         self._playback_level_index = 0
         self._playback_fps = 2.0
         self._playback_active = True
+        self._cluster_sway_enabled = False
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
         if len(TOKEN_ALPHA_BY_LEVEL) != len(CLUSTER_ALPHA_BY_LEVEL):
             raise ValueError("TOKEN_ALPHA_BY_LEVEL and CLUSTER_ALPHA_BY_LEVEL must have identical lengths.")
@@ -490,6 +493,9 @@ class UnitRenderer:
     def set_playback_active(self, playback_active: bool) -> None:
         self._playback_active = bool(playback_active)
 
+    def set_cluster_sway_enabled(self, cluster_sway_enabled: bool) -> None:
+        self._cluster_sway_enabled = bool(cluster_sway_enabled)
+
     def set_replay(self, replay: ReplayBundle) -> None:
         # App-facing replay swap seam: refresh renderer-owned carriers without
         # exposing renderer-private storage to the viewer host.
@@ -520,6 +526,10 @@ class UnitRenderer:
         return self._fire_link_mode
 
     @property
+    def cluster_sway_enabled(self) -> bool:
+        return bool(self._cluster_sway_enabled)
+
+    @property
     def fleet_halo_state(self) -> dict[str, dict[str, float]]:
         return {fleet_id: dict(state) for fleet_id, state in self._fleet_halo_state.items()}
 
@@ -530,7 +540,11 @@ class UnitRenderer:
         return float(base_seconds) * CLUSTER_SWAY_CLOCK_SCALE
 
     def _cluster_sway_active(self) -> bool:
-        return bool(self._playback_active and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX)
+        return bool(
+            self._cluster_sway_enabled
+            and self._playback_active
+            and self._playback_level_index <= CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX
+        )
 
     def _cluster_ship_sway_offsets(
         self,
@@ -667,8 +681,13 @@ class UnitRenderer:
                 token_alpha_scale = outer_alpha / float(TOKEN_ALPHA_BY_LEVEL[-1])
             token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
             if cluster_alpha > 1e-4:
-                cluster_np.show()
-                cluster_np.setColorScale(1.0, 1.0, 1.0, cluster_alpha)
+                if not self._cluster_visibility_state.get(node_key, False):
+                    cluster_np.show()
+                    self._cluster_visibility_state[node_key] = True
+                last_cluster_alpha = self._cluster_alpha_state.get(node_key)
+                if last_cluster_alpha is None or abs(float(last_cluster_alpha) - float(cluster_alpha)) > 1e-6:
+                    cluster_np.setColorScale(1.0, 1.0, 1.0, cluster_alpha)
+                    self._cluster_alpha_state[node_key] = float(cluster_alpha)
                 ship_nodes = self._cluster_ship_nodes.get(node_key, ())
                 ship_sway_profiles = self._cluster_ship_sway_profiles
                 if not cluster_sway_active:
@@ -696,7 +715,10 @@ class UnitRenderer:
                     )
                     ship_np.setPos(float(ship_offset[0]), float(ship_offset[1]), float(ship_offset[2]))
             else:
-                cluster_np.hide()
+                if self._cluster_visibility_state.get(node_key, True):
+                    cluster_np.hide()
+                    self._cluster_visibility_state[node_key] = False
+                self._cluster_alpha_state.pop(node_key, None)
         if self._current_frame is not None:
             should_show_fire_links = bool(min_unit_distance is not None and min_unit_distance <= level_distances[-1])
             if (
@@ -881,20 +903,22 @@ class UnitRenderer:
                 self._cluster_ship_nodes[node_key] = ship_nodes
                 self._cluster_ship_sway_restored[node_key] = True
                 self._cluster_ship_visible_masks[node_key] = tuple(False for _ in ship_nodes)
+                self._cluster_visibility_state.pop(node_key, None)
+                self._cluster_alpha_state.pop(node_key, None)
             bucket = _hp_bucket(unit.hit_points, unit.max_hit_points)
             scale = HP_BUCKET_SCALES[bucket]
             self._token_nodes[node_key].setScale(scale)
             visible_indices = CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket]
-            current_visibility_mask: list[bool] = []
-            for ship_index, ship_np in enumerate(self._cluster_ship_nodes[node_key]):
-                if ship_index in visible_indices:
-                    ship_np.show()
-                    current_visibility_mask.append(True)
-                else:
-                    ship_np.hide()
-                    current_visibility_mask.append(False)
-            visibility_mask_tuple = tuple(current_visibility_mask)
+            visibility_mask_tuple = tuple(
+                ship_index in visible_indices
+                for ship_index in range(len(self._cluster_ship_nodes[node_key]))
+            )
             if visibility_mask_tuple != self._cluster_ship_visible_masks.get(node_key):
+                for ship_index, ship_np in enumerate(self._cluster_ship_nodes[node_key]):
+                    if visibility_mask_tuple[ship_index]:
+                        ship_np.show()
+                    else:
+                        ship_np.hide()
                 self._cluster_ship_visible_masks[node_key] = visibility_mask_tuple
                 self._cluster_ship_sway_restored[node_key] = False
             node.setPos(unit.x, unit.y, unit.z)
@@ -910,6 +934,8 @@ class UnitRenderer:
             self._cluster_ship_nodes.pop(stale_key, None)
             self._cluster_ship_sway_restored.pop(stale_key, None)
             self._cluster_ship_visible_masks.pop(stale_key, None)
+            self._cluster_visibility_state.pop(stale_key, None)
+            self._cluster_alpha_state.pop(stale_key, None)
 
         self.sync_fleet_halos(frame)
 

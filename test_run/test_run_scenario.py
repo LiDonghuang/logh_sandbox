@@ -650,10 +650,58 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"[0.0, attack_speed_lateral_scale], got backward={attack_speed_backward_scale}, "
             f"lateral={attack_speed_lateral_scale}"
         )
+    max_accel_per_tick_raw = get_runtime("max_accel_per_tick", settings_api.MISSING)
+    if max_accel_per_tick_raw is settings_api.MISSING:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_accel_per_tick must be provided when movement_model=v4a"
+        )
+    max_accel_per_tick = float(max_accel_per_tick_raw)
+    if not math.isfinite(max_accel_per_tick) or max_accel_per_tick <= 0.0:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_accel_per_tick must be finite and > 0.0, "
+            f"got {max_accel_per_tick}"
+        )
+    max_decel_per_tick_raw = get_runtime("max_decel_per_tick", settings_api.MISSING)
+    if max_decel_per_tick_raw is settings_api.MISSING:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_decel_per_tick must be provided when movement_model=v4a"
+        )
+    max_decel_per_tick = float(max_decel_per_tick_raw)
+    if not math.isfinite(max_decel_per_tick) or max_decel_per_tick <= 0.0:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_decel_per_tick must be finite and > 0.0, "
+            f"got {max_decel_per_tick}"
+        )
+    max_turn_deg_per_tick_raw = get_runtime("max_turn_deg_per_tick", settings_api.MISSING)
+    if max_turn_deg_per_tick_raw is settings_api.MISSING:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_turn_deg_per_tick must be provided when movement_model=v4a"
+        )
+    max_turn_deg_per_tick = float(max_turn_deg_per_tick_raw)
+    if not math.isfinite(max_turn_deg_per_tick) or not 0.0 < max_turn_deg_per_tick <= 180.0:
+        raise ValueError(
+            "runtime.physical.movement_low_level.max_turn_deg_per_tick must be finite and within (0.0, 180.0], "
+            f"got {max_turn_deg_per_tick}"
+        )
+    turn_speed_min_scale_raw = get_runtime("turn_speed_min_scale", settings_api.MISSING)
+    if turn_speed_min_scale_raw is settings_api.MISSING:
+        raise ValueError(
+            "runtime.physical.movement_low_level.turn_speed_min_scale must be provided when movement_model=v4a"
+        )
+    turn_speed_min_scale = float(turn_speed_min_scale_raw)
+    if not math.isfinite(turn_speed_min_scale) or not 0.0 <= turn_speed_min_scale <= 1.0:
+        raise ValueError(
+            "runtime.physical.movement_low_level.turn_speed_min_scale must be finite and within [0.0, 1.0], "
+            f"got {turn_speed_min_scale}"
+        )
     movement_model = resolve_movement_model(get_runtime("movement_model", "v4a"))
     movement_cfg = {
         "model": movement_model,
         "symmetric_movement_sync_enabled": bool(get_run("symmetric_movement_sync_enabled", True)),
+        "max_accel_per_tick": max_accel_per_tick,
+        "max_decel_per_tick": max_decel_per_tick,
+        "max_turn_deg_per_tick": max_turn_deg_per_tick,
+        "turn_speed_min_scale": turn_speed_min_scale,
         "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,
@@ -760,6 +808,7 @@ def _spawn_formation_units(
                 hit_points=unit_max_hit_points,
                 max_hit_points=unit_max_hit_points,
                 max_speed=unit_speed,
+                reference_max_speed=unit_speed,
                 orientation_vector=Vec2(x=dir_xy[0], y=dir_xy[1]),
             )
             unit_ids.append(unit_id)
@@ -1027,6 +1076,7 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         "damage_per_tick": unit_cfg["damage_per_tick"],
         "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
         "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
+        "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
         "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
         "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
         "hostile_contact_impedance_mode": _require_choice(
@@ -1047,6 +1097,11 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
         raise ValueError(
             "runtime.physical.fire_control.fire_optimal_range_ratio must be within [0.0, 1.0], "
             f"got {contact_cfg['fire_optimal_range_ratio']}"
+        )
+    if not math.isfinite(contact_cfg["fire_cone_half_angle_deg"]) or not 0.0 <= contact_cfg["fire_cone_half_angle_deg"] <= 180.0:
+        raise ValueError(
+            "runtime.physical.fire_control.fire_cone_half_angle_deg must be finite and within [0.0, 180.0], "
+            f"got {contact_cfg['fire_cone_half_angle_deg']}"
         )
     contact_cfg["ch_enabled"] = contact_cfg["contact_hysteresis_h"] > 0.0
 
@@ -1204,6 +1259,7 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
             "damage_per_tick": unit_cfg["damage_per_tick"],
             "fire_quality_alpha": 0.0,
             "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
+            "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
             "contact_hysteresis_h": 0.0,
             "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
             "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,

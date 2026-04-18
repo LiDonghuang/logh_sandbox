@@ -26,7 +26,7 @@ VIEWER_SOURCE_CHOICES = (
     VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE,
 )
 FIXED_VIEWER_FLEET_COLORS = {
-    "A": "#216bd9",
+    "A": "#025ed5",
     "B": "#a62631",
 }
 DEFAULT_VIEWER_AVATAR_A = getattr(test_run_entry, "DEFAULT_AVATAR_A", "avatar_reinhard")
@@ -734,6 +734,7 @@ def load_viewer_replay(
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
     direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
+    effective_background_map_seed: int | None = None,
 ) -> ReplayBundle:
     """Run the bounded test_run surface and return a viewer-local replay bundle."""
     if frame_stride < 1:
@@ -742,6 +743,11 @@ def load_viewer_replay(
         raise TypeError(f"max_steps must be an int or None, got {type(max_steps).__name__}.")
 
     settings = settings_api.load_layered_test_run_settings(TEST_RUN_BASE_DIR)
+    if effective_background_map_seed is not None:
+        battlefield = settings.setdefault("battlefield", {})
+        if not isinstance(battlefield, dict):
+            raise ValueError("battlefield must be a mapping in layered test_run settings.")
+        battlefield["background_map_seed"] = int(effective_background_map_seed)
     display_language = _resolve_display_language(settings)
     settings_vector_display_mode = _resolve_vector_display_mode(settings)
     active_direction_mode, active_direction_label, direction_mode_source = _resolve_direction_mode(

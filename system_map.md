@@ -36,13 +36,24 @@ Current maintained runtime read:
   - `resolve_combat`
 - active `v4a` restore is direct:
   - `restore_term = restore_strength * normalize(restore_vector)`
+- the current working branch is a PR#9 continuation carrier for:
+  - Formation coarse-body/reference ownership
+  - bounded low-level locomotion realization
+  - paired comparison against `dev_v2.1 / a0d0b46`
+- current branch-local runtime slices include:
+  - forward fire-cone target selection in `resolve_combat()`
+  - low-level locomotion realization limits in `integrate_movement()`
+  - runtime-owned fleet heading memory in `coarse_body_heading_current`
+  - split retreat carriers:
+    - `last_target_direction` as reference axis
+    - `movement_command_direction` as signed movement command
 - active `v4a` no longer depends on:
   - maintained `v3a` movement branch body
   - `cohesion_decision_source`
   - `collapse_signal.v3_*`
   - FSR in the active `v4a` path
 - targeting is opened in bounded form inside `resolve_combat()`
-- the next structural phase should target hot-path tightening, not new mechanism expansion
+- the merged cleanup/structural-tightening wave is complete on `dev_v2.1`
 
 ### 3. Maintained Harness Spine
 
@@ -54,6 +65,7 @@ Current maintained runtime read:
   - maintained execution/orchestration host
   - shared `v4a` movement-family host for `battle` and `neutral`
   - battle/fixture bundles remain as carriers, while maintained tick semantics are back in runtime
+  - replay/baseline capture path is also used for paired comparison against `dev_v2.1`
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers only
 - `test_run/settings_accessor.py`
@@ -66,6 +78,10 @@ Current maintained harness read:
 - `stop_radius` is neutral-only objective termination semantics
 - battle gap base now uses `fire_optimal_range`
 - `test_mode` is retired from the maintained public surface
+- harness-side bundle state is being narrowed where runtime/observer already own the active path
+- harness currently wires two new maintained runtime surfaces:
+  - `runtime.physical.fire_control.fire_cone_half_angle_deg`
+  - `runtime.physical.movement_low_level.*`
 
 ### 4. Settings Layer
 
@@ -82,6 +98,9 @@ Current maintained settings read:
 - `runtime.metatype.*` remains a scenario-level Yang/personality sampling interface only
 - `run_control.symmetric_movement_sync_enabled` owns symmetric merge control
 - `runtime.observer` has been narrowed to still-active maintained keys
+- runtime now also exposes:
+  - fire-control cone width
+  - low-level locomotion realization limits
 - old public `v3a` selector surfaces are no longer part of the maintained mainline
 - `testonly.runtime.movement.v4a.*` is now structured by candidate-owned groups:
   - `restore`
@@ -106,6 +125,8 @@ Current viewer read:
 - viewer-facing fleet geometry now consumes the maintained `fleet_body_summary` replay contract
 - `app.py` owns viewer orchestration / playback / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer-local cluster sway can now be toggled from `app.py` while sway realization remains inside `unit_renderer.py`
+- current local viewer work also supports inspection of PR#9 contact / locomotion behavior through replay-path additions
 - no old 2D viz / BRF surface remains in the active mainline
 
 ### 6. Documentation / Records Layer
@@ -140,7 +161,10 @@ Do **not** read the active tree as still owning:
 
 - large maintained files that may still benefit from bounded same-file layering review
 - remaining legacy wording in comments/reference surfaces
-- formation-only design and ownership simplification as a separate next carrier
+- further subtraction-first cleanup of `runtime/engine_skeleton.py` and `test_run/test_run_execution.py`
+- retreat-policy follow-up:
+  - current runtime has no dedicated `back_off_keep_front` realization family
+  - sustained disengagement vs short-range sternway is not yet explicitly split
 
 ## Interpretation Guardrails
 

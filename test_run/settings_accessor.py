@@ -12,6 +12,7 @@ RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
     "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
     "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
+    "fire_cone_half_angle_deg": ("physical", "fire_control", "fire_cone_half_angle_deg"),
     "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
     "contact_hysteresis_h": ("physical", "contact", "contact_hysteresis_h"),
     "boundary_enabled": ("physical", "boundary", "enabled"),
@@ -19,6 +20,10 @@ RUNTIME_SETTING_PATHS = {
     "boundary_hard_enabled": ("physical", "boundary", "hard_enabled"),
     "min_unit_spacing": ("physical", "movement_low_level", "min_unit_spacing"),
     "alpha_sep": ("physical", "movement_low_level", "alpha_sep"),
+    "max_accel_per_tick": ("physical", "movement_low_level", "max_accel_per_tick"),
+    "max_decel_per_tick": ("physical", "movement_low_level", "max_decel_per_tick"),
+    "max_turn_deg_per_tick": ("physical", "movement_low_level", "max_turn_deg_per_tick"),
+    "turn_speed_min_scale": ("physical", "movement_low_level", "turn_speed_min_scale"),
     "v4a_restore_strength": ("movement", "v4a", "restore", "strength"),
     "v4a_expected_reference_spacing": (
         "movement",

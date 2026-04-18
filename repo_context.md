@@ -7,28 +7,26 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Active cleanup branch: `eng/dev-v2.1-targeting-restore-cleanup`
+- Current PR#9 working branch: `eng/dev-v2.1-formation-only`
 - Maintained movement baseline: `v4a`
 
 ## Current Phase Focus
 
-- The current mainline is now **post-cleanup structural tightening** on top of the recovered `dev_v2.1` anchor.
-- The just-completed engineering wave moved from old-family retirement into owner recovery and readability/layering tightening:
-  - `EngineTickSkeleton` is again the maintained active tick owner
-  - `run_simulation()` remains the maintained execution/orchestration owner
-  - `battle` and `neutral` share the maintained `v4a` movement family, differing only by objective source
-  - maintained battle gap now uses `fire_optimal_range` rather than raw `attack_range`
-  - old 2D viz / BRF / maintained `v3a` execution surfaces are no longer part of the active mainline
+- `dev_v2.1 / a0d0b46` is the highest-trust pre-PR#9 behavior anchor currently used for paired comparison.
+- The current working carrier on top of that anchor is:
+  - PR#9 Formation-only execution
+  - bounded locomotion-below-Formation slices
+  - baseline comparison and governance review before deeper reroot
 - Current emphasis is:
-  - active-owner truth
-  - human-readable maintained hot paths
-  - same-file internal layering before new file fan-out
-  - bounded viewer-local structural hygiene
-- The large subtraction-first cleanup phase is treated as complete.
-- The current pushable wave is:
-  - post-cleanup owner recovery
-  - same-file structural tightening in runtime / `test_run` / VIZ
-- Formation-line work remains separate and should not be read as part of this structural-optimization wave.
+  - keep `battle` and `neutral` pre-contact aligned with `dev_v2.1`
+  - keep Formation at coarse-body/reference ownership
+  - move low-level realization concerns into runtime locomotion
+  - preserve viewer-only work as replay/UI, not runtime doctrine
+- Recently established branch-local mechanism additions include:
+  - forward fire-cone target selection in runtime combat
+  - low-level locomotion constraints for turn / accel / decel realization
+  - explicit separation between reference axis and signed movement command during retreat-style motion
+  - active heading-memory relock into runtime-owned `coarse_body_heading_current`
 
 ## Key Entry Documents
 
@@ -62,6 +60,13 @@ Authority: Reference only, not canonical semantics authority
   - maintained runtime movement now accepts only `v4a`
   - active `v4a` restore is direct:
     - `restore_term = restore_strength * normalize(restore_vector)`
+  - current PR#9 slices now include:
+    - low-level locomotion realization limits for heading change and speed change
+    - forward fire-cone targeting inside `resolve_combat()`
+    - runtime-owned fleet heading memory in `coarse_body_heading_current`
+    - decoupled retreat carriers:
+      - `last_target_direction` for reference / coarse-body axis
+      - `movement_command_direction` for signed movement command
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
     - `cohesion_decision_source`
@@ -79,7 +84,10 @@ Authority: Reference only, not canonical semantics authority
   - maintained battle / neutral harness execution host
   - maintained execution/orchestration owner
   - shared `v4a` movement-family host for both `battle` and `neutral`
-  - runtime now owns the maintained tick hot path again; harness supplies preparation, bundle carriers, and observation packaging
+  - runtime owns the maintained tick hot path; harness supplies preparation, bundle carriers, and observation packaging
+  - current harness also hosts:
+    - baseline capture / replay-friendly per-tick recording used for paired comparison
+    - layered settings plumbing for fire-control and low-level locomotion parameters
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics
@@ -109,6 +117,8 @@ Current viewer read:
 - viewer-facing fleet geometry now reads the maintained `fleet_body_summary` export produced by `test_run`
 - `app.py` owns viewer orchestration / playback / camera / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer now includes an app-facing toggle for cluster sway, while sway realization remains renderer-local
+- current local viewer work also includes replay-path support for inspecting PR#9 locomotion / contact behavior
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths
@@ -120,6 +130,9 @@ Current viewer read:
   - `run_control.symmetric_movement_sync_enabled` is now the honest owner of symmetric merge control
   - `runtime.metatype.*` remains a scenario-level high-level interface for Yang/personality sampling only
   - `runtime.observer` is now narrowed to still-active maintained keys
+  - current runtime public additions include:
+    - `runtime.physical.fire_control.fire_cone_half_angle_deg`
+    - `runtime.physical.movement_low_level.*`
 - `test_run/test_run_v1_0.testonly.settings.json`
   - maintained test-only harness controls
   - `fixture.neutral.stop_radius` is the neutral-only objective termination radius
@@ -144,6 +157,16 @@ Current viewer read:
 - scenario-prepared high-level payloads still expose sampled `PersonalityParameters` and `effective_metatype_random_seed`
 - `stop_radius` is neutral-only termination semantics, not battle hold semantics
 - `fleet_body_summary` is the maintained viewer-facing fleet-body geometry contract
+- `fire_cone_half_angle_deg` is the maintained combat target-selection cone control
+- low-level locomotion realization is now an explicit runtime surface below Formation:
+  - accel limit
+  - decel limit
+  - turn-rate limit
+  - turn-speed floor
+- fleet heading memory is now runtime-owned in `coarse_body_heading_current`
+- current retreat handling is partially split:
+  - reference axis and signed movement command are no longer the same carrier
+  - there is still no dedicated backward-retreat realization family yet
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors
   - `cohesion_decision_source`

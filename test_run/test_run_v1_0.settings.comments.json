@@ -79,11 +79,16 @@
       },
       "movement_low_level": {
         "min_unit_spacing": "Physical-layer minimum spacing used by local separation / projection / related low-level runtime behavior. This is distinct from any v4a test-only expected/reference formation spacing candidate.",
-        "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
+        "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0.",
+        "max_accel_per_tick": "Low-level locomotion acceleration ceiling in world-speed units per tick. This limits how quickly unit.velocity can rise toward the speed commanded by the upstream formation/transition carrier.",
+        "max_decel_per_tick": "Low-level locomotion deceleration ceiling in world-speed units per tick. This limits how quickly unit.velocity can fall toward the speed commanded by the upstream formation/transition carrier.",
+        "max_turn_deg_per_tick": "Low-level locomotion heading-turn ceiling in degrees per tick. Runtime rotates unit.orientation_vector toward desired movement direction by at most this amount each tick instead of snapping instantly.",
+        "turn_speed_min_scale": "Low-level speed-turn coupling floor in [0.0, 1.0]. When realized heading is badly misaligned with desired movement direction, desired speed is reduced toward this floor before acceleration/deceleration limits are applied."
       },
       "fire_control": {
         "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect. Runtime currently reads angle quality as max(0, 1 + alpha * cos(theta)), so front-facing quality is 1+alpha and fully backward quality is 1-alpha before other modifiers.",
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
+        "fire_cone_half_angle_deg": "Forward fire-cone half-angle in degrees. Runtime target assignment now only considers enemies inside this cone before selecting the nearest valid target. Must be finite and within [0.0, 180.0].",
         "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
       },
       "contact": {
