@@ -1305,6 +1305,19 @@ class EngineTickSkeleton:
         engagement_geometry_active_current = self._clamp01(
             float(bundle.get("engagement_geometry_active_current", 0.0))
         )
+        state_heading = state.coarse_body_heading_current.get(
+            lead_fleet_id,
+            bundle.get("movement_heading_current_xy", current_forward_hat_xy),
+        )
+        if not isinstance(state_heading, (list, tuple)) or len(state_heading) < 2:
+            state_heading = current_forward_hat_xy
+        state_heading_hat, state_heading_norm = EngineTickSkeleton._normalize_direction(
+            float(state_heading[0]) if len(state_heading) >= 1 else float(current_forward_hat_xy[0]),
+            float(state_heading[1]) if len(state_heading) >= 2 else float(current_forward_hat_xy[1]),
+        )
+        if state_heading_norm <= 0.0:
+            state_heading_hat = current_forward_hat_xy
+        updated_coarse_body_heading_current = dict(state.coarse_body_heading_current)
         if not hold_active:
             if terminal_active:
                 raw_target_direction = (0.0, 0.0)
@@ -1320,15 +1333,7 @@ class EngineTickSkeleton:
                 raw_target_dy,
             )
             raw_target_magnitude = math.sqrt((raw_target_dx * raw_target_dx) + (raw_target_dy * raw_target_dy))
-            current_heading = bundle.get("movement_heading_current_xy", current_forward_hat_xy)
-            if not isinstance(current_heading, (list, tuple)) or len(current_heading) < 2:
-                current_heading = current_forward_hat_xy
-            current_heading_hat, current_heading_norm = EngineTickSkeleton._normalize_direction(
-                float(current_heading[0]) if len(current_heading) >= 1 else float(current_forward_hat_xy[0]),
-                float(current_heading[1]) if len(current_heading) >= 2 else float(current_forward_hat_xy[1]),
-            )
-            if current_heading_norm <= 0.0:
-                current_heading_hat = current_forward_hat_xy
+            current_heading_hat = state_heading_hat
             desired_heading_hat = raw_target_hat if raw_target_norm > 0.0 else current_forward_hat_xy
             heading_relaxation = max(1e-6, min(1.0, float(bundle["heading_relaxation"])))
             current_heading_hat = EngineTickSkeleton._relax_direction(
@@ -1336,6 +1341,7 @@ class EngineTickSkeleton:
                 desired_heading_hat,
                 heading_relaxation,
             )
+            updated_coarse_body_heading_current[lead_fleet_id] = current_heading_hat
             bundle["movement_heading_current_xy"] = current_heading_hat
             shape_vs_advance_strength = max(0.0, min(1.0, float(bundle["shape_vs_advance_strength"])))
             shape_error_current = max(
@@ -1372,6 +1378,7 @@ class EngineTickSkeleton:
             )
             movement_state = replace(
                 state,
+                coarse_body_heading_current=updated_coarse_body_heading_current,
                 movement_command_direction=updated_movement_command_direction,
                 last_engagement_intensity=updated_last_engagement_intensity,
             )
@@ -1386,12 +1393,15 @@ class EngineTickSkeleton:
                 engagement_geometry_active_current=engagement_geometry_active_current,
             )
         if hold_active:
+            updated_coarse_body_heading_current[lead_fleet_id] = state_heading_hat
+            bundle["movement_heading_current_xy"] = state_heading_hat
             updated_movement_command_direction = dict(state.movement_command_direction)
             updated_movement_command_direction[lead_fleet_id] = (0.0, 0.0)
             updated_last_engagement_intensity = dict(state.last_engagement_intensity)
             updated_last_engagement_intensity[lead_fleet_id] = 0.0
             movement_state = replace(
                 state,
+                coarse_body_heading_current=updated_coarse_body_heading_current,
                 movement_command_direction=updated_movement_command_direction,
                 last_engagement_intensity=updated_last_engagement_intensity,
             )

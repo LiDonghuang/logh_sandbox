@@ -7,7 +7,7 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Current PR#9 working branch: `freeze/formation-state-20260416-232842`
+- Current PR#9 working branch: `eng/dev-v2.1-formation-only`
 - Maintained movement baseline: `v4a`
 
 ## Current Phase Focus
@@ -26,6 +26,7 @@ Authority: Reference only, not canonical semantics authority
   - forward fire-cone target selection in runtime combat
   - low-level locomotion constraints for turn / accel / decel realization
   - explicit separation between reference axis and signed movement command during retreat-style motion
+  - active heading-memory relock into runtime-owned `coarse_body_heading_current`
 
 ## Key Entry Documents
 
@@ -62,6 +63,7 @@ Authority: Reference only, not canonical semantics authority
   - current PR#9 slices now include:
     - low-level locomotion realization limits for heading change and speed change
     - forward fire-cone targeting inside `resolve_combat()`
+    - runtime-owned fleet heading memory in `coarse_body_heading_current`
     - decoupled retreat carriers:
       - `last_target_direction` for reference / coarse-body axis
       - `movement_command_direction` for signed movement command
@@ -161,6 +163,7 @@ Current viewer read:
   - decel limit
   - turn-rate limit
   - turn-speed floor
+- fleet heading memory is now runtime-owned in `coarse_body_heading_current`
 - current retreat handling is partially split:
   - reference axis and signed movement command are no longer the same carrier
   - there is still no dedicated backward-retreat realization family yet

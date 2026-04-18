@@ -733,6 +733,26 @@ class _FixtureExecutionSupport:
     """Internal-only execution support for fixture/reference bundle preparation."""
 
     @staticmethod
+    def collect_alive_positions_and_forward_sum(
+        state: BattleState,
+        unit_ids: Sequence[str],
+    ) -> tuple[dict[str, tuple[float, float]], tuple[float, float]]:
+        position_map: dict[str, tuple[float, float]] = {}
+        forward_sum_x = 0.0
+        forward_sum_y = 0.0
+        for unit_id in unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or float(unit.hit_points) <= 0.0:
+                continue
+            position_map[str(unit_id)] = (
+                float(unit.position.x),
+                float(unit.position.y),
+            )
+            forward_sum_x += float(unit.orientation_vector.x)
+            forward_sum_y += float(unit.orientation_vector.y)
+        return position_map, (float(forward_sum_x), float(forward_sum_y))
+
+    @staticmethod
     def compute_centroid_and_rms_radius(
         position_map: Mapping[str, tuple[float, float]],
     ) -> tuple[float, float, float]:
@@ -1067,14 +1087,10 @@ def run_simulation(
     # 2. Build prepared fixture and restore bundles.
     battle_restore_bundles_by_fleet: dict[str, dict[str, Any]] = {}
     for fleet_id, fleet in initial_state.fleets.items():
-        fleet_positions = {
-            str(unit_id): (
-                float(initial_state.units[unit_id].position.x),
-                float(initial_state.units[unit_id].position.y),
-            )
-            for unit_id in fleet.unit_ids
-            if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
-        }
+        fleet_positions, fallback_axis_xy = _FixtureExecutionSupport.collect_alive_positions_and_forward_sum(
+            initial_state,
+            fleet.unit_ids,
+        )
         if not fleet_positions:
             continue
         enemy_positions = {
@@ -1087,19 +1103,13 @@ def run_simulation(
             for unit_id in other_fleet.unit_ids
             if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
         }
-        initial_forward_sum_x = 0.0
-        initial_forward_sum_y = 0.0
-        for unit_id in fleet.unit_ids:
-            unit = initial_state.units.get(unit_id)
-            if unit is None or float(unit.hit_points) <= 0.0:
-                continue
-            initial_forward_sum_x += float(unit.orientation_vector.x)
-            initial_forward_sum_y += float(unit.orientation_vector.y)
         fleet_centroid_x, fleet_centroid_y, _ = _FixtureExecutionSupport.compute_centroid_and_rms_radius(fleet_positions)
         enemy_centroid_x, enemy_centroid_y, _ = _FixtureExecutionSupport.compute_centroid_and_rms_radius(enemy_positions)
         if math.isfinite(enemy_centroid_x) and math.isfinite(enemy_centroid_y):
             objective_point_xy = (float(enemy_centroid_x), float(enemy_centroid_y))
         else:
+            initial_forward_sum_x = float(fallback_axis_xy[0])
+            initial_forward_sum_y = float(fallback_axis_xy[1])
             fallback_axis_norm = math.sqrt(
                 (initial_forward_sum_x * initial_forward_sum_x) + (initial_forward_sum_y * initial_forward_sum_y)
             )
@@ -1117,15 +1127,13 @@ def run_simulation(
             objective_point_xy,
             ordered_unit_ids=tuple(fleet.unit_ids),
             v4a_profile=v4a_bundle_profile,
-            fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
+            fallback_axis_xy=fallback_axis_xy,
         )
         bundle["objective_point_xy"] = (
             float(objective_point_xy[0]),
             float(objective_point_xy[1]),
         )
         battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
-    if battle_restore_bundles_by_fleet:
-        engine.TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET = battle_restore_bundles_by_fleet
 
     # 3. Initialize observer state and local packaging helpers.
     trajectory = _per_fleet_series()
@@ -1156,28 +1164,16 @@ def run_simulation(
         "tick_elapsed_ms": [],
     }
     if fixture_active:
-        initial_positions = {
-            str(unit_id): (
-                float(initial_state.units[unit_id].position.x),
-                float(initial_state.units[unit_id].position.y),
-            )
-            for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids
-            if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
-        }
-        initial_forward_sum_x = 0.0
-        initial_forward_sum_y = 0.0
-        for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids:
-            unit = initial_state.units.get(unit_id)
-            if unit is None or float(unit.hit_points) <= 0.0:
-                continue
-            initial_forward_sum_x += float(unit.orientation_vector.x)
-            initial_forward_sum_y += float(unit.orientation_vector.y)
+        initial_positions, fallback_axis_xy = _FixtureExecutionSupport.collect_alive_positions_and_forward_sum(
+            initial_state,
+            initial_state.fleets[fixture_fleet_id].unit_ids,
+        )
         fixture_reference_bundle = _FixtureExecutionSupport.build_fixture_expected_reference_bundle(
             initial_positions,
             fixture_objective_point_xy,
             ordered_unit_ids=tuple(initial_state.fleets[fixture_fleet_id].unit_ids),
             v4a_profile=v4a_bundle_profile,
-            fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
+            fallback_axis_xy=fallback_axis_xy,
         )
         fixture_reference_bundle["objective_point_xy"] = (
             float(fixture_objective_point_xy[0]),

@@ -43,6 +43,7 @@ Current maintained runtime read:
 - current branch-local runtime slices include:
   - forward fire-cone target selection in `resolve_combat()`
   - low-level locomotion realization limits in `integrate_movement()`
+  - runtime-owned fleet heading memory in `coarse_body_heading_current`
   - split retreat carriers:
     - `last_target_direction` as reference axis
     - `movement_command_direction` as signed movement command
@@ -160,6 +161,7 @@ Do **not** read the active tree as still owning:
 
 - large maintained files that may still benefit from bounded same-file layering review
 - remaining legacy wording in comments/reference surfaces
+- further subtraction-first cleanup of `runtime/engine_skeleton.py` and `test_run/test_run_execution.py`
 - retreat-policy follow-up:
   - current runtime has no dedicated `back_off_keep_front` realization family
   - sustained disengagement vs short-range sternway is not yet explicitly split
