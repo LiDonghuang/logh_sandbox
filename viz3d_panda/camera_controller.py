@@ -20,13 +20,34 @@ FLEET_VIEW_DISTANCE_PADDING = 56.0
 FLEET_VIEW_DISTANCE_RADIUS_SCALE = 4.5
 MIN_CAMERA_PITCH_DEGREES = -90.0
 MAX_CAMERA_PITCH_DEGREES = 45.0
+
+# Distance / zoom tuning.
+FOCUS_MARGIN_RATIO = 0.25
+DEFAULT_CAMERA_DISTANCE_FLOOR = 90.0
+DEFAULT_CAMERA_DISTANCE_RATIO = 1.20
+ZOOM_STEP_FLOOR = 40.0
+ZOOM_STEP_RATIO = 0.20
+CAMERA_DISTANCE_MIN_FLOOR = 1.0
+CAMERA_DISTANCE_MIN_RATIO = 0.00667
+CAMERA_DISTANCE_MAX_DEFAULT_RATIO = 3.2
+CAMERA_DISTANCE_MAX_ARENA_RATIO = 4.0
+ZOOM_DISTANCE_SCALE_NEAR_MIN = 0.025
+ZOOM_DISTANCE_SCALE_FAR_MULTIPLIER = 4.0
+ZOOM_DISTANCE_SCALE_FAR_MAX = 10.0
+
+# Fleet tracking tuning.
 PAN_TRACK_CANCEL_DRAG_THRESHOLD = 0.035
+TRACKED_CAMERA_GEAR_MAX_INDEX = 4.0
 TRACKED_CAMERA_DEADBAND_FLOOR = 0.12
 TRACKED_CAMERA_DEADBAND_RATIO = 0.00045
+TRACKED_CAMERA_DEADBAND_LOW_GEAR_SCALE = 1.35
+TRACKED_CAMERA_DEADBAND_HIGH_GEAR_SCALE = 0.90
 TRACKED_CAMERA_SNAP_FLOOR = 4.0
 TRACKED_CAMERA_SNAP_RATIO = 0.010
-TRACKED_CAMERA_BLEND_GEAR1 = 0.16
-TRACKED_CAMERA_BLEND_GEAR5 = 0.34
+TRACKED_CAMERA_SNAP_LOW_GEAR_SCALE = 0.90
+TRACKED_CAMERA_SNAP_HIGH_GEAR_SCALE = 1.10
+TRACKED_CAMERA_BLEND_LOW_GEAR = 0.16
+TRACKED_CAMERA_BLEND_HIGH_GEAR = 0.34
 
 
 class OrbitCameraController:
@@ -38,10 +59,13 @@ class OrbitCameraController:
     def __init__(self, app: ShowBase, *, arena_size: float) -> None:
         self._app = app
         self._arena_size = float(arena_size)
-        self._focus_margin = self._arena_size * 0.25
-        self._default_distance = max(90.0, self._arena_size * 1.20)
+        self._focus_margin = self._arena_size * FOCUS_MARGIN_RATIO
+        self._default_distance = max(
+            DEFAULT_CAMERA_DISTANCE_FLOOR,
+            self._arena_size * DEFAULT_CAMERA_DISTANCE_RATIO,
+        )
         self._distance = self._default_distance
-        self._zoom_step = max(8.0, self._arena_size * 0.04)
+        self._zoom_step = max(ZOOM_STEP_FLOOR, self._arena_size * ZOOM_STEP_RATIO)
         self._mouse_orbit_scale = 140.0
         self._mouse_pitch_scale = 100.0
         self._drag_action: str | None = None
@@ -172,6 +196,18 @@ class OrbitCameraController:
     def _apply_camera_distance(self) -> None:
         self._app.camera.setPos(0.0, -self._distance, 0.0)
 
+    def _min_camera_distance(self) -> float:
+        return max(
+            CAMERA_DISTANCE_MIN_FLOOR,
+            self._arena_size * CAMERA_DISTANCE_MIN_RATIO,
+        )
+
+    def _max_camera_distance(self) -> float:
+        return max(
+            self._default_distance * CAMERA_DISTANCE_MAX_DEFAULT_RATIO,
+            self._arena_size * CAMERA_DISTANCE_MAX_ARENA_RATIO,
+        )
+
     @staticmethod
     def _heading_to_camera_yaw(heading_x: float, heading_y: float) -> float:
         normalized_heading = OrbitCameraController._normalize_xy(heading_x, heading_y)
@@ -214,13 +250,23 @@ class OrbitCameraController:
         self._focus_np.setPos(self._clamp_focus(float(focus_x)), self._clamp_focus(float(focus_y)), 0.0)
 
     def _tracked_focus_profile(self) -> tuple[float, float, float]:
-        gear_max_index = 4.0
-        gear_alpha = max(0.0, min(1.0, float(self._playback_level_index) / gear_max_index))
+        gear_alpha = max(
+            0.0,
+            min(1.0, float(self._playback_level_index) / TRACKED_CAMERA_GEAR_MAX_INDEX),
+        )
         deadband = max(TRACKED_CAMERA_DEADBAND_FLOOR, self._arena_size * TRACKED_CAMERA_DEADBAND_RATIO)
-        deadband *= 1.35 - (0.45 * gear_alpha)
+        deadband_scale = TRACKED_CAMERA_DEADBAND_LOW_GEAR_SCALE + (
+            (TRACKED_CAMERA_DEADBAND_HIGH_GEAR_SCALE - TRACKED_CAMERA_DEADBAND_LOW_GEAR_SCALE) * gear_alpha
+        )
+        deadband *= deadband_scale
         snap_distance = max(TRACKED_CAMERA_SNAP_FLOOR, self._arena_size * TRACKED_CAMERA_SNAP_RATIO)
-        snap_distance *= 0.90 + (0.20 * gear_alpha)
-        blend = TRACKED_CAMERA_BLEND_GEAR1 + ((TRACKED_CAMERA_BLEND_GEAR5 - TRACKED_CAMERA_BLEND_GEAR1) * gear_alpha)
+        snap_scale = TRACKED_CAMERA_SNAP_LOW_GEAR_SCALE + (
+            (TRACKED_CAMERA_SNAP_HIGH_GEAR_SCALE - TRACKED_CAMERA_SNAP_LOW_GEAR_SCALE) * gear_alpha
+        )
+        snap_distance *= snap_scale
+        blend = TRACKED_CAMERA_BLEND_LOW_GEAR + (
+            (TRACKED_CAMERA_BLEND_HIGH_GEAR - TRACKED_CAMERA_BLEND_LOW_GEAR) * gear_alpha
+        )
         return (float(deadband), float(snap_distance), float(blend))
 
     def _apply_smoothed_tracked_focus(self, *, target_x: float, target_y: float) -> None:
@@ -264,8 +310,8 @@ class OrbitCameraController:
         summary = self._summarize_fleet_frame(frame, fleet_id)
         if summary is None:
             return None
-        min_distance = max(6.0, self._arena_size * 0.040)
-        max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
+        min_distance = self._min_camera_distance()
+        max_distance = self._max_camera_distance()
         requested_distance = (float(summary["radius"]) * FLEET_VIEW_DISTANCE_RADIUS_SCALE) + FLEET_VIEW_DISTANCE_PADDING
         requested_distance = max(min_distance, min(max_distance, requested_distance))
         self._set_view(
@@ -411,10 +457,17 @@ class OrbitCameraController:
     def zoom(self, delta: float) -> None:
         distance_scale = 1.0
         if self._default_distance > 1e-9:
-            distance_scale = max(1.0, min(1.8, float(self._distance) / float(self._default_distance)))
+            distance_ratio = float(self._distance) / float(self._default_distance)
+            if distance_ratio <= 1.0:
+                distance_scale = max(ZOOM_DISTANCE_SCALE_NEAR_MIN, distance_ratio)
+            else:
+                distance_scale = min(
+                    ZOOM_DISTANCE_SCALE_FAR_MAX,
+                    distance_ratio * ZOOM_DISTANCE_SCALE_FAR_MULTIPLIER,
+                )
         next_distance = self._distance + (float(delta) * distance_scale)
-        min_distance = max(6.0, self._arena_size * 0.040)
-        max_distance = max(self._default_distance * 3.2, self._arena_size * 4.0)
+        min_distance = self._min_camera_distance()
+        max_distance = self._max_camera_distance()
         self._distance = max(min_distance, min(max_distance, next_distance))
         self._apply_camera_distance()
 

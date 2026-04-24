@@ -91,13 +91,27 @@ def _attach_axes(root: NodePath, *, arena_size: float) -> None:
     axes_np.setName("viewer_axes")
 
 
-def _resolve_skybox_variant_dir(background_map_seed: int) -> Path:
-    resolved_seed = int(background_map_seed)
-    selected_variant_id = random.Random(resolved_seed).randrange(1, len(SKYBOX_VARIANT_IDS) + 1)
-    skybox_dir = SKYBOX_ROOT_DIR / f"skybox{selected_variant_id}"
-    if not skybox_dir.is_dir():
-        raise FileNotFoundError(f"selected skybox directory is missing: {skybox_dir}")
-    return skybox_dir
+def _available_skybox_variant_dirs() -> tuple[Path, ...]:
+    available_dirs = []
+    for variant_id in SKYBOX_VARIANT_IDS:
+        skybox_dir = SKYBOX_ROOT_DIR / f"skybox{variant_id}"
+        if skybox_dir.is_dir():
+            available_dirs.append(skybox_dir.resolve())
+    if not available_dirs:
+        raise FileNotFoundError(f"no skybox directories found under {SKYBOX_ROOT_DIR}")
+    return tuple(available_dirs)
+
+
+def resolve_random_skybox_dir_path() -> Path:
+    return random.SystemRandom().choice(_available_skybox_variant_dirs())
+
+
+def resolve_explicit_skybox_dir_path(path_text: str | Path) -> Path:
+    candidate = Path(path_text)
+    resolved = candidate if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+    if not resolved.is_dir():
+        raise FileNotFoundError(f"skybox directory not found: {resolved}")
+    return resolved
 
 
 def _load_skybox_face_texture(skybox_dir: Path, face_filenames: tuple[str, ...]) -> Texture:
@@ -119,9 +133,9 @@ def _load_skybox_face_texture(skybox_dir: Path, face_filenames: tuple[str, ...])
     return texture
 
 
-def _attach_skybox(root: NodePath, *, arena_size: float, background_map_seed: int) -> NodePath:
+def _attach_skybox(root: NodePath, *, arena_size: float, skybox_dir_path: str | Path) -> NodePath:
     half_extent = max(float(SKYBOX_HALF_EXTENT_FLOOR), float(arena_size) * float(SKYBOX_HALF_EXTENT_RATIO))
-    skybox_dir = _resolve_skybox_variant_dir(background_map_seed)
+    skybox_dir = resolve_explicit_skybox_dir_path(skybox_dir_path)
     skybox_np = root.attachNewNode("viewer_skybox")
     skybox_np.setBin("background", 0)
     skybox_np.setDepthWrite(False)
@@ -150,11 +164,11 @@ def _attach_skybox(root: NodePath, *, arena_size: float, background_map_seed: in
     return skybox_np
 
 
-def build_scene(root: NodePath, *, arena_size: float, background_map_seed: int) -> NodePath:
+def build_scene(root: NodePath, *, arena_size: float, skybox_dir_path: str | Path) -> NodePath:
     """Build the bounded viewer-local scene shell for replay playback."""
     arena_size = float(arena_size)
     scene_root = root.attachNewNode("viewer_scene")
-    _attach_skybox(scene_root, arena_size=arena_size, background_map_seed=int(background_map_seed))
+    _attach_skybox(scene_root, arena_size=arena_size, skybox_dir_path=skybox_dir_path)
     _attach_lights(scene_root)
     _attach_grid(scene_root, arena_size=arena_size)
     _attach_axes(scene_root, arena_size=arena_size)

@@ -1,0 +1,164 @@
+{
+  "anchor_tag": "eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup",
+  "branch": "eng/dev-v2.1-formation-only",
+  "commit": "a4b5ce2b7dba",
+  "workspace_dirty": true,
+  "workspace_status_short": [
+    " M .vscode/launch.json",
+    " M README.md",
+    " M runtime/engine_skeleton.py",
+    " M test_run/settings_accessor.py",
+    " M test_run/test_run_execution.py",
+    " M test_run/test_run_scenario.py",
+    " M test_run/test_run_v1_0.runtime.settings.json",
+    " M test_run/test_run_v1_0.settings.comments.json",
+    " M test_run/test_run_v1_0.settings.reference.md",
+    " M test_run/test_run_v1_0.testonly.settings.json",
+    " M viz3d_panda/app.py",
+    " M viz3d_panda/camera_controller.py",
+    " M viz3d_panda/docs/3D_VIZ_Cluster_Micro_Sway_Reference_v1.0.md",
+    " M viz3d_panda/docs/3D_VIZ_Debug_Block_Reference_v1.0.md",
+    " M viz3d_panda/replay_source.py",
+    " M viz3d_panda/scene_builder.py",
+    " M viz3d_panda/unit_renderer.py",
+    "?? analysis/engineering_reports/developments/20260419/",
+    "?? analysis/engineering_reports/developments/20260420/",
+    "?? analysis/engineering_reports/developments/20260421/",
+    "?? analysis/engineering_reports/developments/20260422/",
+    "?? analysis/reference_notes/eng_dev_v2.1_formation_only_a4b5ce2b7dba_dirty_temp_working_anchor_battle_100v100_baseline_20260420.json",
+    "?? analysis/reference_notes/eng_dev_v2.1_formation_only_a4b5ce2b7dba_dirty_temp_working_anchor_battle_36v36_baseline_20260420.json",
+    "?? analysis/reference_notes/eng_dev_v2.1_formation_only_a4b5ce2b7dba_dirty_temp_working_anchor_neutral_100_baseline_20260420.json",
+    "?? analysis/reference_notes/eng_dev_v2.1_formation_only_a4b5ce2b7dba_dirty_temp_working_anchor_neutral_36_baseline_20260420.json",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_baseline_capture_index_20260419.md",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_baseline_capture_manifest_20260419.json",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_battle_100v100_baseline_20260419.json",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_battle_36v36_baseline_20260419.json",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_neutral_100_baseline_20260419.json",
+    "?? analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_neutral_36_baseline_20260419.json",
+    "?? docs/archive/ts_handoff_archive/TS_HANDOFF_20260419_020634/",
+    "?? docs/archive/ts_handoff_archive/TS_HANDOFF_20260422_003921/",
+    "?? docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md",
+    "?? viz3d_panda/AGENTS.md",
+    "?? viz3d_panda/docs/3D_VIZ_Local_Work_Method_v1.0.md",
+    "?? viz3d_panda/docs/developments/"
+  ],
+  "purpose": "pre-subtraction cleanup dual-posture no-drift baseline refresh",
+  "baselines": [
+    {
+      "posture": "default_switch_false",
+      "switch_enabled": false,
+      "scenario": "battle_36v36",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_default_switch_false_battle_36v36_baseline_20260422.json",
+      "summary": {
+        "frames": 500,
+        "first_tick": 1,
+        "last_tick": 500,
+        "first_contact_tick": 61,
+        "first_damage_tick": 61,
+        "objective_reached_tick": null
+      }
+    },
+    {
+      "posture": "default_switch_false",
+      "switch_enabled": false,
+      "scenario": "battle_100v100",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_default_switch_false_battle_100v100_baseline_20260422.json",
+      "summary": {
+        "frames": 500,
+        "first_tick": 1,
+        "last_tick": 500,
+        "first_contact_tick": 58,
+        "first_damage_tick": 58,
+        "objective_reached_tick": null
+      }
+    },
+    {
+      "posture": "default_switch_false",
+      "switch_enabled": false,
+      "scenario": "neutral_36",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_default_switch_false_neutral_36_baseline_20260422.json",
+      "summary": {
+        "frames": 447,
+        "first_tick": 1,
+        "last_tick": 447,
+        "first_contact_tick": null,
+        "first_damage_tick": null,
+        "objective_reached_tick": 427,
+        "final_centroid_to_objective_distance": 1.537790319789565
+      }
+    },
+    {
+      "posture": "default_switch_false",
+      "switch_enabled": false,
+      "scenario": "neutral_100",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_default_switch_false_neutral_100_baseline_20260422.json",
+      "summary": {
+        "frames": 448,
+        "first_tick": 1,
+        "last_tick": 448,
+        "first_contact_tick": null,
+        "first_damage_tick": null,
+        "objective_reached_tick": 428,
+        "final_centroid_to_objective_distance": 1.112345481882812
+      }
+    },
+    {
+      "posture": "experimental_switch_true",
+      "switch_enabled": true,
+      "scenario": "battle_36v36",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_experimental_switch_true_battle_36v36_baseline_20260422.json",
+      "summary": {
+        "frames": 500,
+        "first_tick": 1,
+        "last_tick": 500,
+        "first_contact_tick": 61,
+        "first_damage_tick": 61,
+        "objective_reached_tick": null
+      }
+    },
+    {
+      "posture": "experimental_switch_true",
+      "switch_enabled": true,
+      "scenario": "battle_100v100",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_experimental_switch_true_battle_100v100_baseline_20260422.json",
+      "summary": {
+        "frames": 500,
+        "first_tick": 1,
+        "last_tick": 500,
+        "first_contact_tick": 58,
+        "first_damage_tick": 58,
+        "objective_reached_tick": null
+      }
+    },
+    {
+      "posture": "experimental_switch_true",
+      "switch_enabled": true,
+      "scenario": "neutral_36",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_experimental_switch_true_neutral_36_baseline_20260422.json",
+      "summary": {
+        "frames": 447,
+        "first_tick": 1,
+        "last_tick": 447,
+        "first_contact_tick": null,
+        "first_damage_tick": null,
+        "objective_reached_tick": 427,
+        "final_centroid_to_objective_distance": 1.537790319789565
+      }
+    },
+    {
+      "posture": "experimental_switch_true",
+      "switch_enabled": true,
+      "scenario": "neutral_100",
+      "path": "analysis/reference_notes/eng_dev-v2.1-formation-only_a4b5ce2b7dba_dirty_pre_subtraction_cleanup_experimental_switch_true_neutral_100_baseline_20260422.json",
+      "summary": {
+        "frames": 448,
+        "first_tick": 1,
+        "last_tick": 448,
+        "first_contact_tick": null,
+        "first_damage_tick": null,
+        "objective_reached_tick": 428,
+        "final_centroid_to_objective_distance": 1.112345481882812
+      }
+    }
+  ]
+}

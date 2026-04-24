@@ -10,10 +10,17 @@ DEFAULT_TEST_RUN_TESTONLY_SETTINGS_PATH = "test_run/test_run_v1_0.testonly.setti
 # 1. Runtime-facing path maps used by the public accessor surface.
 RUNTIME_SETTING_PATHS = {
     "movement_model": ("selectors", "movement_model"),
-    "fire_quality_alpha": ("physical", "fire_control", "fire_quality_alpha"),
+    "fire_angle_quality_alpha": ("physical", "fire_control", "fire_angle_quality_alpha"),
     "fire_optimal_range_ratio": ("physical", "fire_control", "fire_optimal_range_ratio"),
     "fire_cone_half_angle_deg": ("physical", "fire_control", "fire_cone_half_angle_deg"),
-    "alpha_safe_max": ("physical", "fire_control", "alpha_safe_max"),
+    "local_desire_turn_need_onset": ("physical", "local_desire", "turn_need_onset"),
+    "local_desire_heading_bias_cap": ("physical", "local_desire", "heading_bias_cap"),
+    "local_desire_speed_brake_strength": ("physical", "local_desire", "speed_brake_strength"),
+    "local_desire_experimental_signal_read_realignment_enabled": (
+        "physical",
+        "local_desire",
+        "experimental_signal_read_realignment_enabled",
+    ),
     "contact_hysteresis_h": ("physical", "contact", "contact_hysteresis_h"),
     "boundary_enabled": ("physical", "boundary", "enabled"),
     "boundary_soft_strength": ("physical", "boundary", "soft_strength"),

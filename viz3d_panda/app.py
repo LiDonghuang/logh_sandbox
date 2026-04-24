@@ -35,7 +35,7 @@ from viz3d_panda.replay_source import (
     rebuild_replay_direction_mode,
     load_viewer_replay,
 )
-from viz3d_panda.scene_builder import build_scene
+from viz3d_panda.scene_builder import build_scene, resolve_random_skybox_dir_path
 from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
 
@@ -45,19 +45,20 @@ from viz3d_panda.unit_renderer import FIRE_LINK_MODES, UnitRenderer
 
 WINDOW_TITLE = "LOGH dev_v2.0 Panda3D Viewer Scaffold"
 AVATAR_DIR = Path(__file__).resolve().parents[1] / "visual" / "avatars"
-PLAYBACK_FPS_LEVELS = (2.0, 4.0, 6.0, 10.0, 20.0)
+# Viewer replay tick-rate levels. This is not the renderer frame rate.
+PLAYBACK_TPS_LEVELS = (0.5, 1.0, 2.0, 5.0, 10.0)
 DEFAULT_PLAYBACK_LEVEL_INDEX = 2
 FIRE_LINK_MODE_CHOICES = tuple(sorted(FIRE_LINK_MODES))
-PRIMARY_DIRECTION_MODE_CYCLE = ("movement", "posture")
+PRIMARY_DIRECTION_MODE_CYCLE = ("movement", "heading")
 CLUSTER_SWAY_TOGGLE_KEY = "j"
 STEP_HOLD_INITIAL_DELAY_SECONDS = 0.35
 STEP_HOLD_REPEAT_INTERVAL_SECONDS = 0.08
-LOW_SPEED_SMOOTHING_MAX_FPS = PLAYBACK_FPS_LEVELS[-1]
+LOW_SPEED_SMOOTHING_MAX_TPS = PLAYBACK_TPS_LEVELS[-1]
 HUD_BOTTOM_INSET = 0.05
 HUD_SIDE_INSET = 0.03
 HUD_TEXT_SCALE = 0.038
 CAMERA_TAKE_FORMAT = "viz3d_panda_camera_take"
-CAMERA_TAKE_FORMAT_VERSION = 1
+CAMERA_TAKE_FORMAT_VERSION = 2
 CAMERA_TAKE_RECORD_KEY = "k"
 CAMERA_TAKE_NOTICE_SECONDS = 2.6
 CAMERA_TAKE_FLOAT_DIGITS = 6
@@ -95,7 +96,7 @@ CORNER_AVATAR_BAR_WIDTH = CORNER_AVATAR_HEIGHT * CORNER_AVATAR_ASPECT_RATIO * 4.
 CORNER_AVATAR_BAR_HEIGHT = 0.016
 CORNER_AVATAR_TEXT_SCALE = 0.034
 CORNER_AVATAR_NAME_SCALE = 0.034
-CORNER_AVATAR_BAR_BG = "#B21010"
+CORNER_AVATAR_BAR_BG = "#A81818"
 CORNER_AVATAR_BAR_FILL = "#00FF00"
 CORNER_AVATAR_TEXT_COLOR = "#EBF2FA"
 HUD_TEXT_COLOR = "#B8CCE3"
@@ -211,14 +212,17 @@ def _preview_launch_setup(requested_source: str) -> tuple[str, str]:
     return matchup_text, map_text
 
 
-def _resolve_playback_level_index(playback_fps: float) -> int:
-    requested = float(playback_fps)
-    for index, level in enumerate(PLAYBACK_FPS_LEVELS):
+def _resolve_playback_level_index(playback_tps: float) -> int:
+    requested = float(playback_tps)
+    for index, level in enumerate(PLAYBACK_TPS_LEVELS):
         if abs(requested - float(level)) <= 1e-9:
             return index
-    supported_values = ", ".join(f"{level:.0f}" if float(level).is_integer() else f"{level}" for level in PLAYBACK_FPS_LEVELS)
+    supported_values = ", ".join(
+        f"{level:.0f}" if float(level).is_integer() else f"{level}"
+        for level in PLAYBACK_TPS_LEVELS
+    )
     raise ValueError(
-        f"playback-fps must be one of the fixed viewer speed levels: {supported_values}; got {playback_fps}."
+        f"playback-tps must be one of the fixed viewer tick-rate levels: {supported_values}; got {playback_tps}."
     )
 
 
@@ -291,25 +295,15 @@ def _resolved_viewer_source_for_replay(replay: ReplayBundle) -> str:
     raise ValueError(f"unsupported replay source kind for camera take export: {replay.source_kind!r}.")
 
 
-def _resolve_background_map_seed(replay: ReplayBundle) -> int:
-    summary = replay.metadata.get("summary")
-    if not isinstance(summary, dict):
-        raise ValueError("ReplayBundle.metadata['summary'] must be a mapping for skybox selection.")
-    seed_value = summary.get("effective_background_map_seed")
-    if seed_value is None:
-        raise ValueError("ReplayBundle.metadata['summary']['effective_background_map_seed'] is required for skybox selection.")
-    return int(seed_value)
-
-
 def _build_camera_take_context(
     replay: ReplayBundle,
     *,
-    playback_fps: float,
+    playback_tps: float,
     fire_link_mode: str,
     window_width: int,
     window_height: int,
 ) -> dict[str, Any]:
-    direction_mode = str(replay.metadata.get("vector_display_mode", "effective")).strip().lower()
+    direction_mode = str(replay.metadata.get("vector_display_mode", "heading")).strip().lower()
     if direction_mode not in VIEWER_DIRECTION_MODE_CHOICES:
         allowed = ", ".join(VIEWER_DIRECTION_MODE_CHOICES)
         raise ValueError(
@@ -321,8 +315,8 @@ def _build_camera_take_context(
         "max_steps": int(replay.metadata.get("max_steps_effective", -1)),
         "frame_stride": int(replay.metadata.get("frame_stride", DEFAULT_FRAME_STRIDE)),
         "direction_mode": direction_mode,
-        "effective_background_map_seed": int(_resolve_background_map_seed(replay)),
-        "playback_fps": float(playback_fps),
+        "direction_stabilization_enabled": bool(replay.metadata.get("direction_stabilization_enabled", True)),
+        "playback_tps": float(playback_tps),
         "fire_link_mode": str(fire_link_mode),
         "window_width": int(window_width),
         "window_height": int(window_height),
@@ -336,7 +330,13 @@ def _validate_camera_take_payload(payload: Any, *, source_path: Path) -> dict[st
         raise ValueError(
             f"camera take format mismatch in {source_path}; expected {CAMERA_TAKE_FORMAT!r}, got {payload.get('format')!r}."
         )
-    if int(payload.get("format_version", -1)) != CAMERA_TAKE_FORMAT_VERSION:
+    format_version = int(payload.get("format_version", -1))
+    if format_version != CAMERA_TAKE_FORMAT_VERSION:
+        if format_version == 1:
+            raise ValueError(
+                "camera take format_version 1 uses the pre-TPS playback_fps schema; "
+                f"re-record the take with format_version {CAMERA_TAKE_FORMAT_VERSION} / playback_tps: {source_path}"
+            )
         raise ValueError(
             f"camera take format_version must be {CAMERA_TAKE_FORMAT_VERSION}, got {payload.get('format_version')!r}."
         )
@@ -348,8 +348,9 @@ def _validate_camera_take_payload(payload: Any, *, source_path: Path) -> dict[st
         "max_steps",
         "frame_stride",
         "direction_mode",
-        "effective_background_map_seed",
-        "playback_fps",
+        "direction_stabilization_enabled",
+        "skybox_dir_path",
+        "playback_tps",
         "fire_link_mode",
         "window_width",
         "window_height",
@@ -383,9 +384,10 @@ def _validate_camera_take_payload(payload: Any, *, source_path: Path) -> dict[st
             "smoothing_enabled",
             "avatars_enabled",
             "hud_enabled",
+            "cluster_sway_enabled",
             "fire_link_mode",
             "playback_level_index",
-            "playback_fps",
+            "playback_tps",
         ):
             if field_name not in viewer_state:
                 raise ValueError(
@@ -451,8 +453,9 @@ class FleetViewerApp(ShowBase):
         self,
         replay: ReplayBundle,
         *,
-        playback_fps: float,
+        playback_tps: float,
         fire_link_mode: str,
+        skybox_dir_path: str | None = None,
         camera_take_output_path: Path | None = None,
         camera_take_context: dict[str, Any] | None = None,
     ) -> None:
@@ -463,8 +466,8 @@ class FleetViewerApp(ShowBase):
         self.setBackgroundColor(0.03, 0.05, 0.09, 1.0)
 
         self._replay = replay
-        self._playback_level_index = _resolve_playback_level_index(float(playback_fps))
-        self._playback_fps = float(PLAYBACK_FPS_LEVELS[self._playback_level_index])
+        self._playback_level_index = _resolve_playback_level_index(float(playback_tps))
+        self._playback_tps = float(PLAYBACK_TPS_LEVELS[self._playback_level_index])
         self._current_frame_index = 0
         self._accumulator = 0.0
         self._playing = True
@@ -484,24 +487,29 @@ class FleetViewerApp(ShowBase):
         self._camera_take_last_signature: tuple[Any, ...] | None = None
         self._camera_take_notice_message = ""
         self._camera_take_notice_seconds_remaining = 0.0
+        self._skybox_dir_path = str(
+            resolve_random_skybox_dir_path() if skybox_dir_path is None else Path(str(skybox_dir_path)).resolve()
+        )
 
         self._scene_root = build_scene(
             self.render,
             arena_size=self._replay.arena_size,
-            background_map_seed=_resolve_background_map_seed(self._replay),
+            skybox_dir_path=self._skybox_dir_path,
         )
+        if self._camera_take_context is not None:
+            self._camera_take_context["skybox_dir_path"] = self._skybox_dir_path
         self._skybox_np = self._scene_root.find("**/viewer_skybox")
         if self._skybox_np.isEmpty():
             raise RuntimeError("viewer_scene is missing required child 'viewer_skybox'.")
         self._unit_renderer = UnitRenderer(self._scene_root, self._replay, fire_link_mode=fire_link_mode)
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
-        self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._unit_renderer.set_playback_tps(self._playback_tps)
         self._unit_renderer.set_playback_active(self._playing)
-        self._unit_renderer.set_cluster_sway_enabled(False)
+        self._unit_renderer.set_cluster_sway_enabled(True)
         self._camera_controller = OrbitCameraController(self, arena_size=self._replay.arena_size)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self._direction_mode_replay_cache: dict[str, ReplayBundle] = {}
-        current_direction_mode = str(self._replay.metadata.get("vector_display_mode", "posture")).strip().lower()
+        current_direction_mode = str(self._replay.metadata.get("vector_display_mode", "heading")).strip().lower()
         self._direction_mode_replay_cache[current_direction_mode] = self._replay
         for cached_mode in PRIMARY_DIRECTION_MODE_CYCLE:
             if cached_mode in self._direction_mode_replay_cache:
@@ -509,6 +517,7 @@ class FleetViewerApp(ShowBase):
             self._direction_mode_replay_cache[cached_mode] = rebuild_replay_direction_mode(
                 self._replay,
                 direction_mode=cached_mode,
+                direction_stabilization_enabled=bool(self._replay.metadata.get("direction_stabilization_enabled", True)),
                 direction_mode_source="viewer_prebuilt_cache",
             )
         self._fleet_avatar_nodes: dict[str, dict[str, object]] = {}
@@ -595,7 +604,7 @@ class FleetViewerApp(ShowBase):
             "fire_link_mode": str(self._unit_renderer.fire_link_mode),
             "cluster_sway_enabled": bool(self._unit_renderer.cluster_sway_enabled),
             "playback_level_index": int(self._playback_level_index),
-            "playback_fps": _round_take_float(self._playback_fps),
+            "playback_tps": _round_take_float(self._playback_tps),
         }
 
     def _apply_viewer_state_snapshot(self, state: dict[str, Any]) -> None:
@@ -604,11 +613,11 @@ class FleetViewerApp(ShowBase):
         self._avatars_enabled = bool(state["avatars_enabled"])
         self._hud_enabled = bool(state["hud_enabled"])
         self._playback_level_index = max(0, int(state["playback_level_index"]))
-        self._playback_fps = float(state["playback_fps"])
+        self._playback_tps = float(state["playback_tps"])
         self._unit_renderer.set_fire_link_mode(str(state["fire_link_mode"]))
         self._unit_renderer.set_cluster_sway_enabled(bool(state["cluster_sway_enabled"]))
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
-        self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._unit_renderer.set_playback_tps(self._playback_tps)
         self._unit_renderer.set_playback_active(self._playing)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         if self._hud_enabled:
@@ -670,7 +679,7 @@ class FleetViewerApp(ShowBase):
             bool(viewer_state["hud_enabled"]),
             str(viewer_state["fire_link_mode"]),
             int(viewer_state["playback_level_index"]),
-            float(viewer_state["playback_fps"]),
+            float(viewer_state["playback_tps"]),
         )
         if not force and signature == self._camera_take_last_signature:
             return
@@ -800,11 +809,11 @@ class FleetViewerApp(ShowBase):
     # C. playback controls / viewer toggles
     # -----------------------------------------------------
     def _adjust_playback_speed(self, delta: int) -> None:
-        next_index = max(0, min(len(PLAYBACK_FPS_LEVELS) - 1, self._playback_level_index + int(delta)))
+        next_index = max(0, min(len(PLAYBACK_TPS_LEVELS) - 1, self._playback_level_index + int(delta)))
         self._playback_level_index = next_index
-        self._playback_fps = float(PLAYBACK_FPS_LEVELS[self._playback_level_index])
+        self._playback_tps = float(PLAYBACK_TPS_LEVELS[self._playback_level_index])
         self._unit_renderer.set_playback_level_index(self._playback_level_index)
-        self._unit_renderer.set_playback_fps(self._playback_fps)
+        self._unit_renderer.set_playback_tps(self._playback_tps)
         self._camera_controller.set_playback_level_index(self._playback_level_index)
         self.go_to_frame(self._current_frame_index)
 
@@ -815,7 +824,7 @@ class FleetViewerApp(ShowBase):
         self.go_to_frame(self._current_frame_index)
 
     def cycle_direction_mode(self) -> None:
-        current_mode = str(self._replay.metadata.get("vector_display_mode", "posture")).strip().lower()
+        current_mode = str(self._replay.metadata.get("vector_display_mode", "heading")).strip().lower()
         if current_mode not in PRIMARY_DIRECTION_MODE_CYCLE:
             next_mode = PRIMARY_DIRECTION_MODE_CYCLE[0]
         else:
@@ -1292,7 +1301,12 @@ class FleetViewerApp(ShowBase):
                 node.show()
 
     def _smoothing_active(self) -> bool:
-        return bool(self._smoothing_enabled and self._playing and self._playback_fps <= LOW_SPEED_SMOOTHING_MAX_FPS and len(self._replay.frames) > 1)
+        return bool(
+            self._smoothing_enabled
+            and self._playing
+            and self._playback_tps <= LOW_SPEED_SMOOTHING_MAX_TPS
+            and len(self._replay.frames) > 1
+        )
 
     def _current_and_next_frames(self) -> tuple[ViewerFrame, ViewerFrame]:
         current_frame = self._replay.frames[self._current_frame_index]
@@ -1332,14 +1346,14 @@ class FleetViewerApp(ShowBase):
         frame = self._replay.frames[self._current_frame_index]
         counts_text = _count_units_by_fleet(self._replay, self._current_frame_index)
         playback_label = "playing" if self._playing else "paused"
-        vector_display_mode = self._replay.metadata.get("vector_display_mode", "posture")
+        vector_display_mode = str(self._replay.metadata.get("vector_display_mode", "heading")).strip().lower()
         fire_link_mode = self._unit_renderer.fire_link_mode
         cluster_sway_text = "on" if self._unit_renderer.cluster_sway_enabled else "off"
         smoothing_text = "on" if self._smoothing_enabled else "off"
         direction_text = f"dir_mode={vector_display_mode}"
         status_lines = [
             f"{counts_text}  state={playback_label}",
-            f"frame={self._current_frame_index + 1}/{len(self._replay.frames)}  fps={self._playback_fps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_FPS_LEVELS)}",
+            f"frame={self._current_frame_index + 1}/{len(self._replay.frames)}  tps={self._playback_tps:.1f}  gear={self._playback_level_index + 1}/{len(PLAYBACK_TPS_LEVELS)}",
         ]
         fleet_summaries = {
             str(fleet_id): summary
@@ -1424,29 +1438,34 @@ class FleetViewerApp(ShowBase):
                 if any(
                     math.isfinite(float(row.get(key, float("nan"))))
                     for key in (
-                        "centroid_distance",
                         "front_strip_gap",
+                        "front_gap",
+                        "relation_gap",
                     )
                 ):
                     status_lines.append(
                         "focus "
                         f"{fleet_id}@:"
                         f" strip_gap={float(row.get('front_strip_gap', float('nan'))):.2f}"
+                        f"  front_gap={float(row.get('front_gap', float('nan'))):.2f}"
+                        f"  rel_gap={float(row.get('relation_gap', float('nan'))):.2f}"
                     )
                 if any(
                     math.isfinite(float(row.get(key, float("nan"))))
                     for key in (
-                        "engagement_geometry_active",
-                        "front_reorientation_weight",
-                        "front_axis_delta_deg",
+                        "relation_gap_raw",
+                        "early_embargo_permission",
+                        "late_reopen_persistence",
+                        "brake_drive",
                     )
                 ):
                     status_lines.append(
                         "focus "
                         f"{fleet_id}+: "
-                        f"eng_act={float(row.get('engagement_geometry_active', float('nan'))):.2f}  "
-                        f"front_rw={float(row.get('front_reorientation_weight', float('nan'))):.2f}  "
-                        f"fire_da={float(row.get('front_axis_delta_deg', float('nan'))):.0f}\u00b0"
+                        f"raw_gap={float(row.get('relation_gap_raw', float('nan'))):.2f}  "
+                        f"embg={float(row.get('early_embargo_permission', float('nan'))):.2f}  "
+                        f"reopen={float(row.get('late_reopen_persistence', float('nan'))):.2f}  "
+                        f"brk={float(row.get('brake_drive', float('nan'))):.2f}"
                     )
         self._status_text.setText("\n".join(status_lines))
         self._align_hud_block_to_bottom(self._status_text, line_count=len(status_lines), side="left")
@@ -1480,7 +1499,7 @@ class FleetViewerApp(ShowBase):
                     self._step_by(self._held_step_direction)
         if self._playing and len(self._replay.frames) > 1:
             self._accumulator += dt
-            frame_period = 1.0 / self._playback_fps
+            frame_period = 1.0 / self._playback_tps
             while self._accumulator >= frame_period:
                 self._accumulator -= frame_period
                 next_index = self._current_frame_index + 1
@@ -1601,7 +1620,7 @@ def export_camera_take_video(
         max_steps=int(replay_request["max_steps"]),
         frame_stride=int(replay_request["frame_stride"]),
         direction_mode=str(replay_request["direction_mode"]),
-        effective_background_map_seed=int(replay_request["effective_background_map_seed"]),
+        direction_stabilization_enabled=bool(replay_request["direction_stabilization_enabled"]),
     )
     replay_summary = take_payload.get("replay_summary", {})
     if isinstance(replay_summary, dict):
@@ -1622,8 +1641,9 @@ def export_camera_take_video(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     app = FleetViewerApp(
         replay,
-        playback_fps=float(replay_request["playback_fps"]),
+        playback_tps=float(replay_request["playback_tps"]),
         fire_link_mode=str(replay_request["fire_link_mode"]),
+        skybox_dir_path=str(replay_request["skybox_dir_path"]),
     )
     app.taskMgr.remove("fleet_viewer_tick")
     app._camera_take_indicator_text.hide()
@@ -1776,18 +1796,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--direction-mode",
         choices=VIEWER_DIRECTION_MODE_CHOICES,
-        default="posture",
+        default="heading",
         help=(
-            "Viewer-local direction readout mode. Default is 'posture'; 'settings' preserves "
-            "the current layered 2D vector_display_mode; 'movement' shows smoothed travel "
-            "direction and 'posture' shows a bounded maneuver-posture read."
+            "Viewer-local direction readout mode. 'movement' shows smoothed travel "
+            "direction and 'heading' shows runtime facing."
         ),
     )
     parser.add_argument(
-        "--playback-fps",
+        "--direction-stabilization",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Viewer-local memory stabilization for direction display. Enabled by default.",
+    )
+    parser.add_argument(
+        "--playback-tps",
         type=float,
-        default=PLAYBACK_FPS_LEVELS[DEFAULT_PLAYBACK_LEVEL_INDEX],
-        help="Fixed playback speed level. Supported values: 2, 4, 6, 10, 20.",
+        default=PLAYBACK_TPS_LEVELS[DEFAULT_PLAYBACK_LEVEL_INDEX],
+        help="Fixed replay tick-rate level. Supported values: 0.5, 1, 2, 5, 10.",
     )
     parser.add_argument("--window-width", type=int, default=1440)
     parser.add_argument("--window-height", type=int, default=900)
@@ -1833,6 +1858,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         max_steps=args.steps,
         frame_stride=int(args.frame_stride),
         direction_mode=str(args.direction_mode),
+        direction_stabilization_enabled=bool(args.direction_stabilization),
     )
     run_elapsed = time.perf_counter() - run_started_at
     print(_format_launch_result(replay))
@@ -1841,7 +1867,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if camera_take_output_path is not None:
         camera_take_context = _build_camera_take_context(
             replay,
-            playback_fps=float(args.playback_fps),
+            playback_tps=float(args.playback_tps),
             fire_link_mode=str(args.fire_link_mode),
             window_width=int(args.window_width),
             window_height=int(args.window_height),
@@ -1850,7 +1876,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     animation_started_at = time.perf_counter()
     app = FleetViewerApp(
         replay,
-        playback_fps=float(args.playback_fps),
+        playback_tps=float(args.playback_tps),
         fire_link_mode=str(args.fire_link_mode),
         camera_take_output_path=camera_take_output_path,
         camera_take_context=camera_take_context,

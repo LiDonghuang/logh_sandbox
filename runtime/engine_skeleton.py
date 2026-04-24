@@ -476,6 +476,22 @@ class _MovementDiagSupport:
                     if isinstance(row, Mapping)
                 }
             }
+        local_desire_diag_by_fleet = engine._debug_state.get("local_desire_diag_by_fleet", {})
+        if isinstance(local_desire_diag_by_fleet, Mapping) and local_desire_diag_by_fleet:
+            pending["local_desire"] = {
+                "fleets": {
+                    str(fleet_id): {
+                        "early_embargo_permission": float(
+                            row.get("early_embargo_permission", float("nan"))
+                        ),
+                        "late_reopen_persistence": float(
+                            row.get("late_reopen_persistence", float("nan"))
+                        ),
+                    }
+                    for fleet_id, row in local_desire_diag_by_fleet.items()
+                    if isinstance(row, Mapping)
+                }
+            }
 
         if diag4_enabled:
             pending["diag4"] = _MovementDiagSupport.build_diag4_payload(
@@ -561,8 +577,7 @@ class EngineTickSkeleton:
         self._combat_surface = {
             "ch_enabled": True,
             "contact_hysteresis_h": 0.10,
-            "fire_quality_alpha": 0.0,
-            "fire_optimal_range_ratio": 1.0,
+            "fire_angle_quality_alpha": 0.0,
             "fire_cone_half_angle_deg": 30.0,
         }
 
@@ -576,7 +591,6 @@ class EngineTickSkeleton:
         self._movement_surface = {
             "alpha_sep": 0.6,
             "model": "v4a",
-            "v4a_restore_strength": 1.0,
             "max_accel_per_tick": MOVEMENT_LOW_LEVEL_MAX_ACCEL_PER_TICK_DEFAULT,
             "max_decel_per_tick": MOVEMENT_LOW_LEVEL_MAX_DECEL_PER_TICK_DEFAULT,
             "max_turn_deg_per_tick": MOVEMENT_LOW_LEVEL_MAX_TURN_DEG_PER_TICK_DEFAULT,
@@ -596,11 +610,17 @@ class EngineTickSkeleton:
             "diag_pending": None,
             "diag_timeseries": [],
             "v4a_bridge_diag": {},
+            "unit_intent_target_by_unit": {},
+            "unit_desire_by_unit": {},
+            "local_desire_diag_by_fleet": {},
         }
 
     # B. Visible stage pipeline.
     def step(self, state: BattleState) -> BattleState:
         snapshot = replace(state, tick=state.tick + 1)
+        self._debug_state["unit_intent_target_by_unit"] = {}
+        self._debug_state["unit_desire_by_unit"] = {}
+        self._debug_state["local_desire_diag_by_fleet"] = {}
         next_state = self.evaluate_cohesion(snapshot)
         next_state = self.evaluate_target(next_state)
         next_state = self.evaluate_utility(next_state)
@@ -610,11 +630,17 @@ class EngineTickSkeleton:
             moved_state = self.integrate_movement(next_state)
         moved_state = _ContactImpedanceSupport.apply(self, next_state, moved_state)
         moved_state = EngineTickSkeleton._apply_fixture_terminal_late_clamp(self, next_state, moved_state)
-        return self.resolve_combat(moved_state)
+        selected_target_by_unit = self._compute_unit_intent_target_by_unit(moved_state)
+        return self.resolve_combat(moved_state, selected_target_by_unit)
 
     @staticmethod
     def _clamp01(value: float) -> float:
         return min(1.0, max(0.0, value))
+
+    @staticmethod
+    def _smoothstep01(value: float) -> float:
+        x = EngineTickSkeleton._clamp01(float(value))
+        return x * x * (3.0 - (2.0 * x))
 
     @staticmethod
     def _quantile_sorted(sorted_values: list[float], q: float) -> float:
@@ -1255,7 +1281,7 @@ class EngineTickSkeleton:
     def _prepare_v4a_bridge_state(self, state: BattleState) -> BattleState:
         self._debug_state["v4a_bridge_diag"] = {}
         movement_surface = self._movement_surface
-        movement_model = str(movement_surface.get("model", "v4a")).strip().lower()
+        movement_model = str(movement_surface["model"]).strip().lower()
         if movement_model != "v4a" or len(state.fleets) <= 0:
             return state
         if len(state.fleets) > 1 and not bool(getattr(self, "SYMMETRIC_MOVEMENT_SYNC_ENABLED", False)):
@@ -1305,6 +1331,11 @@ class EngineTickSkeleton:
         engagement_geometry_active_current = self._clamp01(
             float(bundle.get("engagement_geometry_active_current", 0.0))
         )
+        unit_intent_target_by_unit = self._debug_state.get("unit_intent_target_by_unit")
+        if not isinstance(unit_intent_target_by_unit, Mapping):
+            raise RuntimeError(
+                "runtime unit_intent_target_by_unit must be a Mapping before v4a bridge state"
+            )
         state_heading = state.coarse_body_heading_current.get(
             lead_fleet_id,
             bundle.get("movement_heading_current_xy", current_forward_hat_xy),
@@ -1391,6 +1422,7 @@ class EngineTickSkeleton:
                 current_heading_hat=current_heading_hat,
                 advance_share=advance_share,
                 engagement_geometry_active_current=engagement_geometry_active_current,
+                unit_intent_target_by_unit=unit_intent_target_by_unit,
             )
         if hold_active:
             updated_coarse_body_heading_current[lead_fleet_id] = state_heading_hat
@@ -1436,6 +1468,7 @@ class EngineTickSkeleton:
         current_heading_hat: tuple[float, float],
         advance_share: float,
         engagement_geometry_active_current: float,
+        unit_intent_target_by_unit: Mapping[str, str | None],
     ) -> BattleState:
         alive_units = [
             state.units[unit_id]
@@ -1562,9 +1595,20 @@ class EngineTickSkeleton:
                     near_contact_stability,
                 )
             attack_speed_scale = 1.0
-            engaged_target_id = str(unit.engaged_target_id).strip() if unit.engaged_target_id is not None else ""
-            if bool(unit.engaged) and engaged_target_id:
-                target_unit = state.units.get(engaged_target_id)
+            unit_key = str(unit_id)
+            if unit_key not in unit_intent_target_by_unit:
+                raise KeyError(
+                    f"runtime unit_intent_target_by_unit missing key for unit {unit_key!r} "
+                    "in v4a transition speed realization"
+                )
+            raw_selected_target_id = unit_intent_target_by_unit[unit_key]
+            selected_target_id = (
+                str(raw_selected_target_id).strip()
+                if raw_selected_target_id is not None
+                else ""
+            )
+            if selected_target_id:
+                target_unit = state.units.get(selected_target_id)
                 if target_unit is not None and float(target_unit.hit_points) > 0.0:
                     attack_hat_xy, attack_norm = EngineTickSkeleton._normalize_direction(
                         float(target_unit.position.x) - float(unit.position.x),
@@ -1641,6 +1685,490 @@ class EngineTickSkeleton:
         if changed:
             return replace(state, units=updated_units)
         return state
+
+    def _compute_unit_desire_by_unit(
+        self,
+        state: BattleState,
+        *,
+        movement_direction_by_fleet: Mapping[str, tuple[float, float]],
+        movement_bundle_by_fleet: Mapping[str, Mapping[str, object] | None],
+        unit_intent_target_by_unit: Mapping[str, str | None],
+    ) -> dict[str, dict[str, object]]:
+        unit_desire_by_unit: dict[str, dict[str, object]] = {}
+        local_desire_diag_by_fleet = self._debug_state.get("local_desire_diag_by_fleet", {})
+        if not isinstance(local_desire_diag_by_fleet, dict):
+            local_desire_diag_by_fleet = {}
+            self._debug_state["local_desire_diag_by_fleet"] = local_desire_diag_by_fleet
+        # Current bounded experimental family remains within the same owner/path
+        # and carrier, but this slice now reads as a behavior-line
+        # `back_off_keep_front` response: first keep early local opportunity from
+        # breaking fleet hold, then let fleet-authorized give-ground suppress
+        # continued over-commit and reopen some space.
+        movement_surface = self._movement_surface
+        experimental_signal_read_realignment_enabled = movement_surface[
+            "local_desire_experimental_signal_read_realignment_enabled"
+        ]
+        if not isinstance(experimental_signal_read_realignment_enabled, bool):
+            raise ValueError(
+                "runtime local_desire_experimental_signal_read_realignment_enabled "
+                "must be a boolean"
+            )
+        local_desire_turn_need_onset = float(movement_surface["local_desire_turn_need_onset"])
+        if (
+            not math.isfinite(local_desire_turn_need_onset)
+            or not 0.0 <= local_desire_turn_need_onset <= 0.95
+        ):
+            raise ValueError(
+                "runtime local_desire_turn_need_onset must be finite and within [0.0, 0.95], "
+                f"got {local_desire_turn_need_onset}"
+            )
+        local_desire_heading_bias_cap = float(movement_surface["local_desire_heading_bias_cap"])
+        if (
+            not math.isfinite(local_desire_heading_bias_cap)
+            or not 0.0 <= local_desire_heading_bias_cap <= 0.15
+        ):
+            raise ValueError(
+                "runtime local_desire_heading_bias_cap must be finite and within [0.0, 0.15], "
+                f"got {local_desire_heading_bias_cap}"
+            )
+        local_desire_speed_brake_strength = float(movement_surface["local_desire_speed_brake_strength"])
+        if (
+            not math.isfinite(local_desire_speed_brake_strength)
+            or not 0.0 <= local_desire_speed_brake_strength <= 0.10
+        ):
+            raise ValueError(
+                "runtime local_desire_speed_brake_strength must be finite and within [0.0, 0.10], "
+                f"got {local_desire_speed_brake_strength}"
+            )
+        LOCAL_DESIRE_MANEUVER_CONTEXT_GATE_START_RATIO = 0.75
+        LOCAL_DESIRE_MANEUVER_CONTEXT_GATE_FULL_RATIO = 0.35
+        LOCAL_DESIRE_NEAR_CONTACT_GATE_START_RATIO = 0.35
+        LOCAL_DESIRE_NEAR_CONTACT_GATE_FULL_RATIO = 0.20
+        LOCAL_DESIRE_EARLY_EMBARGO_FULL_CLOSE_RELATION_GAP = 0.05
+        LOCAL_DESIRE_EARLY_EMBARGO_FULL_OPEN_RELATION_GAP = 0.22
+        LOCAL_DESIRE_SPEED_BRAKE_FLOOR = 0.97
+        LOCAL_DESIRE_BACKOFF_SPEED_BRAKE_FLOOR = 0.76
+        LOCAL_DESIRE_BACKOFF_SPEED_RESTRAINT_STRENGTH_MULTIPLIER = 8.0
+        LOCAL_DESIRE_BACKOFF_OVERCOMMIT_SUPPRESSION_COHERENCE_WEIGHT = 0.35
+        LOCAL_DESIRE_BACKOFF_OVERCOMMIT_SUPPRESSION_SEVERITY_WEIGHT = 0.85
+        LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_CLOSE_RELATION_GAP = 0.0
+        LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_OPEN_RELATION_GAP = -0.18
+        LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_FULL_RELATION_GAP = 0.08
+        LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_CLEAR_RELATION_GAP = 0.26
+        LOCAL_DESIRE_LATE_REOPEN_SPEED_RESTRAINT_STRENGTH = 0.12
+        LOCAL_DESIRE_LATE_REOPEN_HEADING_SUPPRESSION_WEIGHT = 0.55
+        LOCAL_DESIRE_LATE_REOPEN_EARLY_PERMISSION_ONSET = 0.65
+        LOCAL_DESIRE_LATE_REOPEN_CONTACT_GATE_START_RATIO = 1.00
+        LOCAL_DESIRE_LATE_REOPEN_CONTACT_GATE_FULL_RATIO = 0.75
+        for fleet_id, fleet in state.fleets.items():
+            movement_direction = movement_direction_by_fleet.get(
+                str(fleet_id),
+                state.last_target_direction.get(str(fleet_id), (0.0, 0.0)),
+            )
+            base_heading_x = float(movement_direction[0]) if len(movement_direction) >= 1 else 0.0
+            base_heading_y = float(movement_direction[1]) if len(movement_direction) >= 2 else 0.0
+            base_heading_hat, base_heading_magnitude = EngineTickSkeleton._normalize_direction(
+                float(base_heading_x),
+                float(base_heading_y),
+            )
+            fleet_front = state.coarse_body_heading_current.get(str(fleet_id), movement_direction)
+            if not isinstance(fleet_front, Sequence) or len(fleet_front) < 2:
+                fleet_front = movement_direction
+            fleet_front_hat, fleet_front_norm = EngineTickSkeleton._normalize_direction(
+                float(fleet_front[0]) if len(fleet_front) >= 1 else float(base_heading_x),
+                float(fleet_front[1]) if len(fleet_front) >= 2 else float(base_heading_y),
+            )
+            if fleet_front_norm <= 0.0:
+                if base_heading_magnitude > 0.0:
+                    fleet_front_hat = base_heading_hat
+                else:
+                    fleet_front_hat = (1.0, 0.0)
+            fleet_bundle = movement_bundle_by_fleet.get(str(fleet_id))
+            experimental_back_off_behavior_active = (
+                experimental_signal_read_realignment_enabled
+                and isinstance(fleet_bundle, Mapping)
+            )
+            if experimental_back_off_behavior_active:
+                battle_relation_gap_raw = float(fleet_bundle["battle_relation_gap_raw"])
+                battle_relation_gap_current = float(fleet_bundle["battle_relation_gap_current"])
+                battle_hold_weight_current = self._clamp01(
+                    float(fleet_bundle["battle_hold_weight_current"])
+                )
+                battle_brake_drive_current = self._clamp01(
+                    float(fleet_bundle["battle_brake_drive_current"])
+                )
+                if not math.isfinite(battle_relation_gap_raw):
+                    raise ValueError(
+                        "runtime experimental local_desire branch requires finite "
+                        f"battle_relation_gap_raw for fleet {fleet_id!r}, got {battle_relation_gap_raw}"
+                    )
+                if not math.isfinite(battle_relation_gap_current):
+                    raise ValueError(
+                        "runtime experimental local_desire branch requires finite "
+                        f"battle_relation_gap_current for fleet {fleet_id!r}, got {battle_relation_gap_current}"
+                    )
+                if (
+                    battle_relation_gap_raw
+                    >= float(LOCAL_DESIRE_EARLY_EMBARGO_FULL_OPEN_RELATION_GAP)
+                ):
+                    early_embargo_permission_fleet = 1.0
+                elif (
+                    battle_relation_gap_raw
+                    <= float(LOCAL_DESIRE_EARLY_EMBARGO_FULL_CLOSE_RELATION_GAP)
+                ):
+                    early_embargo_permission_fleet = 0.0
+                else:
+                    early_embargo_permission_fleet = self._smoothstep01(
+                        (
+                            float(battle_relation_gap_raw)
+                            - float(LOCAL_DESIRE_EARLY_EMBARGO_FULL_CLOSE_RELATION_GAP)
+                        )
+                        / max(
+                            float(LOCAL_DESIRE_EARLY_EMBARGO_FULL_OPEN_RELATION_GAP)
+                            - float(LOCAL_DESIRE_EARLY_EMBARGO_FULL_CLOSE_RELATION_GAP),
+                            1e-9,
+                        )
+                    )
+                early_embargo_severity_fleet = self._clamp01(
+                    1.0 - float(early_embargo_permission_fleet)
+                )
+                if (
+                    battle_relation_gap_current
+                    >= float(LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_CLOSE_RELATION_GAP)
+                ):
+                    relation_violation_severity_fleet = 0.0
+                elif (
+                    battle_relation_gap_current
+                    <= float(LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_OPEN_RELATION_GAP)
+                ):
+                    relation_violation_severity_fleet = 1.0
+                else:
+                    relation_violation_severity_fleet = self._smoothstep01(
+                        (
+                            float(LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_CLOSE_RELATION_GAP)
+                            - float(battle_relation_gap_current)
+                        )
+                        / max(
+                            float(LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_CLOSE_RELATION_GAP)
+                            - float(LOCAL_DESIRE_VIOLATION_RESPONSE_FULL_OPEN_RELATION_GAP),
+                            1e-9,
+                        )
+                    )
+                if battle_relation_gap_current <= 0.0:
+                    late_reopen_persistence_fleet = 0.0
+                elif (
+                    battle_relation_gap_current
+                    >= float(LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_CLEAR_RELATION_GAP)
+                ):
+                    late_reopen_persistence_fleet = 0.0
+                elif (
+                    battle_relation_gap_current
+                    <= float(LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_FULL_RELATION_GAP)
+                ):
+                    late_reopen_persistence_fleet = 1.0
+                else:
+                    late_reopen_persistence_fleet = self._smoothstep01(
+                        (
+                            float(LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_CLEAR_RELATION_GAP)
+                            - float(battle_relation_gap_current)
+                        )
+                        / max(
+                            float(LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_CLEAR_RELATION_GAP)
+                            - float(LOCAL_DESIRE_LATE_REOPEN_PERSISTENCE_FULL_RELATION_GAP),
+                            1e-9,
+                        )
+                    )
+            else:
+                battle_relation_gap_raw = 0.0
+                battle_relation_gap_current = 0.0
+                battle_hold_weight_current = 0.0
+                battle_brake_drive_current = 0.0
+                early_embargo_permission_fleet = float("nan")
+                early_embargo_severity_fleet = float("nan")
+                relation_violation_severity_fleet = float("nan")
+                late_reopen_persistence_fleet = float("nan")
+            for unit_id in fleet.unit_ids:
+                unit = state.units.get(unit_id)
+                if unit is None or float(unit.hit_points) <= 0.0:
+                    continue
+                desired_heading_x = float(base_heading_x)
+                desired_heading_y = float(base_heading_y)
+                desired_heading_hat = base_heading_hat if base_heading_magnitude > 0.0 else fleet_front_hat
+                desired_speed_scale = 1.0
+                unit_key = str(unit_id)
+                if unit_key not in unit_intent_target_by_unit:
+                    raise KeyError(
+                        f"runtime unit_intent_target_by_unit missing key for unit {unit_key!r} "
+                        "in local desire generation"
+                    )
+                raw_selected_target_id = unit_intent_target_by_unit[unit_key]
+                selected_target_id = (
+                    str(raw_selected_target_id).strip()
+                    if raw_selected_target_id is not None
+                    else ""
+                )
+                if selected_target_id:
+                    target_unit = state.units.get(selected_target_id)
+                    if (
+                        target_unit is not None
+                        and float(target_unit.hit_points) > 0.0
+                        and str(target_unit.fleet_id) != str(unit.fleet_id)
+                    ):
+                        attack_hat_xy, attack_distance = EngineTickSkeleton._normalize_direction(
+                            float(target_unit.position.x) - float(unit.position.x),
+                            float(target_unit.position.y) - float(unit.position.y),
+                        )
+                        if attack_distance > 0.0 and float(self.attack_range) > 1e-12:
+                            maneuver_context_start = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_MANEUVER_CONTEXT_GATE_START_RATIO)
+                            )
+                            maneuver_context_full = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_MANEUVER_CONTEXT_GATE_FULL_RATIO)
+                            )
+                            if attack_distance >= maneuver_context_start:
+                                maneuver_context_gate = 0.0
+                            elif attack_distance <= maneuver_context_full:
+                                maneuver_context_gate = 1.0
+                            else:
+                                maneuver_context_gate = self._clamp01(
+                                    (float(maneuver_context_start) - float(attack_distance))
+                                    / max(
+                                        float(maneuver_context_start) - float(maneuver_context_full),
+                                        1e-9,
+                                    )
+                                )
+                            near_contact_start = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_NEAR_CONTACT_GATE_START_RATIO)
+                            )
+                            near_contact_full = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_NEAR_CONTACT_GATE_FULL_RATIO)
+                            )
+                            if attack_distance >= near_contact_start:
+                                near_contact_gate = 0.0
+                            elif attack_distance <= near_contact_full:
+                                near_contact_gate = 1.0
+                            else:
+                                near_contact_gate = self._clamp01(
+                                    (float(near_contact_start) - float(attack_distance))
+                                    / max(
+                                        float(near_contact_start) - float(near_contact_full),
+                                        1e-9,
+                                    )
+                                )
+                            late_reopen_contact_start = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_LATE_REOPEN_CONTACT_GATE_START_RATIO)
+                            )
+                            late_reopen_contact_full = (
+                                float(self.attack_range)
+                                * float(LOCAL_DESIRE_LATE_REOPEN_CONTACT_GATE_FULL_RATIO)
+                            )
+                            if attack_distance >= late_reopen_contact_start:
+                                late_reopen_contact_gate = 0.0
+                            elif attack_distance <= late_reopen_contact_full:
+                                late_reopen_contact_gate = 1.0
+                            else:
+                                late_reopen_contact_gate = self._smoothstep01(
+                                    (
+                                        float(late_reopen_contact_start)
+                                        - float(attack_distance)
+                                    )
+                                    / max(
+                                        float(late_reopen_contact_start)
+                                        - float(late_reopen_contact_full),
+                                        1e-9,
+                                    )
+                                )
+                            unit_facing_hat, unit_facing_norm = EngineTickSkeleton._normalize_direction(
+                                float(unit.orientation_vector.x),
+                                float(unit.orientation_vector.y),
+                            )
+                            if unit_facing_norm <= 0.0:
+                                unit_facing_hat = desired_heading_hat
+                            fleet_front_lateralness = abs(
+                                (float(fleet_front_hat[0]) * float(attack_hat_xy[1]))
+                                - (float(fleet_front_hat[1]) * float(attack_hat_xy[0]))
+                            )
+                            front_bearing_need = self._clamp01(float(fleet_front_lateralness))
+                            fleet_front_target_forwardness = self._clamp01(
+                                (float(fleet_front_hat[0]) * float(attack_hat_xy[0]))
+                                + (float(fleet_front_hat[1]) * float(attack_hat_xy[1]))
+                            )
+                            unit_facing_alignment = max(
+                                -1.0,
+                                min(
+                                    1.0,
+                                    (float(unit_facing_hat[0]) * float(attack_hat_xy[0]))
+                                    + (float(unit_facing_hat[1]) * float(attack_hat_xy[1])),
+                                ),
+                            )
+                            turn_need_raw = self._clamp01(
+                                (1.0 - float(unit_facing_alignment)) * 0.50
+                            )
+                            heading_turn_need = self._smoothstep01(
+                                (
+                                    float(turn_need_raw)
+                                    - float(local_desire_turn_need_onset)
+                                )
+                                / max(
+                                    1.0 - float(local_desire_turn_need_onset),
+                                    1e-9,
+                                )
+                            )
+                            speed_turn_need = self._clamp01(
+                                float(heading_turn_need) * float(heading_turn_need)
+                            )
+                            if experimental_back_off_behavior_active:
+                                early_embargo_permission = float(early_embargo_permission_fleet)
+                                early_embargo_severity = float(early_embargo_severity_fleet)
+                                relation_violation_severity = float(
+                                    relation_violation_severity_fleet
+                                )
+                                compressed_line_truth = self._clamp01(
+                                    float(relation_violation_severity)
+                                )
+                                give_ground_severity = self._clamp01(
+                                    max(
+                                        float(compressed_line_truth),
+                                        float(battle_brake_drive_current),
+                                    )
+                                )
+                                coherence_cap = self._clamp01(
+                                    float(battle_hold_weight_current)
+                                )
+                                heading_localizer = self._clamp01(
+                                    (0.70 * float(maneuver_context_gate))
+                                    + (0.30 * float(near_contact_gate))
+                                )
+                                late_reopen_release_gate = self._smoothstep01(
+                                    (
+                                        float(early_embargo_permission)
+                                        - float(LOCAL_DESIRE_LATE_REOPEN_EARLY_PERMISSION_ONSET)
+                                    )
+                                    / max(
+                                        1.0
+                                        - float(LOCAL_DESIRE_LATE_REOPEN_EARLY_PERMISSION_ONSET),
+                                        1e-9,
+                                    )
+                                )
+                                late_reopen_heading_suppression = self._clamp01(
+                                    float(late_reopen_contact_gate)
+                                    * float(late_reopen_persistence_fleet)
+                                    * float(late_reopen_release_gate)
+                                )
+                                local_heading_overcommit_suppression = self._clamp01(
+                                    (
+                                        float(
+                                            LOCAL_DESIRE_BACKOFF_OVERCOMMIT_SUPPRESSION_COHERENCE_WEIGHT
+                                        )
+                                        * float(coherence_cap)
+                                    )
+                                    + (
+                                        float(
+                                            LOCAL_DESIRE_BACKOFF_OVERCOMMIT_SUPPRESSION_SEVERITY_WEIGHT
+                                        )
+                                        * float(give_ground_severity)
+                                    )
+                                    + (
+                                        float(
+                                            LOCAL_DESIRE_LATE_REOPEN_HEADING_SUPPRESSION_WEIGHT
+                                        )
+                                        * float(late_reopen_heading_suppression)
+                                    )
+                                )
+                                local_heading_opportunity_permission = self._clamp01(
+                                    float(early_embargo_permission)
+                                    * (
+                                        1.0
+                                        - float(local_heading_overcommit_suppression)
+                                    )
+                                )
+                                local_heading_bias_weight = self._clamp01(
+                                    float(local_desire_heading_bias_cap)
+                                    * float(front_bearing_need)
+                                    * float(heading_turn_need)
+                                    * float(heading_localizer)
+                                    * float(local_heading_opportunity_permission)
+                                )
+                                speed_localizer = self._clamp01(
+                                    (0.65 * float(maneuver_context_gate))
+                                    + (0.35 * float(near_contact_gate))
+                                )
+                                early_embargo_response = self._clamp01(
+                                    float(speed_localizer)
+                                    * float(early_embargo_severity)
+                                )
+                                standoff_violation_response = self._clamp01(
+                                    float(speed_localizer)
+                                    * float(give_ground_severity)
+                                )
+                                late_reopen_persistence_response = self._clamp01(
+                                    float(LOCAL_DESIRE_LATE_REOPEN_SPEED_RESTRAINT_STRENGTH)
+                                    * float(late_reopen_contact_gate)
+                                    * float(late_reopen_persistence_fleet)
+                                    * float(late_reopen_release_gate)
+                                    * float(fleet_front_target_forwardness)
+                                )
+                                speed_restraint_weight = self._clamp01(
+                                    max(
+                                        float(early_embargo_response),
+                                        float(standoff_violation_response),
+                                        float(late_reopen_persistence_response),
+                                    )
+                                )
+                                speed_brake_floor = float(
+                                    LOCAL_DESIRE_BACKOFF_SPEED_BRAKE_FLOOR
+                                )
+                                speed_restraint_strength_multiplier = float(
+                                    LOCAL_DESIRE_BACKOFF_SPEED_RESTRAINT_STRENGTH_MULTIPLIER
+                                )
+                            else:
+                                local_heading_bias_weight = self._clamp01(
+                                    float(local_desire_heading_bias_cap)
+                                    * float(near_contact_gate)
+                                    * float(front_bearing_need)
+                                    * float(heading_turn_need)
+                                )
+                                speed_restraint_weight = self._clamp01(
+                                    float(near_contact_gate) * float(speed_turn_need)
+                                )
+                                speed_brake_floor = float(LOCAL_DESIRE_SPEED_BRAKE_FLOOR)
+                                speed_restraint_strength_multiplier = 1.0
+                            if local_heading_bias_weight > 0.0 and base_heading_magnitude > 0.0:
+                                desired_heading_hat = EngineTickSkeleton._relax_direction(
+                                    desired_heading_hat,
+                                    attack_hat_xy,
+                                    local_heading_bias_weight,
+                                )
+                                desired_heading_x = (
+                                    float(desired_heading_hat[0]) * float(base_heading_magnitude)
+                                )
+                                desired_heading_y = (
+                                    float(desired_heading_hat[1]) * float(base_heading_magnitude)
+                                )
+                            desired_speed_scale = max(
+                                float(speed_brake_floor),
+                                1.0
+                                - (
+                                    float(local_desire_speed_brake_strength)
+                                    * float(speed_restraint_strength_multiplier)
+                                    * float(speed_restraint_weight)
+                                ),
+                            )
+                unit_desire_by_unit[str(unit_id)] = {
+                    "desired_heading_xy": (float(desired_heading_x), float(desired_heading_y)),
+                    "desired_speed_scale": float(desired_speed_scale),
+                }
+            if experimental_back_off_behavior_active:
+                local_desire_diag_by_fleet[str(fleet_id)] = {
+                    "early_embargo_permission": float(early_embargo_permission_fleet),
+                    "late_reopen_persistence": float(late_reopen_persistence_fleet),
+                }
+        return unit_desire_by_unit
 
     def _build_fixture_expected_position_map(
         self,
@@ -1883,6 +2411,8 @@ class EngineTickSkeleton:
     def _evaluate_target_with_v4a_bridge(self, state: BattleState) -> BattleState:
         last_target_direction = {}
         movement_command_direction = {}
+        unit_intent_target_by_unit = self._compute_unit_intent_target_by_unit(state)
+        self._debug_state["unit_intent_target_by_unit"] = dict(unit_intent_target_by_unit)
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         fixture_active_mode = (
             str(fixture_cfg.get("active_mode", "battle")).strip().lower()
@@ -1984,14 +2514,21 @@ class EngineTickSkeleton:
             if isinstance(battle_bundle, Mapping):
                 engaged_attack_vectors: list[tuple[float, float]] = []
                 for unit in own_units:
-                    engaged_target_id = (
-                        str(unit.engaged_target_id).strip()
-                        if unit.engaged_target_id is not None
+                    unit_key = str(unit.unit_id)
+                    if unit_key not in unit_intent_target_by_unit:
+                        raise KeyError(
+                            f"runtime unit_intent_target_by_unit missing key for unit {unit_key!r} "
+                            "in v4a bridge target-vector aggregation"
+                        )
+                    raw_selected_target_id = unit_intent_target_by_unit[unit_key]
+                    selected_target_id = (
+                        str(raw_selected_target_id).strip()
+                        if raw_selected_target_id is not None
                         else ""
                     )
-                    if not bool(unit.engaged) or not engaged_target_id:
+                    if not selected_target_id:
                         continue
-                    target_unit = state.units.get(engaged_target_id)
+                    target_unit = state.units.get(selected_target_id)
                     if target_unit is None or float(target_unit.hit_points) <= 0.0:
                         continue
                     attack_hat_xy, attack_norm = self._normalize_direction(
@@ -2389,10 +2926,66 @@ class EngineTickSkeleton:
                 if other_fleet_id != lead_fleet_id:
                     ordered_fleets[other_fleet_id] = base_fleets[other_fleet_id]
             moved_variant = self.integrate_movement(replace(state, fleets=ordered_fleets))
-            if first_debug_snapshot is None:
-                first_debug_snapshot = {
-                    "debug_diag_last_tick": getattr(self, "debug_diag_last_tick", None),
-                }
+            variant_debug_tick = getattr(self, "debug_diag_last_tick", None)
+            if isinstance(variant_debug_tick, dict):
+                if first_debug_snapshot is None:
+                    first_debug_snapshot = {
+                        "debug_diag_last_tick": dict(variant_debug_tick),
+                    }
+                    base_tick = first_debug_snapshot["debug_diag_last_tick"]
+                    v4a_bridge_tick = variant_debug_tick.get("v4a_bridge", {})
+                    if isinstance(v4a_bridge_tick, Mapping):
+                        base_tick["v4a_bridge"] = {"fleets": {}}
+                        v4a_bridge_fleets = v4a_bridge_tick.get("fleets", {})
+                        if isinstance(v4a_bridge_fleets, Mapping):
+                            base_tick["v4a_bridge"]["fleets"] = {
+                                str(fleet_id): dict(row)
+                                for fleet_id, row in v4a_bridge_fleets.items()
+                                if isinstance(row, Mapping)
+                            }
+                    local_desire_tick = variant_debug_tick.get("local_desire", {})
+                    if isinstance(local_desire_tick, Mapping):
+                        base_tick["local_desire"] = {"fleets": {}}
+                        local_desire_fleets = local_desire_tick.get("fleets", {})
+                        if isinstance(local_desire_fleets, Mapping):
+                            base_tick["local_desire"]["fleets"] = {
+                                str(fleet_id): dict(row)
+                                for fleet_id, row in local_desire_fleets.items()
+                                if isinstance(row, Mapping)
+                            }
+                else:
+                    base_tick = first_debug_snapshot.get("debug_diag_last_tick")
+                    if isinstance(base_tick, dict):
+                        v4a_bridge_tick = variant_debug_tick.get("v4a_bridge", {})
+                        if isinstance(v4a_bridge_tick, Mapping):
+                            base_v4a_bridge = base_tick.setdefault("v4a_bridge", {"fleets": {}})
+                            if not isinstance(base_v4a_bridge, dict):
+                                base_v4a_bridge = {"fleets": {}}
+                                base_tick["v4a_bridge"] = base_v4a_bridge
+                            base_v4a_bridge_fleets = base_v4a_bridge.setdefault("fleets", {})
+                            if not isinstance(base_v4a_bridge_fleets, dict):
+                                base_v4a_bridge_fleets = {}
+                                base_v4a_bridge["fleets"] = base_v4a_bridge_fleets
+                            variant_v4a_bridge_fleets = v4a_bridge_tick.get("fleets", {})
+                            if isinstance(variant_v4a_bridge_fleets, Mapping):
+                                for fleet_id, row in variant_v4a_bridge_fleets.items():
+                                    if isinstance(row, Mapping):
+                                        base_v4a_bridge_fleets[str(fleet_id)] = dict(row)
+                        local_desire_tick = variant_debug_tick.get("local_desire", {})
+                        if isinstance(local_desire_tick, Mapping):
+                            base_local_desire = base_tick.setdefault("local_desire", {"fleets": {}})
+                            if not isinstance(base_local_desire, dict):
+                                base_local_desire = {"fleets": {}}
+                                base_tick["local_desire"] = base_local_desire
+                            base_local_desire_fleets = base_local_desire.setdefault("fleets", {})
+                            if not isinstance(base_local_desire_fleets, dict):
+                                base_local_desire_fleets = {}
+                                base_local_desire["fleets"] = base_local_desire_fleets
+                            variant_local_desire_fleets = local_desire_tick.get("fleets", {})
+                            if isinstance(variant_local_desire_fleets, Mapping):
+                                for fleet_id, row in variant_local_desire_fleets.items():
+                                    if isinstance(row, Mapping):
+                                        base_local_desire_fleets[str(fleet_id)] = dict(row)
             for unit_id in base_fleets[lead_fleet_id].unit_ids:
                 moved_unit = moved_variant.units.get(unit_id)
                 if moved_unit is not None:
@@ -2571,12 +3164,12 @@ class EngineTickSkeleton:
             if unit.hit_points > 0.0
         }
 
-        movement_model = str(movement_surface.get("model", "v4a")).strip().lower()
+        movement_model = str(movement_surface["model"]).strip().lower()
         if movement_model != "v4a":
             raise ValueError(
                 f"maintained runtime movement model must be 'v4a', got {movement_model!r}"
             )
-        v4a_restore_strength = min(1.0, max(0.0, float(movement_surface.get("v4a_restore_strength", 1.0))))
+        v4a_restore_strength = min(1.0, max(0.0, float(movement_surface["v4a_restore_strength"])))
         fixture_cfg = getattr(self, "TEST_RUN_FIXTURE_CFG", None)
         fixture_active_mode = (
             str(fixture_cfg.get("active_mode", "battle")).strip().lower()
@@ -2591,10 +3184,14 @@ class EngineTickSkeleton:
         fixture_bundle = getattr(self, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
         battle_bundles_by_fleet = getattr(self, "TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET", None)
         bridge_lead_fleet_id = str(next(iter(state.fleets.keys()), "")).strip()
-
-        updated_units = dict(state.units)
-        fixture_trace_units_pending = None
-        for fleet_id, fleet in state.fleets.items():
+        unit_intent_target_by_unit = self._debug_state.get("unit_intent_target_by_unit")
+        if not isinstance(unit_intent_target_by_unit, Mapping):
+            raise RuntimeError(
+                "runtime unit_intent_target_by_unit must be a Mapping before movement integration"
+            )
+        movement_direction_by_fleet: dict[str, tuple[float, float]] = {}
+        movement_bundle_by_fleet: dict[str, Mapping[str, object] | None] = {}
+        for fleet_id in state.fleets:
             reference_direction = state.last_target_direction.get(fleet_id, (0.0, 0.0))
             movement_direction = reference_direction
             movement_bundle = None
@@ -2614,6 +3211,26 @@ class EngineTickSkeleton:
                         float(bundle_direction[0]) if len(bundle_direction) >= 1 else 0.0,
                         float(bundle_direction[1]) if len(bundle_direction) >= 2 else 0.0,
                     )
+            movement_direction_by_fleet[str(fleet_id)] = (
+                float(movement_direction[0]) if len(movement_direction) >= 1 else 0.0,
+                float(movement_direction[1]) if len(movement_direction) >= 2 else 0.0,
+            )
+            movement_bundle_by_fleet[str(fleet_id)] = (
+                movement_bundle if isinstance(movement_bundle, Mapping) else None
+            )
+        unit_desire_by_unit = self._compute_unit_desire_by_unit(
+            state,
+            movement_direction_by_fleet=movement_direction_by_fleet,
+            movement_bundle_by_fleet=movement_bundle_by_fleet,
+            unit_intent_target_by_unit=unit_intent_target_by_unit,
+        )
+        self._debug_state["unit_desire_by_unit"] = dict(unit_desire_by_unit)
+
+        updated_units = dict(state.units)
+        fixture_trace_units_pending = None
+        for fleet_id, fleet in state.fleets.items():
+            reference_direction = state.last_target_direction.get(fleet_id, (0.0, 0.0))
+            movement_direction = movement_direction_by_fleet.get(str(fleet_id), reference_direction)
 
             alive_unit_ids = [
                 unit_id
@@ -2852,8 +3469,18 @@ class EngineTickSkeleton:
                 # restore_term = restore_strength * normalize(restore_vector)
                 cohesion_x = v4a_restore_strength * cohesion_dir[0]
                 cohesion_y = v4a_restore_strength * cohesion_dir[1]
-                target_term_x = float(movement_direction[0])
-                target_term_y = float(movement_direction[1])
+                unit_desire = unit_desire_by_unit[str(unit_id)]
+                desire_heading_xy = unit_desire["desired_heading_xy"]
+                if not isinstance(desire_heading_xy, Sequence) or len(desire_heading_xy) < 2:
+                    raise ValueError(
+                        "runtime unit_desire_by_unit desired_heading_xy must be a length>=2 sequence, "
+                        f"got {desire_heading_xy!r}"
+                    )
+                desire_heading_x = float(desire_heading_xy[0]) if len(desire_heading_xy) >= 1 else 0.0
+                desire_heading_y = float(desire_heading_xy[1]) if len(desire_heading_xy) >= 2 else 0.0
+                desired_speed_scale_input = self._clamp01(float(unit_desire["desired_speed_scale"]))
+                target_term_x = float(desire_heading_x)
+                target_term_y = float(desire_heading_y)
                 separation_term_x = alpha_sep * separation_dir[0]
                 separation_term_y = alpha_sep * separation_dir[1]
                 boundary_term_x = alpha_sep * boundary_x
@@ -2881,8 +3508,8 @@ class EngineTickSkeleton:
                 )
                 if current_heading_norm <= movement_eps:
                     current_heading_hat = self._normalize_direction_with_fallback(
-                        float(movement_direction[0]),
-                        float(movement_direction[1]),
+                        float(desire_heading_x),
+                        float(desire_heading_y),
                         1.0,
                         0.0,
                     )
@@ -2904,7 +3531,12 @@ class EngineTickSkeleton:
                     desired_speed_scale = float(turn_speed_min_scale) + (
                         (1.0 - float(turn_speed_min_scale)) * float(heading_alignment_for_speed)
                     )
-                desired_speed = float(unit.max_speed) * float(fixture_step_magnitude_gain) * float(desired_speed_scale)
+                desired_speed = (
+                    float(unit.max_speed)
+                    * float(fixture_step_magnitude_gain)
+                    * float(desired_speed_scale_input)
+                    * float(desired_speed_scale)
+                )
                 current_speed = math.sqrt(
                     (float(unit.velocity.x) * float(unit.velocity.x))
                     + (float(unit.velocity.y) * float(unit.velocity.y))
@@ -2962,8 +3594,11 @@ class EngineTickSkeleton:
                         "within_stop_radius_pre": bool(fixture_within_stop_radius_pre),
                         "axis_to_objective_x": float(fixture_axis_to_objective_x),
                         "axis_to_objective_y": float(fixture_axis_to_objective_y),
-                        "target_dir_x": float(movement_direction[0]),
-                        "target_dir_y": float(movement_direction[1]),
+                        "target_dir_x": float(desire_heading_x),
+                        "target_dir_y": float(desire_heading_y),
+                        "fleet_movement_dir_x": float(movement_direction[0]),
+                        "fleet_movement_dir_y": float(movement_direction[1]),
+                        "desired_speed_scale_input": float(desired_speed_scale_input),
                         "forward_gain_effective": float(forward_gain_effective),
                         "target_contrib_dx": float(target_term_x * pre_projection_step_scale),
                         "target_contrib_dy": float(target_term_y * pre_projection_step_scale),
@@ -3177,26 +3812,10 @@ class EngineTickSkeleton:
 
         return replace(state, units=updated_units)
 
-    def resolve_combat(self, state: BattleState) -> BattleState:
-        combat_surface = self._combat_surface
-        diag_surface = self._diag_surface
+    def _compute_unit_intent_target_by_unit(self, state: BattleState) -> dict[str, str | None]:
         combat_cmp_eps = 1e-14
         attack_range_sq = self.attack_range * self.attack_range
-        geom_gamma = 0.3
-        CH_ENABLED = bool(combat_surface["ch_enabled"])
-        h_raw = float(combat_surface["contact_hysteresis_h"])
-        h = min(0.2, max(0.0, h_raw))
-        r_exit = self.attack_range
-        r_enter = self.attack_range * (1.0 - h)
-        r_exit_sq = r_exit * r_exit
-        r_enter_sq = r_enter * r_enter
-        alpha_raw = float(combat_surface["fire_quality_alpha"])
-        fire_quality_alpha = min(1.0, max(0.0, alpha_raw))
-        optimal_range_ratio_raw = float(combat_surface.get("fire_optimal_range_ratio", 1.0))
-        fire_optimal_range_ratio = min(1.0, max(0.0, optimal_range_ratio_raw))
-        optimal_range = self.attack_range * fire_optimal_range_ratio
-        diag_enabled = bool(diag_surface["runtime_diag_enabled"])
-        diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
+        combat_surface = self._combat_surface
         forward_fire_cone_half_angle_deg = float(combat_surface["fire_cone_half_angle_deg"])
         if not math.isfinite(forward_fire_cone_half_angle_deg):
             raise ValueError(
@@ -3211,42 +3830,13 @@ class EngineTickSkeleton:
         forward_fire_cone_cos_threshold = math.cos(
             math.radians(float(forward_fire_cone_half_angle_deg))
         )
-
-        def _compute_angle_quality(attacker, ux: float, uy: float) -> float:
-            if fire_quality_alpha <= 0.0:
-                return 1.0
-            orient = attacker.orientation_vector
-            ox = orient.x
-            oy = orient.y
-            o_norm_sq = (ox * ox) + (oy * oy)
-            if o_norm_sq <= 0.0:
-                return 1.0
-            o_norm = math.sqrt(o_norm_sq)
-            nox = ox / o_norm
-            noy = oy / o_norm
-            cos_theta = max(-1.0, min(1.0, (nox * ux) + (noy * uy)))
-            return max(0.0, 1.0 + (fire_quality_alpha * cos_theta))
-
-        def _compute_range_quality(distance: float) -> float:
-            if self.attack_range <= 0.0:
-                return 0.0
-            if optimal_range >= (self.attack_range - 1e-12):
-                return 1.0
-            if distance <= optimal_range:
-                return 1.0
-            denom = max(self.attack_range - optimal_range, 1e-12)
-            return max(0.0, min(1.0, (self.attack_range - distance) / denom))
-
         snapshot_positions = {}
         alive_units = {}
-        alive_by_fleet = {}
         for unit_id, unit in state.units.items():
             if unit.hit_points <= 0.0:
                 continue
             alive_units[unit_id] = unit
             snapshot_positions[unit_id] = (unit.position.x, unit.position.y)
-            fleet_id = unit.fleet_id
-            alive_by_fleet[fleet_id] = alive_by_fleet.get(fleet_id, 0) + 1
 
         combat_scan_rows = []
         scan_order = 0
@@ -3274,31 +3864,18 @@ class EngineTickSkeleton:
                 )
                 scan_order += 1
         combat_scan_hash = self._build_spatial_hash(combat_scan_rows, self.attack_range)
-        incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
-        total_hp_before = sum(unit.hit_points for unit in alive_units.values())
-        in_contact_count = 0
-        damage_events_count = 0
-        sample_contact_debug = None
-        engaged_updates = {}
-        in_contact_units = set()
-        attackers_by_fleet = {}
 
-        # Snapshot target assignment (no HP writeback dependence).
-        assigned_target = {}
-        orientation_override = {}
+        # Runtime-local placement only; the same minimal selector contract is reused
+        # across pre-movement unit intent and post-movement combat re-check, but this
+        # does not settle the long-term shared spatial service owner.
+        selected_target_by_unit = {}
         for attacker_id, attacker in alive_units.items():
             attacker_pos_x, attacker_pos_y = snapshot_positions[attacker_id]
-
             best_enemy_id = None
             best_dist_sq = 0.0
             best_rank = 0
-            best_dx = 0.0
-            best_dy = 0.0
             best_scan_order = 0
-            best_angle_quality = 1.0
-            best_range_quality = 1.0
-            best_expected_damage_ratio = 1.0
-            for enemy_x, enemy_y, scan_order, enemy_id, enemy_fleet_id, normalized_hp, rank in self._iter_spatial_hash_neighbors(
+            for enemy_x, enemy_y, scan_order, enemy_id, enemy_fleet_id, _normalized_hp, rank in self._iter_spatial_hash_neighbors(
                 combat_scan_hash,
                 attacker_pos_x,
                 attacker_pos_y,
@@ -3323,80 +3900,141 @@ class EngineTickSkeleton:
                     cos_theta = ((ox / orientation_norm) * ux) + ((oy / orientation_norm) * uy)
                     if cos_theta < forward_fire_cone_cos_threshold:
                         continue
-                angle_quality = _compute_angle_quality(attacker, ux, uy)
-                range_quality = _compute_range_quality(distance)
-                expected_damage_ratio = max(1e-6, angle_quality * range_quality)
-
                 if best_enemy_id is None:
                     best_enemy_id = enemy_id
                     best_dist_sq = distance_sq
                     best_rank = rank
-                    best_dx = dx
-                    best_dy = dy
                     best_scan_order = scan_order
-                    best_angle_quality = angle_quality
-                    best_range_quality = range_quality
-                    best_expected_damage_ratio = expected_damage_ratio
                     continue
                 if distance_sq < (best_dist_sq - combat_cmp_eps):
                     best_enemy_id = enemy_id
                     best_dist_sq = distance_sq
                     best_rank = rank
-                    best_dx = dx
-                    best_dy = dy
                     best_scan_order = scan_order
-                    best_angle_quality = angle_quality
-                    best_range_quality = range_quality
-                    best_expected_damage_ratio = expected_damage_ratio
                     continue
                 if abs(distance_sq - best_dist_sq) <= combat_cmp_eps:
                     if rank < best_rank or (rank == best_rank and scan_order < best_scan_order):
-                        best_enemy_id = enemy_id
-                        best_dist_sq = distance_sq
-                        best_rank = rank
-                        best_dx = dx
-                        best_dy = dy
-                        best_scan_order = scan_order
-                        best_angle_quality = angle_quality
-                        best_range_quality = range_quality
-                        best_expected_damage_ratio = expected_damage_ratio
-            if best_enemy_id is None:
-                assigned_target[attacker_id] = None
-            else:
-                assigned_target[attacker_id] = (
-                    best_enemy_id,
-                    best_dx,
-                    best_dy,
-                    best_dist_sq,
-                    best_angle_quality,
-                    best_range_quality,
-                    best_expected_damage_ratio,
+                            best_enemy_id = enemy_id
+                            best_dist_sq = distance_sq
+                            best_rank = rank
+                            best_scan_order = scan_order
+            selected_target_by_unit[attacker_id] = best_enemy_id
+        return selected_target_by_unit
+
+    def resolve_combat(self, state: BattleState, selected_target_by_unit: Mapping[str, str | None]) -> BattleState:
+        combat_surface = self._combat_surface
+        diag_surface = self._diag_surface
+        combat_cmp_eps = 1e-14
+        attack_range_sq = self.attack_range * self.attack_range
+        CH_ENABLED = bool(combat_surface["ch_enabled"])
+        h_raw = float(combat_surface["contact_hysteresis_h"])
+        h = min(0.2, max(0.0, h_raw))
+        r_exit = self.attack_range
+        r_enter = self.attack_range * (1.0 - h)
+        r_exit_sq = r_exit * r_exit
+        r_enter_sq = r_enter * r_enter
+        alpha_raw = float(combat_surface["fire_angle_quality_alpha"])
+        fire_angle_quality_alpha = min(1.0, max(0.0, alpha_raw))
+        optimal_range_ratio_raw = float(combat_surface["fire_optimal_range_ratio"])
+        fire_optimal_range_ratio = min(1.0, max(0.0, optimal_range_ratio_raw))
+        optimal_range = self.attack_range * fire_optimal_range_ratio
+        diag_enabled = bool(diag_surface["runtime_diag_enabled"])
+        diag4_enabled = diag_enabled and bool(diag_surface["diag4_enabled"])
+        forward_fire_cone_half_angle_deg = float(combat_surface["fire_cone_half_angle_deg"])
+        if not math.isfinite(forward_fire_cone_half_angle_deg):
+            raise ValueError(
+                "runtime fire-control fire_cone_half_angle_deg must be finite, "
+                f"got {forward_fire_cone_half_angle_deg}"
+            )
+        if not 0.0 <= forward_fire_cone_half_angle_deg <= 180.0:
+            raise ValueError(
+                "runtime fire-control fire_cone_half_angle_deg must be within [0.0, 180.0], "
+                f"got {forward_fire_cone_half_angle_deg}"
+            )
+        forward_fire_cone_cos_threshold = math.cos(
+            math.radians(float(forward_fire_cone_half_angle_deg))
+        )
+
+        def _compute_angle_quality(attacker, ux: float, uy: float) -> float:
+            if fire_angle_quality_alpha <= 0.0:
+                return 1.0
+            orient = attacker.orientation_vector
+            ox = orient.x
+            oy = orient.y
+            o_norm_sq = (ox * ox) + (oy * oy)
+            if o_norm_sq <= 0.0:
+                return 1.0
+            o_norm = math.sqrt(o_norm_sq)
+            nox = ox / o_norm
+            noy = oy / o_norm
+            cos_theta = max(-1.0, min(1.0, (nox * ux) + (noy * uy)))
+            return max(0.0, 1.0 + (fire_angle_quality_alpha * cos_theta))
+
+        def _compute_range_quality(distance: float) -> float:
+            if self.attack_range <= 0.0:
+                return 0.0
+            if optimal_range >= (self.attack_range - 1e-12):
+                return 1.0
+            if distance <= optimal_range:
+                return 1.0
+            denom = max(self.attack_range - optimal_range, 1e-12)
+            return max(0.0, min(1.0, (self.attack_range - distance) / denom))
+
+        snapshot_positions = {}
+        alive_units = {}
+        for unit_id, unit in state.units.items():
+            if unit.hit_points <= 0.0:
+                continue
+            alive_units[unit_id] = unit
+            snapshot_positions[unit_id] = (unit.position.x, unit.position.y)
+
+        incoming_damage = {unit_id: 0.0 for unit_id in alive_units}
+        total_hp_before = sum(unit.hit_points for unit in alive_units.values())
+        in_contact_count = 0
+        damage_events_count = 0
+        sample_contact_debug = None
+        engaged_updates = {}
+        in_contact_units = set()
+        orientation_override = {}
+
+        for attacker_id, attacker in alive_units.items():
+            if attacker_id not in selected_target_by_unit:
+                raise KeyError(
+                    f"runtime selected_target_by_unit missing key for attacker {attacker_id!r} "
+                    "in resolve_combat"
                 )
-            if best_enemy_id is not None:
-                attacker_fleet = alive_units[attacker_id].fleet_id
-                attackers_by_fleet[attacker_fleet] = attackers_by_fleet.get(attacker_fleet, 0) + 1
-
-        participation_by_fleet = {}
-        for fleet_id, alive_count in alive_by_fleet.items():
-            if alive_count > 0:
-                participation_by_fleet[fleet_id] = attackers_by_fleet.get(fleet_id, 0) / alive_count
-            else:
-                participation_by_fleet[fleet_id] = 0.0
-
-        for attacker_id, target_payload in assigned_target.items():
-            attacker = alive_units[attacker_id]
-            if target_payload is None:
+            target_id = selected_target_by_unit[attacker_id]
+            if target_id is None:
                 engaged_updates[attacker_id] = (False, None)
                 continue
-            (
-                target_id,
-                dx_contact,
-                dy_contact,
-                d_sq,
-                angle_quality_assigned,
-                range_quality_assigned,
-                expected_damage_ratio_assigned,
-            ) = target_payload
+            target = alive_units.get(target_id)
+            if target is None or target.fleet_id == attacker.fleet_id:
+                engaged_updates[attacker_id] = (False, None)
+                continue
+            attacker_pos_x, attacker_pos_y = snapshot_positions[attacker_id]
+            target_pos_x, target_pos_y = snapshot_positions[target_id]
+            dx_contact = target_pos_x - attacker_pos_x
+            dy_contact = target_pos_y - attacker_pos_y
+            d_sq = (dx_contact * dx_contact) + (dy_contact * dy_contact)
+            if d_sq > (attack_range_sq - combat_cmp_eps):
+                engaged_updates[attacker_id] = (False, None)
+                continue
+            distance = math.sqrt(d_sq)
+            ux = dx_contact / max(distance, 1e-12)
+            uy = dy_contact / max(distance, 1e-12)
+            orient = attacker.orientation_vector
+            ox = float(orient.x)
+            oy = float(orient.y)
+            orientation_norm_sq = (ox * ox) + (oy * oy)
+            if orientation_norm_sq > 1e-12:
+                orientation_norm = math.sqrt(orientation_norm_sq)
+                cos_theta = ((ox / orientation_norm) * ux) + ((oy / orientation_norm) * uy)
+                if cos_theta < forward_fire_cone_cos_threshold:
+                    engaged_updates[attacker_id] = (False, None)
+                    continue
+            angle_quality_assigned = _compute_angle_quality(attacker, ux, uy)
+            range_quality_assigned = _compute_range_quality(distance)
+            expected_damage_ratio_assigned = max(1e-6, angle_quality_assigned * range_quality_assigned)
             prev_engaged = attacker.engaged
             prev_target_id = attacker.engaged_target_id
 
@@ -3417,17 +4055,12 @@ class EngineTickSkeleton:
                 continue
 
             in_contact_count += 1
-            target = alive_units[target_id]
             if diag_enabled:
                 in_contact_units.add(attacker_id)
                 in_contact_units.add(target_id)
-            p_attacker = participation_by_fleet.get(attacker.fleet_id, 0.0)
-            p_target = participation_by_fleet.get(target.fleet_id, 0.0)
-            coupling = 1.0 + (geom_gamma * (p_attacker - p_target))
-
             q = max(0.0, float(angle_quality_assigned))
             range_quality = max(0.0, min(1.0, float(range_quality_assigned)))
-            event_damage = self.damage_per_tick * coupling * q * range_quality
+            event_damage = self.damage_per_tick * q * range_quality
             incoming_damage[target_id] += event_damage
             damage_events_count += 1
             if sample_contact_debug is None:

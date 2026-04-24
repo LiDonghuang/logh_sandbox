@@ -21,13 +21,13 @@ from viz3d_panda.replay_source import ReplayBundle, ViewerFrame
 # =========================================================
 
 FIRE_LINK_MODES = {"disabled", "enabled"}
-FIRE_LINK_ALPHA = 0.5
-FIRE_LINK_THICKNESS = 0.3
+FIRE_LINK_ALPHA = 0.6
+FIRE_LINK_THICKNESS = 0.6
 FIRE_LINK_CENTER_OFFSET = 0.5
-FIRE_LINK_PULSE_SPACING = 0.9
-FIRE_LINK_PULSE_LENGTH = 0.1
-FIRE_LINK_BASE_SPEED_PER_SECOND = 5.0
-FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.2
+FIRE_LINK_PULSE_SPACING = 0.95
+FIRE_LINK_PULSE_LENGTH = 0.05
+FIRE_LINK_BASE_SPEED_PER_SECOND = 2.0
+FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS = 0.5
 FIRE_LINK_BEAM_SPREAD = 0.10
 FIRE_LINK_BEAM_VERTICAL_SPREAD = 0.10
 FIRE_LINK_BEAM_COUNT_BY_BUCKET = {
@@ -46,9 +46,9 @@ FIRE_LINK_BEAM_LAYOUTS = {
 }
 
 # Unit dual-layer appearance, ordered level 1 -> level 5.
-TOKEN_ALPHA_BY_LEVEL = (0.01, 0.2, 0.4, 0.6, 0.8)
+TOKEN_ALPHA_BY_LEVEL = (0.01, 0.1, 0.4, 0.6, 0.8)
 CLUSTER_ALPHA_BY_LEVEL = (0.9, 0.01, 0.0, 0.0, 0.0)
-DUAL_LAYER_DISTANCE_BY_LEVEL = (5.0, 50.0, 100.0, 150.0, 200.0)
+DUAL_LAYER_DISTANCE_BY_LEVEL = (10.0, 50.0, 100.0, 150.0, 200.0)
 
 # Unit bucket sizing and inner-cluster composition.
 HP_BUCKET_SCALES = {
@@ -72,9 +72,9 @@ CLUSTER_SHIP_MODEL_UNIT = 0.025
 # length / width / height, with the ship's fore-aft axis running along +Y.
 CLUSTER_SHIP_FRONT_BOX_DIMS = (4.0, 0.6, 1.0)
 CLUSTER_SHIP_REAR_BOX_DIMS = (2.0, 1.5, 1.5)
-CLUSTER_SWAY_AMPLITUDE_X = 0.08
-CLUSTER_SWAY_AMPLITUDE_Y = 0.06
-CLUSTER_SWAY_AMPLITUDE_Z = 0.1
+CLUSTER_SWAY_AMPLITUDE_X = 0.04
+CLUSTER_SWAY_AMPLITUDE_Y = 0.1
+CLUSTER_SWAY_AMPLITUDE_Z = 0.06
 CLUSTER_SWAY_FREQUENCY = 0.05
 CLUSTER_SWAY_CLOCK_SCALE = 1.0
 CLUSTER_SWAY_MAX_ENABLED_GEAR_INDEX = 2
@@ -409,6 +409,8 @@ class UnitRenderer:
         self._templates: dict[str, NodePath] = {}
         self._unit_nodes: dict[str, NodePath] = {}
         self._token_nodes: dict[str, NodePath] = {}
+        self._token_scale_state: dict[str, float] = {}
+        self._token_alpha_state: dict[str, float] = {}
         self._cluster_nodes: dict[str, NodePath] = {}
         self._cluster_ship_nodes: dict[str, list[NodePath]] = {}
         self._cluster_ship_sway_profiles = _build_cluster_ship_sway_profiles()
@@ -428,7 +430,7 @@ class UnitRenderer:
         self._next_fire_link_frame: ViewerFrame | None = None
         self._fire_link_position_alpha = 0.0
         self._playback_level_index = 0
-        self._playback_fps = 2.0
+        self._playback_tps = 2.0
         self._playback_active = True
         self._cluster_sway_enabled = False
         self._last_fire_link_signature: tuple[int, int, float, int, float] | None = None
@@ -484,10 +486,10 @@ class UnitRenderer:
             self._playback_level_index = normalized_index
             self._last_fire_link_signature = None
 
-    def set_playback_fps(self, playback_fps: float) -> None:
-        normalized_fps = max(1e-6, float(playback_fps))
-        if abs(normalized_fps - self._playback_fps) > 1e-9:
-            self._playback_fps = normalized_fps
+    def set_playback_tps(self, playback_tps: float) -> None:
+        normalized_tps = max(1e-6, float(playback_tps))
+        if abs(normalized_tps - self._playback_tps) > 1e-9:
+            self._playback_tps = normalized_tps
             self._last_fire_link_signature = None
 
     def set_playback_active(self, playback_active: bool) -> None:
@@ -536,7 +538,7 @@ class UnitRenderer:
     def _current_cluster_sway_seconds(self) -> float:
         if self._current_frame is None:
             return 0.0
-        base_seconds = (float(self._current_frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_fps))
+        base_seconds = (float(self._current_frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_tps))
         return float(base_seconds) * CLUSTER_SWAY_CLOCK_SCALE
 
     def _cluster_sway_active(self) -> bool:
@@ -679,7 +681,10 @@ class UnitRenderer:
             token_alpha_scale = 1.0
             if float(TOKEN_ALPHA_BY_LEVEL[-1]) > 1e-9:
                 token_alpha_scale = outer_alpha / float(TOKEN_ALPHA_BY_LEVEL[-1])
-            token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
+            last_token_alpha = self._token_alpha_state.get(node_key)
+            if last_token_alpha is None or abs(float(last_token_alpha) - float(token_alpha_scale)) > 1e-6:
+                token_np.setColorScale(1.0, 1.0, 1.0, token_alpha_scale)
+                self._token_alpha_state[node_key] = float(token_alpha_scale)
             if cluster_alpha > 1e-4:
                 if not self._cluster_visibility_state.get(node_key, False):
                     cluster_np.show()
@@ -848,7 +853,7 @@ class UnitRenderer:
                 "baseline_total_hp": float(baseline_total_hp),
             }
             fleet_rgba = _hex_to_rgba(self._replay.fleet_colors[fleet_id])
-            playback_seconds = (float(frame.tick) + float(tick_offset)) / max(1e-6, float(self._playback_fps))
+            playback_seconds = (float(frame.tick) + float(tick_offset)) / max(1e-6, float(self._playback_tps))
             pulse_phase = (2.0 * math.pi * playback_seconds) / FLEET_HALO_PULSE_PERIOD_SECONDS
             pulse_ratio = 0.5 + (0.5 * math.sin(pulse_phase))
             pulse_scale = FLEET_HALO_PULSE_MIN + ((FLEET_HALO_PULSE_MAX - FLEET_HALO_PULSE_MIN) * pulse_ratio)
@@ -893,6 +898,8 @@ class UnitRenderer:
                 if token_np.isEmpty() or cluster_np.isEmpty():
                     raise RuntimeError(f"dual-layer unit template is missing required children for {node_key!r}")
                 self._token_nodes[node_key] = token_np
+                self._token_scale_state.pop(node_key, None)
+                self._token_alpha_state.pop(node_key, None)
                 self._cluster_nodes[node_key] = cluster_np
                 ship_nodes: list[NodePath] = []
                 for ship_index in range(len(CLUSTER_LAYOUT_OFFSETS)):
@@ -907,7 +914,10 @@ class UnitRenderer:
                 self._cluster_alpha_state.pop(node_key, None)
             bucket = _hp_bucket(unit.hit_points, unit.max_hit_points)
             scale = HP_BUCKET_SCALES[bucket]
-            self._token_nodes[node_key].setScale(scale)
+            last_token_scale = self._token_scale_state.get(node_key)
+            if last_token_scale is None or abs(float(last_token_scale) - float(scale)) > 1e-6:
+                self._token_nodes[node_key].setScale(scale)
+                self._token_scale_state[node_key] = float(scale)
             visible_indices = CLUSTER_VISIBLE_INDICES_BY_BUCKET[bucket]
             visibility_mask_tuple = tuple(
                 ship_index in visible_indices
@@ -930,6 +940,8 @@ class UnitRenderer:
             self._unit_nodes[stale_key].removeNode()
             del self._unit_nodes[stale_key]
             self._token_nodes.pop(stale_key, None)
+            self._token_scale_state.pop(stale_key, None)
+            self._token_alpha_state.pop(stale_key, None)
             self._cluster_nodes.pop(stale_key, None)
             self._cluster_ship_nodes.pop(stale_key, None)
             self._cluster_ship_sway_restored.pop(stale_key, None)
@@ -990,12 +1002,8 @@ class UnitRenderer:
             }
         pulse_spacing = float(FIRE_LINK_PULSE_SPACING)
         pulse_length = float(FIRE_LINK_PULSE_LENGTH)
-        playback_seconds = (float(frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_fps))
-        visual_speed_multiplier = math.sqrt(float(self._playback_level_index) + 1.0)
-        pulse_shift = (
-            (playback_seconds * FIRE_LINK_BASE_SPEED_PER_SECOND * visual_speed_multiplier)
-            % pulse_spacing
-        )
+        playback_seconds = (float(frame.tick) + float(self._fire_link_pulse_phase)) / max(1e-6, float(self._playback_tps))
+        pulse_shift = (playback_seconds * FIRE_LINK_BASE_SPEED_PER_SECOND) % pulse_spacing
         alternation_slot = int(math.floor(playback_seconds / FIRE_LINK_BEAM_ALTERNATION_PERIOD_SECONDS))
         for attacker_id, defender_id in frame.targets.items():
             attacker = point_map.get(str(attacker_id))

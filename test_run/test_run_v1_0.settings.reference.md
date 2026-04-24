@@ -31,20 +31,27 @@
     - `runtime.physical.movement_low_level.max_turn_deg_per_tick`
     - `runtime.physical.movement_low_level.turn_speed_min_scale`
   - The current targeting candidate consumes:
-    - `runtime.physical.fire_control.fire_quality_alpha`
+    - `runtime.physical.fire_control.fire_angle_quality_alpha`
     - `runtime.physical.fire_control.fire_optimal_range_ratio`
     - `runtime.physical.fire_control.fire_cone_half_angle_deg`
-  - `attack_range` remains max range; `fire_cone_half_angle_deg` defines the forward candidate gate, `fire_optimal_range_ratio` defines the full-quality inner band, and `fire_quality_alpha` defines the directional fire-quality modifier after a target has been selected.
+  - `attack_range` remains max range; `fire_cone_half_angle_deg` defines the forward candidate gate, `fire_optimal_range_ratio` defines the full-quality inner band, and `fire_angle_quality_alpha` defines the directional angle-quality modifier after a target has been selected.
   - Current read:
     - candidate enemies outside the forward cone are excluded before selection
     - selected target is the nearest surviving enemy inside the cone
-    - `angle_quality = max(0, 1 + fire_quality_alpha * cos(theta))`
+    - `angle_quality = max(0, 1 + fire_angle_quality_alpha * cos(theta))`
     - `range_quality = 1.0` inside the inner optimal band, then linearly decays to `0.0` at `attack_range`
+  - The current `local_desire` experimental family is no longer owned by the
+    maintained runtime layer; it is now rehomed into the test-only layer and
+    remains frozen by default.
 
 - `test_run_v1_0.testonly.settings.json`
   - Test-only mechanism switches and prototype parameters.
   - `fixture.neutral.stop_radius` is the neutral-only objective termination radius used by the current neutral fixture line; it is not the battle hold mechanism.
   - Current usage:
+    - `runtime.physical.local_desire.experimental_signal_read_realignment_enabled`
+    - `runtime.physical.local_desire.turn_need_onset`
+    - `runtime.physical.local_desire.heading_bias_cap`
+    - `runtime.physical.local_desire.speed_brake_strength`
     - `runtime.physical.contact.hostile_contact_impedance`
     - `runtime.movement.v4a.restore.strength`
     - `runtime.movement.v4a.reference.expected_reference_spacing`
@@ -66,6 +73,15 @@
     - `runtime.movement.v4a.engagement.attack_speed_backward_scale`
   - The maintained hostile-contact selector is now:
     - `off | hybrid_v2`
+  - The current experimental `local_desire` family is test-only owned as one
+    explicit surface:
+    - maintained safe default keeps
+      `runtime.physical.local_desire.experimental_signal_read_realignment_enabled = false`
+    - experimental behavior is available only by explicit test-only enablement
+    - current honest read is:
+      - an experimental Unit-local maneuver / `back_off_keep_front`
+        behavior-line family
+      - not literal backward-with-front-preserved locomotion capability
   - `intent_unified_spacing_v1` has been retired from the maintained mainline.
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing
@@ -92,6 +108,14 @@
     - `runtime.movement.v4a.battle.near_contact_speed_relaxation` defines the restored per-unit max-speed smoothing seam used after near-contact internal stabilization adjusts unit-local speed targets
     - `runtime.movement.v4a.engagement.engaged_speed_scale` defines the overall movement-speed reduction for engaged units
     - `runtime.movement.v4a.engagement.attack_speed_lateral_scale` and `runtime.movement.v4a.engagement.attack_speed_backward_scale` define the bounded attack-direction-aware movement allowance for engaged units
+    - owner-language read for the `runtime.movement.v4a.engagement.*` family:
+      - these keys still live under a historical `v4a.engagement` surface name
+      - but their practical job is now transitional Unit-side engaged
+        maneuver-speed shaping
+      - they should not be read as fleet/reference-side doctrine owners
+      - `attack_speed_backward_scale` is a bounded speed-allowance surface when
+        attack direction lies behind current facing; it is not a true
+        backward-motion capability surface
     - active default `test_run` settings no longer carry the legacy `runtime.movement.v3a.experiment`, `centroid_probe_scale`, or `odw_posture_bias.*` surface
     - the maintained `test_run` mainline no longer supports `v3a` movement execution, and the public `baseline` alias has been retired; the maintained selector is now `v4a` only
     - `run_control.symmetric_movement_sync_enabled` is now the maintained owner for the harness-side symmetric movement merge switch

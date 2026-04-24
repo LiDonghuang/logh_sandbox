@@ -86,8 +86,12 @@ Run:
 - Density stress mode:
   - `runtime.physical.movement_low_level.min_unit_spacing = 1.0`
 - Fire quality anisotropy defaults (documented freeze):
-  - `runtime.physical.fire_control.fire_quality_alpha = 0.33`
-  - `runtime.physical.fire_control.alpha_safe_max = 1.0` (documentation-level current runtime clamp)
+  - `runtime.physical.fire_control.fire_angle_quality_alpha = 0.33`
+- Current exposed local desire knobs:
+  - `runtime.physical.local_desire.experimental_signal_read_realignment_enabled = false`
+  - `runtime.physical.local_desire.turn_need_onset = 0.45`
+  - `runtime.physical.local_desire.heading_bias_cap = 0.06`
+  - `runtime.physical.local_desire.speed_brake_strength = 0.03`
 - Runtime feature toggles (canonical):
   - `runtime.physical.contact.contact_hysteresis_h <= 0` => CH disabled
 - Current maintained runtime cohesion line uses a fixed `v3_test` geometry on the active mainline.

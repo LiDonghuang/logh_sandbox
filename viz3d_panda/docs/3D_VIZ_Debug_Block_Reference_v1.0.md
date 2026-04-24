@@ -53,8 +53,8 @@ The two blocks therefore share a bottom edge margin rather than a top edge margi
 
 ### Line 2
 
-- content: frame / fps / gear
-- example: `frame=120/600  fps=6.0  gear=3/5`
+- content: frame / tps / gear
+- example: `frame=120/600  tps=2.0  gear=3/5`
 - shown in HUD: yes
 
 ### Line 3
@@ -125,37 +125,113 @@ Current field:
     - near zero = front strips are approaching effective battle entry distance
     - negative = front-strip overlap / pass-through proxy
 
+- `front_gap`
+  - source field: `front_gap`
+  - meaning: centroid distance minus both fleets' full forward half-extents along the centroid axis
+  - current read:
+    - positive = fronts are still separated under the broader body read
+    - near zero = broad front contact is imminent
+    - negative = forward-body overlap / crossing proxy
+
+- `rel_gap`
+  - source field: `relation_gap`
+  - meaning: maintained battle relation-gap scalar currently used by the battle bundle
+  - current read:
+    - higher positive = more standoff room remains
+    - near zero = standoff room is being consumed
+    - negative = relation state is already compressed / violated
+
 ### `focus <fleet_id>+`
 
-- shown in HUD: yes when current battle engagement indicators are finite
+- shown in HUD: yes when current maneuver-envelope indicators are finite
 - source: `runtime_debug.focus_indicators[<fleet_id>]`
 
 Current fields:
 
-- `eng_act`
-  - source field: `engagement_geometry_active`
-  - meaning: how active the battle engagement-geometry owner currently is
+- `raw_gap`
+  - source field: `relation_gap_raw`
+  - meaning: unsmoothed maintained battle relation-gap scalar
+  - plain-language read:
+    - think of this as "the fleet still has how much immediate room before the fronts are too compressed"
   - current read:
-    - low = battle is still mostly far-field owned
-    - high = Layer B engagement geometry is now materially active
+    - higher positive = more immediate standoff room remains before smoothing
+    - near zero = early no-crossing release owner is nearing its handoff zone
+    - negative = early relation state is already compressed before smoothing
+  - runtime owner/write:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._prepare_v4a_bridge_state(...)`
+    - written into the maintained battle bundle as `battle_relation_gap_raw`
+  - runtime use:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - read as the early no-crossing / early restraint owner before the local controller decides how much heading freedom to allow
+  - observer/export path:
+    - `test_run/test_run_execution.py`
+    - `_build_focus_indicator_payload(...)`
+    - exported to `runtime_debug.focus_indicators[*].relation_gap_raw`
 
-- `front_rw`
-  - source field: `front_reorientation_weight`
-  - meaning: bounded fleet-level weight shifting front responsibility toward the effective fire axis
+- `embg`
+  - source field: `early_embargo_permission`
+  - meaning: current early-release permission for unit-local heading freedom under the precontact no-crossing branch
+  - plain-language read:
+    - think of this as "how much permission the Unit currently has to peel out early"
   - current read:
-    - low = front still mostly owned by pre-contact geometry
-    - higher = front is being more strongly reoriented toward the current fire plane
+    - low = early local peel-out should stay constrained
+    - high = early no-crossing embargo is mostly released
+  - runtime owner/write:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - derived from `battle_relation_gap_raw` inside the same-tick local maneuver controller and written to local-desire diagnostics as `early_embargo_permission`
+  - runtime use:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - directly multiplies the heading-side local bias weight; when it is low, the Unit may see an opportunity but is still not allowed much local heading freedom
+  - observer/export path:
+    - `runtime/engine_skeleton.py`
+    - `_MovementDiagSupport.flush_pending(...)`
+    - emitted through pending `local_desire` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
 
-- `fire_da`
-  - source field: `front_axis_delta_deg`
-  - meaning: angle difference in degrees between current formation front and current effective fire axis
+- `reopen`
+  - source field: `late_reopen_persistence`
+  - meaning: current late reopen-space persistence read for the experimental behavior-line branch
+  - plain-language read:
+    - think of this as "the worst compression is past, but the line is still not reopened enough, so keep a mild reopen-space response alive"
   - current read:
-    - lower = formation front is closer to the active fire plane
-    - higher = formation front is still lagging or diverging
+    - low = no late reopen-space persistence is active
+    - high = the late sticky-contact / not-yet-reopened band is active
+  - runtime owner/write:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - derived from `battle_relation_gap_current` inside the same-tick local maneuver controller and written to local-desire diagnostics as `late_reopen_persistence`
+  - runtime use:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - used only inside the experimental behavior-line branch to keep bounded speed restraint / heading suppression alive a little longer in the late reopen-space band
+  - observer/export path:
+    - `runtime/engine_skeleton.py`
+    - `_MovementDiagSupport.flush_pending(...)`
+    - emitted through pending `local_desire` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
 
-The underlying `effective_fire_axis_xy` vector is carried in the harness bundle,
-but it is not currently printed directly in the HUD.
-For Human review, the angle delta is easier to read than a raw vector pair.
+- `brk`
+  - source field: `brake_drive`
+  - meaning: bounded current brake-drive scalar from the maintained battle bundle
+  - plain-language read:
+    - think of this as "how much the fleet-level battle bundle is already asking movement to stop pushing in so hard"
+  - current read:
+    - low = little fleet-side brake pressure
+    - high = stronger restorative / anti-overrun brake pressure is active
+  - runtime owner/write:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._prepare_v4a_bridge_state(...)`
+    - written into the maintained battle bundle as `battle_brake_drive_current`
+  - runtime use:
+    - `runtime/engine_skeleton.py`
+    - `EngineTickSkeleton._compute_unit_desire_by_unit(...)`
+    - reused as later restorative brake context for speed restraint and restore-line weighting; it is not the early no-crossing owner
+  - observer/export path:
+    - `test_run/test_run_execution.py`
+    - `_build_focus_indicator_payload(...)`
+    - exported to `runtime_debug.focus_indicators[*].brake_drive`
 
 ### Payload-Only Diagnostics
 
@@ -170,8 +246,11 @@ debugging, but they are not currently shown in the HUD:
 - `lateral_current`
 - `actual_lateral`
 - `relation_gap`
+- `engagement_geometry_active`
 - `close_drive`
 - `brake_drive`
+- `front_reorientation_weight`
+- `front_axis_delta_deg`
 - `centroid_distance`
 - `front_gap`
 - `rms_gap`
@@ -192,7 +271,7 @@ for battle-first review.
 | Field / line | Shown in HUD | Notes |
 | --- | --- | --- |
 | alive counts + playback state | yes | stable line |
-| frame / fps / gear | yes | stable line |
+| frame / tps / gear | yes | stable line |
 | fleet centroids | yes | stable line |
 | kinetics line (`v` + `h`) | yes | stable line |
 | fire-efficiency line (`e`) | yes | stable line |
@@ -200,9 +279,12 @@ for battle-first review.
 | `fire_eff` | no | consumed by the stable fire-efficiency line instead |
 | `hold_weight` | no | consumed by the stable kinetics line instead |
 | `front_strip_gap` | yes | current near-contact relation focus line |
-| `engagement_geometry_active` | yes | current battle-geometry focus line |
-| `front_reorientation_weight` | yes | current battle-geometry focus line |
-| `front_axis_delta_deg` | yes | current battle-geometry focus line |
+| `front_gap` | yes | current near-contact relation focus line |
+| `relation_gap` | yes | current near-contact relation focus line |
+| `relation_gap_raw` | yes | current maneuver-envelope focus line |
+| `early_embargo_permission` | yes | current maneuver-envelope focus line |
+| `late_reopen_persistence` | yes | current maneuver-envelope focus line |
+| `brake_drive` | yes | current maneuver-envelope focus line |
 | `td_norm` | no | payload-only |
 | `advance_share` | no | payload-only |
 | `shape_err` | no | payload-only |
@@ -210,11 +292,11 @@ for battle-first review.
 | `actual_forward` | no | payload-only |
 | `lateral_current` | no | payload-only |
 | `actual_lateral` | no | payload-only |
-| `relation_gap` | no | payload-only |
+| `engagement_geometry_active` | no | payload-only |
 | `close_drive` | no | payload-only |
-| `brake_drive` | no | payload-only |
+| `front_reorientation_weight` | no | payload-only |
+| `front_axis_delta_deg` | no | payload-only |
 | `centroid_distance` | no | payload-only |
-| `front_gap` | no | payload-only |
 | `rms_gap` | no | payload-only |
 | `center_forward_offset` | no | payload-only |
 | `phase_forward_mean` | no | payload-only |

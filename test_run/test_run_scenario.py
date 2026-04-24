@@ -419,12 +419,38 @@ def _load_common_scenario_context(
     }
 
 
+def _require_present(raw_value, name: str):
+    if raw_value is settings_api.MISSING:
+        raise ValueError(f"{name} must be provided in maintained active settings")
+    return raw_value
+
+
 def _build_unit_cfg(get_unit, get_runtime) -> dict:
     return {
-        "speed": float(get_unit("unit_speed", 1.0)),
-        "max_hit_points": float(get_unit("unit_max_hit_points", 100.0)),
-        "attack_range": float(get_unit("attack_range", get_runtime("attack_range", 3.0))),
-        "damage_per_tick": float(get_unit("damage_per_tick", get_runtime("damage_per_tick", 1.0))),
+        "speed": float(
+            _require_present(
+                get_unit("unit_speed", settings_api.MISSING),
+                "unit.unit_speed",
+            )
+        ),
+        "max_hit_points": float(
+            _require_present(
+                get_unit("unit_max_hit_points", settings_api.MISSING),
+                "unit.unit_max_hit_points",
+            )
+        ),
+        "attack_range": float(
+            _require_present(
+                get_unit("attack_range", settings_api.MISSING),
+                "unit.attack_range",
+            )
+        ),
+        "damage_per_tick": float(
+            _require_present(
+                get_unit("damage_per_tick", settings_api.MISSING),
+                "unit.damage_per_tick",
+            )
+        ),
     }
 
 
@@ -475,6 +501,7 @@ def _prepare_shared_simulation_context(
         get_runtime_metatype=get_runtime_metatype,
     )
     movement_cfg = _build_movement_cfg(get_runtime, get_run)
+    movement_cfg.update(_build_local_desire_cfg(get_runtime))
     v4a_reference_cfg = _resolve_v4a_reference_cfg(get_runtime)
     movement_cfg["expected_reference_spacing"] = float(v4a_reference_cfg["expected_reference_spacing"])
     movement_cfg["reference_layout_mode"] = str(v4a_reference_cfg["reference_layout_mode"])
@@ -496,7 +523,12 @@ def _prepare_shared_simulation_context(
 
 
 def _build_movement_cfg(get_runtime, get_run) -> dict:
-    v4a_restore_strength = float(get_runtime("v4a_restore_strength", 0.25))
+    v4a_restore_strength = float(
+        _require_present(
+            get_runtime("v4a_restore_strength", settings_api.MISSING),
+            "runtime.movement.v4a.restore.strength",
+        )
+    )
     if not 0.0 <= v4a_restore_strength <= 1.0:
         raise ValueError(
             "runtime.movement.v4a.restore.strength must be within [0.0, 1.0], "
@@ -504,11 +536,17 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
         )
     v4a_reference_surface_mode = _require_choice(
         "runtime.movement.v4a.reference.surface_mode",
-        get_runtime("v4a_reference_surface_mode", execution.V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS),
+        _require_present(
+            get_runtime("v4a_reference_surface_mode", settings_api.MISSING),
+            "runtime.movement.v4a.reference.surface_mode",
+        ),
         execution.V4A_REFERENCE_SURFACE_MODE_LABELS,
     )
     v4a_soft_morphology_relaxation = float(
-        get_runtime("v4a_soft_morphology_relaxation", execution.V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT)
+        _require_present(
+            get_runtime("v4a_soft_morphology_relaxation", settings_api.MISSING),
+            "runtime.movement.v4a.reference.soft_morphology_relaxation",
+        )
     )
     if not 0.0 < v4a_soft_morphology_relaxation <= 1.0:
         raise ValueError(
@@ -516,7 +554,10 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_soft_morphology_relaxation}"
         )
     v4a_shape_vs_advance_strength = float(
-        get_runtime("v4a_shape_vs_advance_strength", execution.V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT)
+        _require_present(
+            get_runtime("v4a_shape_vs_advance_strength", settings_api.MISSING),
+            "runtime.movement.v4a.transition.shape_vs_advance_strength",
+        )
     )
     if not 0.0 <= v4a_shape_vs_advance_strength <= 1.0:
         raise ValueError(
@@ -524,7 +565,10 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_shape_vs_advance_strength}"
         )
     v4a_heading_relaxation = float(
-        get_runtime("v4a_heading_relaxation", execution.V4A_HEADING_RELAXATION_DEFAULT)
+        _require_present(
+            get_runtime("v4a_heading_relaxation", settings_api.MISSING),
+            "runtime.movement.v4a.transition.heading_relaxation",
+        )
     )
     if not 0.0 < v4a_heading_relaxation <= 1.0:
         raise ValueError(
@@ -532,9 +576,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_heading_relaxation}"
         )
     v4a_battle_standoff_hold_band_ratio = float(
-        get_runtime(
-            "v4a_battle_standoff_hold_band_ratio",
-            execution.V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_standoff_hold_band_ratio",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.standoff_hold_band_ratio",
         )
     )
     if not 0.0 <= v4a_battle_standoff_hold_band_ratio <= 1.0:
@@ -543,9 +590,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_standoff_hold_band_ratio}"
         )
     v4a_battle_target_front_strip_gap_bias = float(
-        get_runtime(
-            "v4a_battle_target_front_strip_gap_bias",
-            execution.V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_target_front_strip_gap_bias",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.target_front_strip_gap_bias",
         )
     )
     if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
@@ -554,9 +604,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_target_front_strip_gap_bias}"
         )
     v4a_battle_hold_weight_strength = float(
-        get_runtime(
-            "v4a_battle_hold_weight_strength",
-            execution.V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_hold_weight_strength",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.hold_weight_strength",
         )
     )
     if not 0.0 <= v4a_battle_hold_weight_strength <= 1.0:
@@ -565,9 +618,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_hold_weight_strength}"
         )
     v4a_battle_relation_lead_ticks = float(
-        get_runtime(
-            "v4a_battle_relation_lead_ticks",
-            execution.V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_relation_lead_ticks",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.relation_lead_ticks",
         )
     )
     if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
@@ -576,9 +632,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_relation_lead_ticks}"
         )
     v4a_battle_hold_relaxation = float(
-        get_runtime(
-            "v4a_battle_hold_relaxation",
-            execution.V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_hold_relaxation",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.hold_relaxation",
         )
     )
     if not 0.0 < v4a_battle_hold_relaxation <= 1.0:
@@ -587,9 +646,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_hold_relaxation}"
         )
     v4a_battle_approach_drive_relaxation = float(
-        get_runtime(
-            "v4a_battle_approach_drive_relaxation",
-            execution.V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_approach_drive_relaxation",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.approach_drive_relaxation",
         )
     )
     if not 0.0 < v4a_battle_approach_drive_relaxation <= 1.0:
@@ -598,9 +660,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_approach_drive_relaxation}"
         )
     v4a_battle_near_contact_internal_stability_blend = float(
-        get_runtime(
-            "v4a_battle_near_contact_internal_stability_blend",
-            execution.V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_near_contact_internal_stability_blend",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.near_contact_internal_stability_blend",
         )
     )
     if not 0.0 <= v4a_battle_near_contact_internal_stability_blend <= 1.0:
@@ -609,9 +674,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_near_contact_internal_stability_blend}"
         )
     v4a_battle_near_contact_speed_relaxation = float(
-        get_runtime(
-            "v4a_battle_near_contact_speed_relaxation",
-            execution.V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
+        _require_present(
+            get_runtime(
+                "v4a_battle_near_contact_speed_relaxation",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.battle.near_contact_speed_relaxation",
         )
     )
     if not 0.0 < v4a_battle_near_contact_speed_relaxation <= 1.0:
@@ -620,7 +688,10 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {v4a_battle_near_contact_speed_relaxation}"
         )
     engaged_speed_scale = float(
-        get_runtime("engaged_speed_scale", execution.V4A_ENGAGED_SPEED_SCALE_DEFAULT)
+        _require_present(
+            get_runtime("engaged_speed_scale", settings_api.MISSING),
+            "runtime.movement.v4a.engagement.engaged_speed_scale",
+        )
     )
     if not 0.0 < engaged_speed_scale <= 1.0:
         raise ValueError(
@@ -628,9 +699,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {engaged_speed_scale}"
         )
     attack_speed_lateral_scale = float(
-        get_runtime(
-            "attack_speed_lateral_scale",
-            execution.V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
+        _require_present(
+            get_runtime(
+                "attack_speed_lateral_scale",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.engagement.attack_speed_lateral_scale",
         )
     )
     if not 0.0 < attack_speed_lateral_scale <= 1.0:
@@ -639,9 +713,12 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             f"got {attack_speed_lateral_scale}"
         )
     attack_speed_backward_scale = float(
-        get_runtime(
-            "attack_speed_backward_scale",
-            execution.V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
+        _require_present(
+            get_runtime(
+                "attack_speed_backward_scale",
+                settings_api.MISSING,
+            ),
+            "runtime.movement.v4a.engagement.attack_speed_backward_scale",
         )
     )
     if not 0.0 <= attack_speed_backward_scale <= attack_speed_lateral_scale:
@@ -694,10 +771,20 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             "runtime.physical.movement_low_level.turn_speed_min_scale must be finite and within [0.0, 1.0], "
             f"got {turn_speed_min_scale}"
         )
-    movement_model = resolve_movement_model(get_runtime("movement_model", "v4a"))
+    movement_model = resolve_movement_model(
+        _require_present(
+            get_runtime("movement_model", settings_api.MISSING),
+            "runtime.selectors.movement_model",
+        )
+    )
     movement_cfg = {
         "model": movement_model,
-        "symmetric_movement_sync_enabled": bool(get_run("symmetric_movement_sync_enabled", True)),
+        "symmetric_movement_sync_enabled": bool(
+            _require_present(
+                get_run("symmetric_movement_sync_enabled", settings_api.MISSING),
+                "run_control.symmetric_movement_sync_enabled",
+            )
+        ),
         "max_accel_per_tick": max_accel_per_tick,
         "max_decel_per_tick": max_decel_per_tick,
         "max_turn_deg_per_tick": max_turn_deg_per_tick,
@@ -724,14 +811,93 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
 
 def _build_boundary_cfg(get_runtime) -> dict:
     return {
-        "enabled": bool(get_runtime("boundary_enabled", False)),
-        "hard_enabled": bool(get_runtime("boundary_hard_enabled", True)),
-        "soft_strength": float(get_runtime("boundary_soft_strength", 1.0)),
+        "enabled": bool(
+            _require_present(
+                get_runtime("boundary_enabled", settings_api.MISSING),
+                "runtime.physical.boundary.enabled",
+            )
+        ),
+        "hard_enabled": bool(
+            _require_present(
+                get_runtime("boundary_hard_enabled", settings_api.MISSING),
+                "runtime.physical.boundary.hard_enabled",
+            )
+        ),
+        "soft_strength": float(
+            _require_present(
+                get_runtime("boundary_soft_strength", settings_api.MISSING),
+                "runtime.physical.boundary.soft_strength",
+            )
+        ),
+    }
+
+
+def _build_local_desire_cfg(get_runtime) -> dict:
+    # The current local_desire family remains runtime-local in mechanism shape,
+    # but its experimental surface is intentionally test-only owned while
+    # concept review remains open.
+    experimental_signal_read_realignment_enabled = _require_present(
+        get_runtime(
+            "local_desire_experimental_signal_read_realignment_enabled",
+            settings_api.MISSING,
+        ),
+        "testonly runtime.physical.local_desire.experimental_signal_read_realignment_enabled",
+    )
+    if not isinstance(experimental_signal_read_realignment_enabled, bool):
+        raise ValueError(
+            "testonly runtime.physical.local_desire.experimental_signal_read_realignment_enabled "
+            "must be a boolean"
+        )
+    turn_need_onset = float(
+        _require_present(
+            get_runtime("local_desire_turn_need_onset", settings_api.MISSING),
+            "testonly runtime.physical.local_desire.turn_need_onset",
+        )
+    )
+    if not math.isfinite(turn_need_onset) or not 0.0 <= turn_need_onset <= 0.95:
+        raise ValueError(
+            "testonly runtime.physical.local_desire.turn_need_onset must be finite and within [0.0, 0.95], "
+            f"got {turn_need_onset}"
+        )
+    heading_bias_cap = float(
+        _require_present(
+            get_runtime("local_desire_heading_bias_cap", settings_api.MISSING),
+            "testonly runtime.physical.local_desire.heading_bias_cap",
+        )
+    )
+    if not math.isfinite(heading_bias_cap) or not 0.0 <= heading_bias_cap <= 0.15:
+        raise ValueError(
+            "testonly runtime.physical.local_desire.heading_bias_cap must be finite and within [0.0, 0.15], "
+            f"got {heading_bias_cap}"
+        )
+    speed_brake_strength = float(
+        _require_present(
+            get_runtime("local_desire_speed_brake_strength", settings_api.MISSING),
+            "testonly runtime.physical.local_desire.speed_brake_strength",
+        )
+    )
+    if not math.isfinite(speed_brake_strength) or not 0.0 <= speed_brake_strength <= 0.10:
+        raise ValueError(
+            "testonly runtime.physical.local_desire.speed_brake_strength must be finite and within [0.0, 0.10], "
+            f"got {speed_brake_strength}"
+        )
+    return {
+        "local_desire_experimental_signal_read_realignment_enabled": (
+            experimental_signal_read_realignment_enabled
+        ),
+        "local_desire_turn_need_onset": turn_need_onset,
+        "local_desire_heading_bias_cap": heading_bias_cap,
+        "local_desire_speed_brake_strength": speed_brake_strength,
     }
 
 
 def _resolve_v4a_reference_cfg(get_runtime) -> dict:
-    physical_min_spacing = float(get_runtime("min_unit_spacing", 1.0))
+    physical_min_spacing = float(
+        _require_present(
+            get_runtime("min_unit_spacing", settings_api.MISSING),
+            "runtime.physical.movement_low_level.min_unit_spacing",
+        )
+    )
     if physical_min_spacing <= 0.0:
         raise ValueError(
             "runtime.physical.movement_low_level.min_unit_spacing must be > 0, "
@@ -1074,25 +1240,60 @@ def prepare_active_scenario(base_dir: Path, *, settings_override: dict | None = 
     contact_cfg = {
         "attack_range": unit_cfg["attack_range"],
         "damage_per_tick": unit_cfg["damage_per_tick"],
-        "fire_quality_alpha": float(get_runtime("fire_quality_alpha", 0.1)),
-        "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
-        "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
-        "contact_hysteresis_h": float(get_runtime("contact_hysteresis_h", 0.1)),
-        "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
+        "fire_angle_quality_alpha": float(
+            _require_present(
+                get_runtime("fire_angle_quality_alpha", settings_api.MISSING),
+                "runtime.physical.fire_control.fire_angle_quality_alpha",
+            )
+        ),
+        "fire_optimal_range_ratio": float(
+            _require_present(
+                get_runtime("fire_optimal_range_ratio", settings_api.MISSING),
+                "runtime.physical.fire_control.fire_optimal_range_ratio",
+            )
+        ),
+        "fire_cone_half_angle_deg": float(
+            _require_present(
+                get_runtime("fire_cone_half_angle_deg", settings_api.MISSING),
+                "runtime.physical.fire_control.fire_cone_half_angle_deg",
+            )
+        ),
+        "contact_hysteresis_h": float(
+            _require_present(
+                get_runtime("contact_hysteresis_h", settings_api.MISSING),
+                "runtime.physical.contact.contact_hysteresis_h",
+            )
+        ),
+        "alpha_sep": float(
+            _require_present(
+                get_runtime("alpha_sep", settings_api.MISSING),
+                "runtime.physical.movement_low_level.alpha_sep",
+            )
+        ),
         "hostile_contact_impedance_mode": _require_choice(
             "runtime.physical.contact.hostile_contact_impedance.active_mode",
-            get_contact(("active_mode",), execution.HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT),
+            _require_present(
+                get_contact(("active_mode",), settings_api.MISSING),
+                "runtime.physical.contact.hostile_contact_impedance.active_mode",
+            ),
             execution.HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS,
         ),
-        "hybrid_v2": {
-            key: float(get_contact(("hybrid_v2", key), default))
-            for key, default in {
-                "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,
-                "repulsion_max_disp_ratio": execution.HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT,
-                "forward_damping_strength": execution.HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT,
-            }.items()
-        },
+        "hybrid_v2": {},
     }
+    if contact_cfg["hostile_contact_impedance_mode"] == execution.HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2:
+        contact_cfg["hybrid_v2"] = {
+            key: float(
+                _require_present(
+                    get_contact(("hybrid_v2", key), settings_api.MISSING),
+                    f"runtime.physical.contact.hostile_contact_impedance.hybrid_v2.{key}",
+                )
+            )
+            for key in (
+                "radius_multiplier",
+                "repulsion_max_disp_ratio",
+                "forward_damping_strength",
+            )
+        }
     if not 0.0 <= contact_cfg["fire_optimal_range_ratio"] <= 1.0:
         raise ValueError(
             "runtime.physical.fire_control.fire_optimal_range_ratio must be within [0.0, 1.0], "
@@ -1257,11 +1458,26 @@ def prepare_neutral_transit_fixture(base_dir: Path, *, settings_override: dict |
         "contact": {
             "attack_range": unit_cfg["attack_range"],
             "damage_per_tick": unit_cfg["damage_per_tick"],
-            "fire_quality_alpha": 0.0,
-            "fire_optimal_range_ratio": float(get_runtime("fire_optimal_range_ratio", 1.0)),
-            "fire_cone_half_angle_deg": float(get_runtime("fire_cone_half_angle_deg", 30.0)),
+            "fire_angle_quality_alpha": 0.0,
+            "fire_optimal_range_ratio": float(
+                _require_present(
+                    get_runtime("fire_optimal_range_ratio", settings_api.MISSING),
+                    "runtime.physical.fire_control.fire_optimal_range_ratio",
+                )
+            ),
+            "fire_cone_half_angle_deg": float(
+                _require_present(
+                    get_runtime("fire_cone_half_angle_deg", settings_api.MISSING),
+                    "runtime.physical.fire_control.fire_cone_half_angle_deg",
+                )
+            ),
             "contact_hysteresis_h": 0.0,
-            "alpha_sep": float(get_runtime("alpha_sep", 0.6)),
+            "alpha_sep": float(
+                _require_present(
+                    get_runtime("alpha_sep", settings_api.MISSING),
+                    "runtime.physical.movement_low_level.alpha_sep",
+                )
+            ),
             "hostile_contact_impedance_mode": execution.HOSTILE_CONTACT_IMPEDANCE_MODE_OFF,
             "hybrid_v2": {
                 "radius_multiplier": execution.HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT,

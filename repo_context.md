@@ -12,21 +12,19 @@ Authority: Reference only, not canonical semantics authority
 
 ## Current Phase Focus
 
-- `dev_v2.1 / a0d0b46` is the highest-trust pre-PR#9 behavior anchor currently used for paired comparison.
-- The current working carrier on top of that anchor is:
-  - PR#9 Formation-only execution
-  - bounded locomotion-below-Formation slices
-  - baseline comparison and governance review before deeper reroot
-- Current emphasis is:
-  - keep `battle` and `neutral` pre-contact aligned with `dev_v2.1`
-  - keep Formation at coarse-body/reference ownership
-  - move low-level realization concerns into runtime locomotion
-  - preserve viewer-only work as replay/UI, not runtime doctrine
-- Recently established branch-local mechanism additions include:
-  - forward fire-cone target selection in runtime combat
-  - low-level locomotion constraints for turn / accel / decel realization
-  - explicit separation between reference axis and signed movement command during retreat-style motion
-  - active heading-memory relock into runtime-owned `coarse_body_heading_current`
+- Current PR#9 Phase II branch state is a phase-boundary consolidation for:
+  - Unit-layer target/intent/desire owner-path clarification
+  - test-only Unit-local maneuver / behavior-line `back_off_keep_front` experimentation
+  - structural cleanup / subtraction ledger / reader-facing debug-surface alignment
+  - document-first opening of the locomotion capability line
+- Current accepted structural posture:
+  - structural cleanup line is paused
+  - Behavior line remains experimental and test-only
+  - locomotion capability line is open for discussion only
+  - no literal keep-front backward-motion implementation exists yet
+- Current comparison anchors include:
+  - Phase II primary baseline captures under `analysis/reference_notes/`
+  - temporary working-anchor and post-subtraction dual-posture anchors for paired comparison
 
 ## Key Entry Documents
 
@@ -41,6 +39,8 @@ Authority: Reference only, not canonical semantics authority
 
 - `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
   - experiment vs baseline-replacement boundary and paired-comparison expectations
+- `docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md`
+  - repo-side PR9 Phase II governance direction export for the Unit-solving layer carrier
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_formal_failure_audit_20260404.md`
   - formal failure audit for the local `v4a` incident
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
@@ -61,18 +61,20 @@ Authority: Reference only, not canonical semantics authority
   - active `v4a` restore is direct:
     - `restore_term = restore_strength * normalize(restore_vector)`
   - current PR#9 slices now include:
+    - same-tick target selection before combat execution
+    - Unit intent and Unit desire tick-local carriers
+    - test-only local maneuver / behavior-line `back_off_keep_front` response
+    - combat damage scalar cleanup to the current no-coupling working anchor
     - low-level locomotion realization limits for heading change and speed change
-    - forward fire-cone targeting inside `resolve_combat()`
     - runtime-owned fleet heading memory in `coarse_body_heading_current`
-    - decoupled retreat carriers:
-      - `last_target_direction` for reference / coarse-body axis
-      - `movement_command_direction` for signed movement command
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
     - `cohesion_decision_source`
     - `collapse_signal.v3_*`
     - FSR in the active `v4a` path
-  - current targeting line remains bounded inside `resolve_combat()`
+  - current combat execution consumes the same-tick target carrier and no longer owns target choice
+  - current locomotion still couples facing and translation:
+    - no literal keep-front backward-motion capability exists yet
 
 ## Maintained Harness Paths
 
@@ -88,6 +90,7 @@ Authority: Reference only, not canonical semantics authority
   - current harness also hosts:
     - baseline capture / replay-friendly per-tick recording used for paired comparison
     - layered settings plumbing for fire-control and low-level locomotion parameters
+    - test-only local maneuver / back-off enablement and tuning surfaces
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics
@@ -118,7 +121,11 @@ Current viewer read:
 - `app.py` owns viewer orchestration / playback / camera / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
 - viewer now includes an app-facing toggle for cluster sway, while sway realization remains renderer-local
-- current local viewer work also includes replay-path support for inspecting PR#9 locomotion / contact behavior
+- current local viewer work also includes:
+  - heading-based direction mode as the default visual facing read
+  - replay-path support for target lines / local maneuver debug review
+  - playback TPS and camera-take surface updates
+  - random skybox selection / camera-take skybox persistence
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths
@@ -133,9 +140,11 @@ Current viewer read:
   - current runtime public additions include:
     - `runtime.physical.fire_control.fire_cone_half_angle_deg`
     - `runtime.physical.movement_low_level.*`
+  - current fire-control surface uses `fire_angle_quality_alpha` to distinguish angle quality from range quality
 - `test_run/test_run_v1_0.testonly.settings.json`
   - maintained test-only harness controls
   - `fixture.neutral.stop_radius` is the neutral-only objective termination radius
+  - `runtime.physical.local_desire.experimental_signal_read_realignment_enabled` is the explicit test-only switch for the current local maneuver / back-off family
   - current `v4a` candidate parameters are structured under:
     - `restore`
     - `reference`
@@ -158,15 +167,17 @@ Current viewer read:
 - `stop_radius` is neutral-only termination semantics, not battle hold semantics
 - `fleet_body_summary` is the maintained viewer-facing fleet-body geometry contract
 - `fire_cone_half_angle_deg` is the maintained combat target-selection cone control
+- same-tick target identity is owned before combat execution; `resolve_combat()` re-checks and resolves fire/damage
+- `engaged_target_id` remains post-resolution engagement writeback, not target-selection owner
+- `local_desire` / Unit-local maneuver behavior is test-only and explicitly switch-gated
 - low-level locomotion realization is now an explicit runtime surface below Formation:
   - accel limit
   - decel limit
   - turn-rate limit
   - turn-speed floor
 - fleet heading memory is now runtime-owned in `coarse_body_heading_current`
-- current retreat handling is partially split:
-  - reference axis and signed movement command are no longer the same carrier
-  - there is still no dedicated backward-retreat realization family yet
+- there is still no dedicated reverse/backpedal locomotion family yet
+- current `attack_speed_backward_scale` is a speed allowance surface, not literal backward-motion capability
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors
   - `cohesion_decision_source`

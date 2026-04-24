@@ -14,7 +14,7 @@
       "python": "${workspaceFolder}\\.venv_dev_v2_0\\Scripts\\python.exe",
       "args": [
         "--direction-mode",
-        "posture",
+        "heading",
         "--camera-take-output",
         "${workspaceFolder}/analysis/exports/videos/dev_v2_0_camera_take.json"
       ]
