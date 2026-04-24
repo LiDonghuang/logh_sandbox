@@ -38,7 +38,7 @@ The sway is added on top of each ship's base local offset from
 
 The animation is driven by viewer replay time:
 
-- `playback_seconds = (current_frame.tick + pulse_phase) / playback_fps`
+- `playback_seconds = (current_frame.tick + pulse_phase) / playback_tps`
 
 The sway then uses a slower viewer-local clock derived from that replay time:
 

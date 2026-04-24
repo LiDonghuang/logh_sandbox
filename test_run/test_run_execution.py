@@ -49,7 +49,6 @@ V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_1_0 = "rect_centered_1.0"
 V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0 = "rect_centered_4.0"
 V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT = 0.20
 V4A_MORPHOLOGY_AXIS_RELAXATION_DEFAULT = 0.12
-V4A_SOFT_MORPHOLOGY_BAND_COUNT = 3
 V4A_CENTER_WING_DIFFERENTIAL_DEFAULT = 0.0
 V4A_HOLD_AWAIT_SPEED_SCALE_DEFAULT = 0.35
 V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT = 0.65
@@ -245,35 +244,6 @@ def _build_reference_slot_offsets_local(
             )
             unit_index += 1
     return offsets_local
-
-
-def _assign_soft_morphology_band_identity(
-    offsets_by_id: Mapping[str, tuple[float, float]],
-) -> dict[str, tuple[int, int]]:
-    records = [
-        (str(unit_id), float(offset_local[0]), float(offset_local[1]))
-        for unit_id, offset_local in offsets_by_id.items()
-    ]
-    if not records:
-        return {}
-    band_identity_by_id: dict[str, list[int]] = {}
-    sorted_forward = sorted(records, key=lambda item: (item[1], item[2], item[0]))
-    sorted_lateral = sorted(records, key=lambda item: (item[2], item[1], item[0]))
-    total_count = len(records)
-    for index, (record_id, _, _) in enumerate(sorted_forward):
-        band_identity_by_id.setdefault(str(record_id), [1, 1])[0] = min(
-            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-        )
-    for index, (record_id, _, _) in enumerate(sorted_lateral):
-        band_identity_by_id.setdefault(str(record_id), [1, 1])[1] = min(
-            V4A_SOFT_MORPHOLOGY_BAND_COUNT - 1,
-            int((index * V4A_SOFT_MORPHOLOGY_BAND_COUNT) / float(total_count)),
-        )
-    return {
-        str(record_id): (int(bands[0]), int(bands[1]))
-        for record_id, bands in band_identity_by_id.items()
-    }
 
 
 def _compute_morphology_material_phase(
@@ -476,17 +446,15 @@ class _ExecutionWiringSupport:
 
     @staticmethod
     def _build_v4a_bundle_profile(movement_cfg: Mapping[str, Any]) -> dict[str, Any]:
-        v4a_reference_surface_mode = str(
-            movement_cfg.get("v4a_reference_surface_mode", V4A_REFERENCE_SURFACE_MODE_RIGID_SLOTS)
-        ).strip().lower()
+        v4a_reference_surface_mode = str(movement_cfg["v4a_reference_surface_mode"]).strip().lower()
         if v4a_reference_surface_mode not in V4A_REFERENCE_SURFACE_MODE_LABELS:
             raise ValueError(
                 "run_simulation movement_cfg['v4a_reference_surface_mode'] must be one of "
                 f"{sorted(V4A_REFERENCE_SURFACE_MODE_LABELS)}, got {v4a_reference_surface_mode!r}"
             )
 
-        def _require_unit_interval(name: str, default: float, *, left_open: bool) -> float:
-            value = float(movement_cfg.get(name, default))
+        def _require_unit_interval(name: str, *, left_open: bool) -> float:
+            value = float(movement_cfg[name])
             lower_ok = value > 0.0 if left_open else value >= 0.0
             if not (lower_ok and value <= 1.0):
                 left_text = "(0.0, 1.0]" if left_open else "[0.0, 1.0]"
@@ -497,88 +465,62 @@ class _ExecutionWiringSupport:
 
         v4a_soft_morphology_relaxation = _require_unit_interval(
             "v4a_soft_morphology_relaxation",
-            V4A_SOFT_MORPHOLOGY_RELAXATION_DEFAULT,
             left_open=True,
         )
         v4a_shape_vs_advance_strength = _require_unit_interval(
             "v4a_shape_vs_advance_strength",
-            V4A_SHAPE_VS_ADVANCE_STRENGTH_DEFAULT,
             left_open=False,
         )
         v4a_heading_relaxation = _require_unit_interval(
             "v4a_heading_relaxation",
-            V4A_HEADING_RELAXATION_DEFAULT,
             left_open=True,
         )
         v4a_battle_standoff_hold_band_ratio = _require_unit_interval(
             "v4a_battle_standoff_hold_band_ratio",
-            V4A_BATTLE_STANDOFF_HOLD_BAND_RATIO_DEFAULT,
             left_open=False,
         )
         v4a_battle_hold_weight_strength = _require_unit_interval(
             "v4a_battle_hold_weight_strength",
-            V4A_BATTLE_HOLD_WEIGHT_STRENGTH_DEFAULT,
             left_open=False,
         )
         v4a_battle_hold_relaxation = _require_unit_interval(
             "v4a_battle_hold_relaxation",
-            V4A_BATTLE_HOLD_RELAXATION_DEFAULT,
             left_open=True,
         )
         v4a_battle_approach_drive_relaxation = _require_unit_interval(
             "v4a_battle_approach_drive_relaxation",
-            V4A_BATTLE_APPROACH_DRIVE_RELAXATION_DEFAULT,
             left_open=True,
         )
         v4a_battle_near_contact_internal_stability_blend = _require_unit_interval(
             "v4a_battle_near_contact_internal_stability_blend",
-            V4A_NEAR_CONTACT_INTERNAL_STABILITY_BLEND_DEFAULT,
             left_open=False,
         )
         v4a_battle_near_contact_speed_relaxation = _require_unit_interval(
             "v4a_battle_near_contact_speed_relaxation",
-            V4A_NEAR_CONTACT_SPEED_RELAXATION_DEFAULT,
             left_open=True,
         )
         engaged_speed_scale = _require_unit_interval(
             "engaged_speed_scale",
-            V4A_ENGAGED_SPEED_SCALE_DEFAULT,
             left_open=True,
         )
         attack_speed_lateral_scale = _require_unit_interval(
             "attack_speed_lateral_scale",
-            V4A_ATTACK_SPEED_LATERAL_SCALE_DEFAULT,
             left_open=True,
         )
-        attack_speed_backward_scale = float(
-            movement_cfg.get(
-                "attack_speed_backward_scale",
-                V4A_ATTACK_SPEED_BACKWARD_SCALE_DEFAULT,
-            )
-        )
+        attack_speed_backward_scale = float(movement_cfg["attack_speed_backward_scale"])
         if not 0.0 <= attack_speed_backward_scale <= attack_speed_lateral_scale:
             raise ValueError(
                 "run_simulation movement_cfg['attack_speed_backward_scale'] must be within "
                 f"[0.0, attack_speed_lateral_scale], got backward={attack_speed_backward_scale}, "
                 f"lateral={attack_speed_lateral_scale}"
             )
-        v4a_battle_target_front_strip_gap_bias = float(
-            movement_cfg.get(
-                "v4a_battle_target_front_strip_gap_bias",
-                V4A_BATTLE_TARGET_FRONT_STRIP_GAP_BIAS_DEFAULT,
-            )
-        )
+        v4a_battle_target_front_strip_gap_bias = float(movement_cfg["v4a_battle_target_front_strip_gap_bias"])
         if not math.isfinite(v4a_battle_target_front_strip_gap_bias):
             raise ValueError(
                 "run_simulation movement_cfg['v4a_battle_target_front_strip_gap_bias'] must be finite, "
                 f"got {v4a_battle_target_front_strip_gap_bias}"
             )
-        v4a_battle_relation_lead_ticks = float(
-            movement_cfg.get(
-                "v4a_battle_relation_lead_ticks",
-                V4A_BATTLE_RELATION_LEAD_TICKS_DEFAULT,
-            )
-        )
+        v4a_battle_relation_lead_ticks = float(movement_cfg["v4a_battle_relation_lead_ticks"])
         if not math.isfinite(v4a_battle_relation_lead_ticks) or v4a_battle_relation_lead_ticks <= 0.0:
             raise ValueError(
                 "run_simulation movement_cfg['v4a_battle_relation_lead_ticks'] must be finite and > 0, "
@@ -586,17 +528,10 @@ class _ExecutionWiringSupport:
             )
 
         return {
-            "restore_strength": float(movement_cfg.get("v4a_restore_strength", 0.25)),
+            "restore_strength": float(movement_cfg["v4a_restore_strength"]),
             "shape": {
-                "expected_reference_spacing": float(
-                    movement_cfg.get("expected_reference_spacing", 1.0)
-                ),
-                "reference_layout_mode": str(
-                    movement_cfg.get(
-                        "reference_layout_mode",
-                        V4A_REFERENCE_LAYOUT_MODE_RECT_CENTERED_4_0,
-                    )
-                ),
+                "expected_reference_spacing": float(movement_cfg["expected_reference_spacing"]),
+                "reference_layout_mode": str(movement_cfg["reference_layout_mode"]),
                 "reference_surface_mode": str(v4a_reference_surface_mode),
                 "soft_morphology_relaxation": float(v4a_soft_morphology_relaxation),
                 "shape_vs_advance_strength": float(v4a_shape_vs_advance_strength),
@@ -642,35 +577,37 @@ class _ExecutionWiringSupport:
         fixture_stop_radius = float(fixture_context["stop_radius"])
         v4a_bundle_profile = _ExecutionWiringSupport._build_v4a_bundle_profile(movement_cfg)
 
-        hybrid_v2_cfg = contact_cfg.get("hybrid_v2", {})
-        if not isinstance(hybrid_v2_cfg, Mapping):
-            hybrid_v2_cfg = {}
+        hybrid_v2_cfg = _require_mapping(contact_cfg, "hybrid_v2")
         steps = int(execution_cfg["steps"])
         capture_positions = bool(execution_cfg["capture_positions"])
         capture_hit_points = bool(execution_cfg.get("capture_hit_points", False))
         frame_stride = int(execution_cfg["frame_stride"])
         include_target_lines = bool(execution_cfg["include_target_lines"])
         print_tick_summary = bool(execution_cfg["print_tick_summary"])
-        tick_timing_enabled = bool(observer_cfg.get("tick_timing_enabled", True))
-        post_elimination_extra_ticks = max(0, int(execution_cfg.get("post_elimination_extra_ticks", 10)))
+        tick_timing_enabled = bool(observer_cfg["tick_timing_enabled"])
+        post_elimination_extra_ticks = max(0, int(execution_cfg["post_elimination_extra_ticks"]))
         if str(runtime_cfg["movement_model"]).strip().lower() != "v4a":
             raise ValueError(
                 "test_run maintained path only supports runtime_cfg['movement_model']='v4a', "
                 f"got {runtime_cfg['movement_model']!r}"
             )
-        hostile_contact_impedance_mode = (
-            str(contact_cfg.get("hostile_contact_impedance_mode", HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT)).strip().lower()
-            or HOSTILE_CONTACT_IMPEDANCE_MODE_DEFAULT
-        )
+        hostile_contact_impedance_mode = str(contact_cfg["hostile_contact_impedance_mode"]).strip().lower()
         if hostile_contact_impedance_mode not in HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS:
             allowed_text = ", ".join(sorted(HOSTILE_CONTACT_IMPEDANCE_MODE_LABELS))
             raise ValueError(
                 "run_simulation contact_cfg['hostile_contact_impedance_mode'] must be one of "
-                f"{{{allowed_text}}}, got {contact_cfg.get('hostile_contact_impedance_mode')!r}"
+                f"{{{allowed_text}}}, got {contact_cfg['hostile_contact_impedance_mode']!r}"
             )
-
+        if hostile_contact_impedance_mode == HOSTILE_CONTACT_IMPEDANCE_MODE_HYBRID_V2:
+            hybrid_radius_multiplier = max(1e-6, float(hybrid_v2_cfg["radius_multiplier"]))
+            hybrid_repulsion_max_disp_ratio = max(0.0, float(hybrid_v2_cfg["repulsion_max_disp_ratio"]))
+            hybrid_forward_damping_strength = _clamp01(float(hybrid_v2_cfg["forward_damping_strength"]))
+        else:
+            hybrid_radius_multiplier = HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT
+            hybrid_repulsion_max_disp_ratio = HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT
+            hybrid_forward_damping_strength = HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT
         observer_active = (bool(observer_cfg["enabled"]) or bool(execution_cfg["plot_diagnostics_enabled"])) and (
-            bool(capture_positions) or bool(observer_cfg.get("runtime_diag_enabled", False))
+            bool(capture_positions) or bool(observer_cfg["runtime_diag_enabled"])
         )
         engine = EngineTickSkeleton(
             attack_range=float(contact_cfg["attack_range"]),
@@ -685,24 +622,22 @@ class _ExecutionWiringSupport:
                 "stop_radius": fixture_stop_radius,
             }
         for attr, value in (
-            ("SYMMETRIC_MOVEMENT_SYNC_ENABLED", bool(movement_cfg.get("symmetric_movement_sync_enabled", True))),
+            (
+                "SYMMETRIC_MOVEMENT_SYNC_ENABLED",
+                bool(movement_cfg["symmetric_movement_sync_enabled"]),
+            ),
             ("HOSTILE_CONTACT_IMPEDANCE_MODE", hostile_contact_impedance_mode),
             (
                 "HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER",
-                max(1e-6, float(hybrid_v2_cfg.get("radius_multiplier", HOSTILE_CONTACT_IMPEDANCE_V2_RADIUS_MULTIPLIER_DEFAULT))),
+                hybrid_radius_multiplier,
             ),
             (
                 "HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO",
-                max(
-                    0.0,
-                    float(hybrid_v2_cfg.get("repulsion_max_disp_ratio", HOSTILE_CONTACT_IMPEDANCE_V2_REPULSION_MAX_DISP_RATIO_DEFAULT)),
-                ),
+                hybrid_repulsion_max_disp_ratio,
             ),
             (
                 "HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH",
-                _clamp01(
-                    float(hybrid_v2_cfg.get("forward_damping_strength", HOSTILE_CONTACT_IMPEDANCE_V2_FORWARD_DAMPING_STRENGTH_DEFAULT))
-                ),
+                hybrid_forward_damping_strength,
             ),
         ):
             setattr(engine, attr, value)
@@ -711,9 +646,32 @@ class _ExecutionWiringSupport:
         movement_surface["alpha_sep"] = max(0.0, float(contact_cfg["alpha_sep"]))
         movement_surface["model"] = "v4a"
         movement_surface["v4a_restore_strength"] = float(v4a_bundle_profile["restore_strength"])
+        for movement_key in (
+            "max_accel_per_tick",
+            "max_decel_per_tick",
+            "max_turn_deg_per_tick",
+            "turn_speed_min_scale",
+        ):
+            movement_surface[movement_key] = float(movement_cfg[movement_key])
+        movement_surface["signed_longitudinal_backpedal_enabled"] = bool(
+            movement_cfg["signed_longitudinal_backpedal_enabled"]
+        )
+        movement_surface["signed_longitudinal_backpedal_reverse_authority_scale"] = (
+            float(movement_cfg["signed_longitudinal_backpedal_reverse_authority_scale"])
+        )
+        movement_surface["local_desire_experimental_signal_read_realignment_enabled"] = bool(
+            movement_cfg["local_desire_experimental_signal_read_realignment_enabled"]
+        )
+        for local_desire_key in (
+            "local_desire_turn_need_onset",
+            "local_desire_heading_bias_cap",
+            "local_desire_speed_brake_strength",
+        ):
+            movement_surface[local_desire_key] = float(movement_cfg[local_desire_key])
         combat_surface = _require_engine_surface_dict(engine, "_combat_surface")
-        combat_surface["fire_quality_alpha"] = float(contact_cfg["fire_quality_alpha"])
+        combat_surface["fire_angle_quality_alpha"] = float(contact_cfg["fire_angle_quality_alpha"])
         combat_surface["fire_optimal_range_ratio"] = float(contact_cfg["fire_optimal_range_ratio"])
+        combat_surface["fire_cone_half_angle_deg"] = float(contact_cfg["fire_cone_half_angle_deg"])
         combat_surface["contact_hysteresis_h"] = float(contact_cfg["contact_hysteresis_h"])
         combat_surface["ch_enabled"] = bool(contact_cfg["ch_enabled"])
         boundary_surface = _require_engine_surface_dict(engine, "_boundary_surface")
@@ -748,6 +706,26 @@ class _ExecutionWiringSupport:
 
 class _FixtureExecutionSupport:
     """Internal-only execution support for fixture/reference bundle preparation."""
+
+    @staticmethod
+    def collect_alive_positions_and_forward_sum(
+        state: BattleState,
+        unit_ids: Sequence[str],
+    ) -> tuple[dict[str, tuple[float, float]], tuple[float, float]]:
+        position_map: dict[str, tuple[float, float]] = {}
+        forward_sum_x = 0.0
+        forward_sum_y = 0.0
+        for unit_id in unit_ids:
+            unit = state.units.get(unit_id)
+            if unit is None or float(unit.hit_points) <= 0.0:
+                continue
+            position_map[str(unit_id)] = (
+                float(unit.position.x),
+                float(unit.position.y),
+            )
+            forward_sum_x += float(unit.orientation_vector.x)
+            forward_sum_y += float(unit.orientation_vector.y)
+        return position_map, (float(forward_sum_x), float(forward_sum_y))
 
     @staticmethod
     def compute_centroid_and_rms_radius(
@@ -836,7 +814,6 @@ class _FixtureExecutionSupport:
         target_forward_phase_by_unit, target_lateral_phase_by_unit, _, _ = _compute_morphology_material_phase(
             reference_offsets_local
         )
-        band_identity_by_unit = _assign_soft_morphology_band_identity(actual_offsets_local)
         return {
             "initial_forward_hat_xy": primary_axis_xy,
             "initial_secondary_hat_xy": secondary_axis_xy,
@@ -904,14 +881,6 @@ class _FixtureExecutionSupport:
             "actual_forward_extent": float(forward_extent_initial),
             "actual_lateral_extent": float(lateral_extent_initial),
             "stop_within_radius": False,
-            "initial_material_forward_phase_by_unit": {
-                str(unit_id): float(phase)
-                for unit_id, phase in initial_forward_phase_by_unit.items()
-            },
-            "initial_material_lateral_phase_by_unit": {
-                str(unit_id): float(phase)
-                for unit_id, phase in initial_lateral_phase_by_unit.items()
-            },
             "target_material_forward_phase_by_unit": {
                 str(unit_id): float(phase)
                 for unit_id, phase in target_forward_phase_by_unit.items()
@@ -927,10 +896,6 @@ class _FixtureExecutionSupport:
             "current_material_lateral_phase_by_unit": {
                 str(unit_id): float(phase)
                 for unit_id, phase in initial_lateral_phase_by_unit.items()
-            },
-            "band_identity_by_unit": {
-                str(unit_id): (int(bands[0]), int(bands[1]))
-                for unit_id, bands in band_identity_by_unit.items()
             },
         }
 
@@ -1097,14 +1062,10 @@ def run_simulation(
     # 2. Build prepared fixture and restore bundles.
     battle_restore_bundles_by_fleet: dict[str, dict[str, Any]] = {}
     for fleet_id, fleet in initial_state.fleets.items():
-        fleet_positions = {
-            str(unit_id): (
-                float(initial_state.units[unit_id].position.x),
-                float(initial_state.units[unit_id].position.y),
-            )
-            for unit_id in fleet.unit_ids
-            if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
-        }
+        fleet_positions, fallback_axis_xy = _FixtureExecutionSupport.collect_alive_positions_and_forward_sum(
+            initial_state,
+            fleet.unit_ids,
+        )
         if not fleet_positions:
             continue
         enemy_positions = {
@@ -1117,19 +1078,13 @@ def run_simulation(
             for unit_id in other_fleet.unit_ids
             if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
         }
-        initial_forward_sum_x = 0.0
-        initial_forward_sum_y = 0.0
-        for unit_id in fleet.unit_ids:
-            unit = initial_state.units.get(unit_id)
-            if unit is None or float(unit.hit_points) <= 0.0:
-                continue
-            initial_forward_sum_x += float(unit.orientation_vector.x)
-            initial_forward_sum_y += float(unit.orientation_vector.y)
         fleet_centroid_x, fleet_centroid_y, _ = _FixtureExecutionSupport.compute_centroid_and_rms_radius(fleet_positions)
         enemy_centroid_x, enemy_centroid_y, _ = _FixtureExecutionSupport.compute_centroid_and_rms_radius(enemy_positions)
         if math.isfinite(enemy_centroid_x) and math.isfinite(enemy_centroid_y):
             objective_point_xy = (float(enemy_centroid_x), float(enemy_centroid_y))
         else:
+            initial_forward_sum_x = float(fallback_axis_xy[0])
+            initial_forward_sum_y = float(fallback_axis_xy[1])
             fallback_axis_norm = math.sqrt(
                 (initial_forward_sum_x * initial_forward_sum_x) + (initial_forward_sum_y * initial_forward_sum_y)
             )
@@ -1147,15 +1102,13 @@ def run_simulation(
             objective_point_xy,
             ordered_unit_ids=tuple(fleet.unit_ids),
             v4a_profile=v4a_bundle_profile,
-            fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
+            fallback_axis_xy=fallback_axis_xy,
         )
         bundle["objective_point_xy"] = (
             float(objective_point_xy[0]),
             float(objective_point_xy[1]),
         )
         battle_restore_bundles_by_fleet[str(fleet_id)] = bundle
-    if battle_restore_bundles_by_fleet:
-        engine.TEST_RUN_BATTLE_RESTORE_BUNDLES_BY_FLEET = battle_restore_bundles_by_fleet
 
     # 3. Initialize observer state and local packaging helpers.
     trajectory = _per_fleet_series()
@@ -1186,28 +1139,16 @@ def run_simulation(
         "tick_elapsed_ms": [],
     }
     if fixture_active:
-        initial_positions = {
-            str(unit_id): (
-                float(initial_state.units[unit_id].position.x),
-                float(initial_state.units[unit_id].position.y),
-            )
-            for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids
-            if unit_id in initial_state.units and float(initial_state.units[unit_id].hit_points) > 0.0
-        }
-        initial_forward_sum_x = 0.0
-        initial_forward_sum_y = 0.0
-        for unit_id in initial_state.fleets[fixture_fleet_id].unit_ids:
-            unit = initial_state.units.get(unit_id)
-            if unit is None or float(unit.hit_points) <= 0.0:
-                continue
-            initial_forward_sum_x += float(unit.orientation_vector.x)
-            initial_forward_sum_y += float(unit.orientation_vector.y)
+        initial_positions, fallback_axis_xy = _FixtureExecutionSupport.collect_alive_positions_and_forward_sum(
+            initial_state,
+            initial_state.fleets[fixture_fleet_id].unit_ids,
+        )
         fixture_reference_bundle = _FixtureExecutionSupport.build_fixture_expected_reference_bundle(
             initial_positions,
             fixture_objective_point_xy,
             ordered_unit_ids=tuple(initial_state.fleets[fixture_fleet_id].unit_ids),
             v4a_profile=v4a_bundle_profile,
-            fallback_axis_xy=(initial_forward_sum_x, initial_forward_sum_y),
+            fallback_axis_xy=fallback_axis_xy,
         )
         fixture_reference_bundle["objective_point_xy"] = (
             float(fixture_objective_point_xy[0]),
@@ -1278,10 +1219,31 @@ def run_simulation(
     center_wing_position_history = _per_fleet_series()
     posture_persistence_state = {fleet_id: {"sign": 0, "length": 0} for fleet_id in fleet_ids}
 
+    def _read_v4a_bridge_float(
+        diag_tick: Mapping[str, Any],
+        fleet_id: str,
+        key: str,
+        fallback: float,
+    ) -> float:
+        bridge_diag = diag_tick.get("v4a_bridge", {}) if isinstance(diag_tick, Mapping) else {}
+        if not isinstance(bridge_diag, Mapping):
+            return float(fallback)
+        bridge_fleets = bridge_diag.get("fleets", {})
+        if not isinstance(bridge_fleets, Mapping):
+            return float(fallback)
+        fleet_diag = bridge_fleets.get(str(fleet_id), {})
+        if not isinstance(fleet_diag, Mapping):
+            return float(fallback)
+        return float(fleet_diag.get(key, fallback))
+
     # Observer/frame packaging stays local to the orchestrator.
-    def _build_focus_indicator_payload(current_state: BattleState) -> dict[str, dict[str, float]]:
+    def _build_focus_indicator_payload(
+        current_state: BattleState,
+        runtime_diag_tick: Mapping[str, Any],
+    ) -> dict[str, dict[str, float]]:
         focus_payload: dict[str, dict[str, float]] = {}
         bundle_entries: dict[str, Mapping[str, Any]] = {}
+        local_desire_fleet_diag: dict[str, Mapping[str, Any]] = {}
         if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL:
             fixture_bundle = getattr(engine, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
             if isinstance(fixture_bundle, Mapping):
@@ -1292,6 +1254,15 @@ def run_simulation(
                 for fleet_id, bundle in battle_bundles.items():
                     if isinstance(bundle, Mapping):
                         bundle_entries[str(fleet_id)] = bundle
+        local_desire_tick = runtime_diag_tick.get("local_desire", {}) if isinstance(runtime_diag_tick, Mapping) else {}
+        if isinstance(local_desire_tick, Mapping):
+            local_desire_fleets = local_desire_tick.get("fleets", {})
+            if isinstance(local_desire_fleets, Mapping):
+                local_desire_fleet_diag = {
+                    str(fleet_id): row
+                    for fleet_id, row in local_desire_fleets.items()
+                    if isinstance(row, Mapping)
+                }
         fire_efficiency_current: dict[str, float] = {}
         fire_eff_a_series, fire_eff_b_series = _compute_fire_efficiency_series(
             fleet_size_trajectory.get("A", []),
@@ -1359,17 +1330,24 @@ def run_simulation(
                             "front_strip_depth_b": float(strip_b),
                         }
         for fleet_id, bundle in bundle_entries.items():
+            local_desire_row = local_desire_fleet_diag.get(str(fleet_id), {})
             target_direction = current_state.last_target_direction.get(str(fleet_id), (0.0, 0.0))
             td_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
             td_y = float(target_direction[1]) if len(target_direction) >= 2 else 0.0
-            focus_payload[str(fleet_id)] = {
+            focus_row = {
                 "td_norm": math.sqrt((td_x * td_x) + (td_y * td_y)),
                 "forward_current": float(bundle.get("forward_extent_current", float("nan"))),
                 "actual_forward": float(bundle.get("actual_forward_extent", float("nan"))),
                 "lateral_current": float(bundle.get("lateral_extent_current", float("nan"))),
                 "actual_lateral": float(bundle.get("actual_lateral_extent", float("nan"))),
                 "shape_err": float(bundle.get("shape_error_current", float("nan"))),
-                "advance_share": float(bundle.get("transition_advance_share", float("nan"))),
+                "advance_share": _read_v4a_bridge_float(
+                    runtime_diag_tick,
+                    fleet_id,
+                    "transition_advance_share",
+                    float("nan"),
+                ),
+                "relation_gap_raw": float(bundle.get("battle_relation_gap_raw", float("nan"))),
                 "relation_gap": float(bundle.get("battle_relation_gap_current", float("nan"))),
                 "approach_drive": float(bundle.get("battle_approach_drive_current", float("nan"))),
                 "close_drive": float(bundle.get("battle_close_drive_current", float("nan"))),
@@ -1381,6 +1359,12 @@ def run_simulation(
                 ),
                 "engagement_geometry_active": float(
                     bundle.get("engagement_geometry_active", float("nan"))
+                ),
+                "early_embargo_permission": float(
+                    local_desire_row.get("early_embargo_permission", float("nan"))
+                ),
+                "late_reopen_persistence": float(
+                    local_desire_row.get("late_reopen_persistence", float("nan"))
                 ),
                 "effective_fire_axis_coherence": float(
                     bundle.get("effective_fire_axis_coherence", float("nan"))
@@ -1410,6 +1394,21 @@ def run_simulation(
                     bundle.get("forward_transport_positive_fraction", float("nan"))
                 ),
             }
+            if "desired_longitudinal_travel_scale_min" in local_desire_row:
+                focus_row["desired_longitudinal_travel_scale_min"] = float(
+                    local_desire_row.get(
+                        "desired_longitudinal_travel_scale_min",
+                        float("nan"),
+                    )
+                )
+            if "realized_signed_longitudinal_speed_min" in local_desire_row:
+                focus_row["realized_signed_longitudinal_speed_min"] = float(
+                    local_desire_row.get(
+                        "realized_signed_longitudinal_speed_min",
+                        float("nan"),
+                    )
+                )
+            focus_payload[str(fleet_id)] = focus_row
         return focus_payload
 
     def _append_empty_shape_metrics(fleet_id: str, series: list[float]) -> None:
@@ -1462,7 +1461,7 @@ def run_simulation(
             frame["targets"] = targets
         runtime_diag_tick = getattr(engine, "debug_diag_last_tick", {}) if observer_active else {}
         runtime_debug = extract_runtime_debug_payload(runtime_diag_tick)
-        focus_indicators = _build_focus_indicator_payload(current_state)
+        focus_indicators = _build_focus_indicator_payload(current_state, runtime_diag_tick)
         if focus_indicators:
             runtime_debug["focus_indicators"] = focus_indicators
         frame["fleet_body_summary"] = _build_fleet_body_summary_for_state(current_state)
@@ -1561,7 +1560,10 @@ def run_simulation(
                 fleet_id=fixture_fleet_id,
                 centroid_x=centroid_x if math.isfinite(centroid_x) else 0.0,
                 centroid_y=centroid_y if math.isfinite(centroid_y) else 0.0,
-                target_direction=state.last_target_direction.get(fixture_fleet_id, (0.0, 0.0)),
+                target_direction=state.movement_command_direction.get(
+                    fixture_fleet_id,
+                    state.last_target_direction.get(fixture_fleet_id, (0.0, 0.0)),
+                ),
             )
             expected_position_map = (
                 expected_position_payload.get("expected_positions", {})
@@ -1601,7 +1603,12 @@ def run_simulation(
                 float(fixture_reference_bundle.get("shape_error_current", 0.0))
             )
             fixture_metrics["transition_advance_share"].append(
-                float(fixture_reference_bundle.get("transition_advance_share", 1.0))
+                _read_v4a_bridge_float(
+                    runtime_diag_tick,
+                    fixture_fleet_id,
+                    "transition_advance_share",
+                    0.0,
+                )
             )
             fixture_metrics["legality_reference_surface_count"].append(
                 int(fixture_runtime_debug.get("legality_reference_surface_count", 0))

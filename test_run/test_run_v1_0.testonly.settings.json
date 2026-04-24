@@ -54,6 +54,16 @@
       }
     },
     "physical": {
+      "local_desire": {
+        "experimental_signal_read_realignment_enabled": true,
+        "turn_need_onset": 0.45,
+        "heading_bias_cap": 0.06,
+        "speed_brake_strength": 0.03
+      },
+      "locomotion": {
+        "experimental_signed_longitudinal_backpedal_enabled": false,
+        "signed_longitudinal_backpedal_reverse_authority_scale": 0.45
+      },
       "contact": {
         "hostile_contact_impedance": {
           "active_mode": "hybrid_v2",

@@ -36,13 +36,32 @@ Current maintained runtime read:
   - `resolve_combat`
 - active `v4a` restore is direct:
   - `restore_term = restore_strength * normalize(restore_vector)`
+- the current working branch is a PR#9 Phase II consolidation carrier for:
+  - Formation coarse-body/reference ownership
+  - Unit-layer target/intent/desire seams
+  - bounded low-level locomotion realization
+  - test-only Unit-local maneuver / behavior-line `back_off_keep_front` experimentation
+  - first bounded `signed_longitudinal_backpedal` locomotion capability implementation
+  - bounded `signed_longitudinal_facing_axis_guard` correction
+  - paired comparison against Phase II baseline anchors
+- current branch-local runtime slices include:
+  - same-tick target selection before combat execution
+  - `resolve_combat(...)` consuming the selected-target carrier for re-check / fire / damage
+  - Unit intent and Unit desire tick-local carriers
+  - test-only local maneuver / bounded give-ground response behind explicit enablement
+  - low-level locomotion realization limits in `integrate_movement()`
+  - default-off signed longitudinal backpedal realization through the Unit desire seam
+  - default-off facing-axis guard that keeps signed-longitudinal gate-on facing tied to `desired_heading_xy`
+  - runtime-owned fleet heading memory in `coarse_body_heading_current`
 - active `v4a` no longer depends on:
   - maintained `v3a` movement branch body
   - `cohesion_decision_source`
   - `collapse_signal.v3_*`
   - FSR in the active `v4a` path
-- targeting is opened in bounded form inside `resolve_combat()`
-- the next structural phase should target hot-path tightening, not new mechanism expansion
+- `engaged_target_id` remains post-resolution engagement writeback, not the target-selection owner
+- current locomotion capability line blocks gate-on fake backpedal through turned-away forward motion
+- literal keep-front backward motion exists only through the explicit signed longitudinal carrier and remains experimental
+- the structural-cleanup line is paused after the post-cleanup structural anchor / subtraction ledger wave
 
 ### 3. Maintained Harness Spine
 
@@ -54,6 +73,7 @@ Current maintained runtime read:
   - maintained execution/orchestration host
   - shared `v4a` movement-family host for `battle` and `neutral`
   - battle/fixture bundles remain as carriers, while maintained tick semantics are back in runtime
+  - replay/baseline capture path is also used for paired comparison against `dev_v2.1`
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers only
 - `test_run/settings_accessor.py`
@@ -66,6 +86,12 @@ Current maintained harness read:
 - `stop_radius` is neutral-only objective termination semantics
 - battle gap base now uses `fire_optimal_range`
 - `test_mode` is retired from the maintained public surface
+- harness-side bundle state is being narrowed where runtime/observer already own the active path
+- harness currently wires two new maintained runtime surfaces:
+  - `runtime.physical.fire_control.fire_cone_half_angle_deg`
+  - `runtime.physical.movement_low_level.*`
+- harness also carries test-only local maneuver / back-off enablement and tuning surfaces
+- baseline/replay captures preserve per-tick frames, target lines, fleet body summaries, runtime debug, telemetry, and configs for paired comparison
 
 ### 4. Settings Layer
 
@@ -79,9 +105,14 @@ Current maintained settings read:
 
 - runtime selector is `v4a` only
 - test-only hostile-contact selector is `off | hybrid_v2`
+- test-only local maneuver / behavior-line `back_off_keep_front` family is explicitly switch-gated
 - `runtime.metatype.*` remains a scenario-level Yang/personality sampling interface only
 - `run_control.symmetric_movement_sync_enabled` owns symmetric merge control
 - `runtime.observer` has been narrowed to still-active maintained keys
+- runtime now also exposes:
+  - fire-control cone width
+  - fire angle quality alpha
+  - low-level locomotion realization limits
 - old public `v3a` selector surfaces are no longer part of the maintained mainline
 - `testonly.runtime.movement.v4a.*` is now structured by candidate-owned groups:
   - `restore`
@@ -106,6 +137,13 @@ Current viewer read:
 - viewer-facing fleet geometry now consumes the maintained `fleet_body_summary` replay contract
 - `app.py` owns viewer orchestration / playback / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer-local cluster sway can now be toggled from `app.py` while sway realization remains inside `unit_renderer.py`
+- current local viewer work also supports inspection of PR#9 contact / locomotion behavior through replay-path additions:
+  - default `heading` direction mode reads runtime facing
+  - `movement` mode remains available for travel read
+  - current focus HUD reads `raw_gap`, `embg`, `reopen`, and `brk`
+  - playback uses fixed TPS levels rather than FPS labels
+  - camera takes include direction-stabilization and skybox path context
 - no old 2D viz / BRF surface remains in the active mainline
 
 ### 6. Documentation / Records Layer
@@ -116,12 +154,28 @@ Current viewer read:
   - root AI execution contract
 - `test_run/AGENTS.md`
   - `test_run` local execution contract
+- `viz3d_panda/AGENTS.md`
+  - viewer-local execution contract
+- `docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md`
+  - PR9 Phase II governance direction export for the Unit-solving layer carrier
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_proposal_20260423.md`
+  - first bounded proposal for the signed longitudinal backpedal locomotion capability gate
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the first bounded signed longitudinal backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_facing_coupling_followup_proposal_20260423.md`
+  - follow-up proposal for correcting facing-axis coupling after the first signed backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_facing_axis_guard_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the bounded facing-axis guard correction
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
   - active old-family retirement policy
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_cleanup_methodology_and_lessons_20260409.md`
   - cleanup-stage methodology/lessons reference
 - `docs/archive/ts_handoff_archive/`
   - TS handoff archive root
+- `analysis/engineering_reports/developments/20260419/` through `20260423/`
+  - current PR9 Phase II engineering reports, proposals, implementation records, and pause notes
+- `analysis/reference_notes/`
+  - Phase II baseline and temporary-anchor capture records
 
 ## Maintained Structural Read
 
@@ -138,9 +192,14 @@ Do **not** read the active tree as still owning:
 
 ## Active Debts Still Worth Watching
 
-- large maintained files that may still benefit from bounded same-file layering review
-- remaining legacy wording in comments/reference surfaces
-- formation-only design and ownership simplification as a separate next carrier
+- large maintained files still need careful boundary discipline; do not chase LOC reduction as a standalone goal
+- current Unit-local maneuver / behavior-line family remains test-only / experimental
+- current locomotion capability line has a first bounded default-off implementation:
+  - `desired_longitudinal_travel_scale` is the explicit signed Unit desire carrier
+  - signed longitudinal velocity is realized only when the experimental gate is enabled
+  - gate-on facing-axis guard prevents turn-away forward motion from substituting for the signed carrier
+  - this is not retreat, lateral strafe, or broad facing/translation decoupling
+- retreat implementation remains separate and closed
 
 ## Interpretation Guardrails
 

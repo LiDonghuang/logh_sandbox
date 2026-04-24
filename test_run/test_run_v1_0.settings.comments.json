@@ -65,9 +65,9 @@
           "near_contact_speed_relaxation": "Per-unit near-contact speed relaxation in (0.0, 1.0]. Smooths unit.max_speed toward transition_speed_target after the internal-stability blend has adjusted per-unit speed factors."
         },
         "engagement": {
-          "engaged_speed_scale": "Current v4a candidate seam for engaged-movement speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed.",
-          "attack_speed_lateral_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is lateral to current orientation. Forward attack interpolates from this value up toward 1.0.",
-          "attack_speed_backward_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is backward relative to current orientation. Must be <= attack_speed_lateral_scale."
+          "engaged_speed_scale": "Current v4a candidate seam for engaged-movement speed envelope in (0.0, 1.0]. Even forward-attacking engaged units move at this fraction or below of their transition-allowed speed. Owner-language read: transitional Unit-side engaged maneuver-speed shaping, not fleet/reference-side doctrine ownership.",
+          "attack_speed_lateral_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is lateral to current orientation. Forward attack interpolates from this value up toward 1.0. Owner-language read: transitional Unit-side engaged maneuver-speed shaping, not fleet/reference-side doctrine ownership.",
+          "attack_speed_backward_scale": "Current v4a candidate seam for attack-direction movement allowance when engaged attack direction is backward relative to current orientation. Must be <= attack_speed_lateral_scale. Owner-language read: transitional Unit-side engaged maneuver-speed shaping only; this is not a literal backward-motion capability surface because runtime travel still follows realized heading."
         }
       }
     },
@@ -79,12 +79,26 @@
       },
       "movement_low_level": {
         "min_unit_spacing": "Physical-layer minimum spacing used by local separation / projection / related low-level runtime behavior. This is distinct from any v4a test-only expected/reference formation spacing candidate.",
-        "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0."
+        "alpha_sep": "Soft-separation / boundary contribution weight inside movement composition. Current default=0.6. Runtime clamps to >=0.0.",
+        "max_accel_per_tick": "Low-level locomotion acceleration ceiling in world-speed units per tick. This limits how quickly unit.velocity can rise toward the speed commanded by the upstream formation/transition carrier.",
+        "max_decel_per_tick": "Low-level locomotion deceleration ceiling in world-speed units per tick. This limits how quickly unit.velocity can fall toward the speed commanded by the upstream formation/transition carrier.",
+        "max_turn_deg_per_tick": "Low-level locomotion heading-turn ceiling in degrees per tick. Runtime rotates unit.orientation_vector toward desired movement direction by at most this amount each tick instead of snapping instantly.",
+        "turn_speed_min_scale": "Low-level speed-turn coupling floor in [0.0, 1.0]. When realized heading is badly misaligned with desired movement direction, desired speed is reduced toward this floor before acceleration/deceleration limits are applied."
       },
       "fire_control": {
-        "fire_quality_alpha": "Directional fire-quality coefficient alpha. 0.0 disables directional effect. Runtime currently reads angle quality as max(0, 1 + alpha * cos(theta)), so front-facing quality is 1+alpha and fully backward quality is 1-alpha before other modifiers.",
+        "fire_angle_quality_alpha": "Directional angle-quality coefficient alpha. 0.0 disables angle-quality effect. Runtime reads angle quality as max(0, 1 + alpha * cos(theta)), while range_quality remains a separate distance-based modifier.",
         "fire_optimal_range_ratio": "Range-quality optimal-distance ratio in [0.0, 1.0]. attack_range remains max range; this ratio defines the distance below which range_quality stays at 1.0 and beyond which it decays linearly to 0.0 at attack_range.",
-        "alpha_safe_max": "Documentation-level current runtime clamp upper bound for fire_quality_alpha. Runtime now clamps alpha within [0.0, 1.0]."
+        "fire_cone_half_angle_deg": "Forward fire-cone half-angle in degrees. Runtime target assignment now only considers enemies inside this cone before selecting the nearest valid target. Must be finite and within [0.0, 180.0]."
+      },
+      "local_desire": {
+        "experimental_signal_read_realignment_enabled": "Explicit test-only freeze switch for the current experimental local_desire / Unit-local maneuver / back_off behavior-line family. false = maintained safe path stays on the frozen temporary working anchor. true = the current experimental maneuver-response family is allowed to run. Classification: test-only concept-isolation control; not maintained doctrine and not a claim of literal backward-with-front-preserved locomotion capability.",
+        "turn_need_onset": "Test-only same-tick local-desire turn-need onset in [0.0, 0.95]. Lower values let the experimental Unit-local maneuver family begin reacting earlier as target bearing diverges from current unit facing. Classification: experimental runtime-local, tick-local, non-persistent activation regime owned by the test-only layer.",
+        "heading_bias_cap": "Test-only maximum local heading-bias cap in [0.0, 0.15]. This bounds how far desired_heading_xy may relax from fleet base heading toward local firing opportunity on a single tick when the experimental family is explicitly enabled. Classification: experimental runtime-local, tick-local, non-persistent maneuver parameter owned by the test-only layer.",
+        "speed_brake_strength": "Test-only brake-only local speed-adaptation strength in [0.0, 0.10]. Higher values reduce desired_speed_scale more strongly when the experimental behavior-line family is authorized to suppress continued over-commit and reopen some space. Classification: experimental runtime-local, tick-local, non-persistent maneuver parameter owned by the test-only layer."
+      },
+      "locomotion": {
+        "experimental_signed_longitudinal_backpedal_enabled": "Explicit test-only gate for the signed_longitudinal_backpedal locomotion-capability experiment. false preserves the current unsigned forward-only realization path. true requires the explicit desired_longitudinal_travel_scale Unit desire carrier and allows bounded signed longitudinal travel along realized facing.",
+        "signed_longitudinal_backpedal_reverse_authority_scale": "Test-only reverse authority limiter in (0.0, 1.0]. Applies only when desired_longitudinal_travel_scale is negative; it caps bounded backward travel below forward authority and is not the primary backpedal design carrier."
       },
       "contact": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
@@ -114,7 +128,7 @@
     "background_map_seed": "Background map seed (stars/planet/asteroid field). If -1, use true randomness."
   },
   "unit": {
-    "attack_range": "Combat hit range (distance threshold). Phase V governance default is 5.0.",
+    "attack_range": "Combat hit range (distance threshold). Current maintained active runtime setting is 20.0 and this key is now required by the scenario builder; no silent launcher fallback remains on the maintained active path.",
     "damage_per_tick": "Base attack damage per successful hit event.",
     "unit_max_hit_points": "Initial and max HP per unit.",
     "unit_speed": "Per-unit movement speed."

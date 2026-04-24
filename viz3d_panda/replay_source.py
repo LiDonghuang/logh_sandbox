@@ -26,32 +26,22 @@ VIEWER_SOURCE_CHOICES = (
     VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE,
 )
 FIXED_VIEWER_FLEET_COLORS = {
-    "A": "#216bd9",
-    "B": "#a62631",
+    "A": "#113FD6",
+    "B": "#B12424",
 }
 DEFAULT_VIEWER_AVATAR_A = getattr(test_run_entry, "DEFAULT_AVATAR_A", "avatar_reinhard")
 DEFAULT_VIEWER_AVATAR_B = getattr(test_run_entry, "DEFAULT_AVATAR_B", "avatar_yang")
 FRAME_CONTROL_KEYS = {"tick", "targets", "runtime_debug", "fleet_body_summary"}
 VALID_VECTOR_DISPLAY_MODES = {"effective", "free", "attack", "composite", "radial_debug"}
-VIEWER_DIRECTION_MODE_SETTINGS = "settings"
-INTERNAL_DIRECTION_DISPLAY_MODES = VALID_VECTOR_DISPLAY_MODES | {"movement", "posture"}
+INTERNAL_DIRECTION_DISPLAY_MODES = {"movement", "heading"}
 VIEWER_DIRECTION_MODE_CHOICES = (
-    VIEWER_DIRECTION_MODE_SETTINGS,
-    "effective",
-    "free",
-    "fire",
-    "attack",
     "movement",
-    "posture",
-    "radial_debug",
+    "heading",
 )
 MOVEMENT_MIN_DISPLACEMENT_FRACTION = 0.0005
 MOVEMENT_MIN_DISPLACEMENT_FLOOR = 0.10
 MOVEMENT_WINDOW_RADIUS = 3
-POSTURE_ENGAGED_BIAS_BASE = 0.18
-POSTURE_ENGAGED_BIAS_LATERAL_GAIN = 0.32
-POSTURE_MOVEMENT_MEMORY_BIAS = 0.22
-POSTURE_MAX_TURN_RADIANS = math.radians(18.0)
+DIRECTION_STABILIZATION_MAX_TURN_RADIANS = math.radians(18.0)
 
 
 # =========================================================
@@ -156,32 +146,6 @@ def _vector_norm(dx: float, dy: float) -> float:
     return math.sqrt((float(dx) * float(dx)) + (float(dy) * float(dy)))
 
 
-def _vector_dot(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return (float(a[0]) * float(b[0])) + (float(a[1]) * float(b[1]))
-
-
-def _vector_cross_z(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return (float(a[0]) * float(b[1])) - (float(a[1]) * float(b[0]))
-
-
-def _blend_directions(
-    primary: tuple[float, float],
-    secondary: tuple[float, float],
-    *,
-    secondary_weight: float,
-) -> tuple[float, float]:
-    primary_weight = max(0.0, 1.0 - float(secondary_weight))
-    secondary_weight = max(0.0, float(secondary_weight))
-    if primary == (0.0, 0.0):
-        return secondary
-    if secondary == (0.0, 0.0) or secondary_weight <= 1e-9:
-        return primary
-    return _normalize_vector(
-        (float(primary[0]) * primary_weight) + (float(secondary[0]) * secondary_weight),
-        (float(primary[1]) * primary_weight) + (float(secondary[1]) * secondary_weight),
-    )
-
-
 def _rotate_toward(
     current_direction: tuple[float, float],
     target_direction: tuple[float, float],
@@ -217,10 +181,6 @@ def _resolve_vector_display_mode(settings: dict[str, Any]) -> str:
 
 def _normalize_viewer_direction_mode(requested_mode: str) -> str:
     normalized = str(requested_mode).strip().lower()
-    if normalized == "fire":
-        return "attack"
-    if normalized == VIEWER_DIRECTION_MODE_SETTINGS:
-        return VIEWER_DIRECTION_MODE_SETTINGS
     if normalized not in INTERNAL_DIRECTION_DISPLAY_MODES:
         allowed = ", ".join(VIEWER_DIRECTION_MODE_CHOICES)
         raise ValueError(f"direction_mode must be one of {{{allowed}}}, got {requested_mode!r}.")
@@ -228,17 +188,11 @@ def _normalize_viewer_direction_mode(requested_mode: str) -> str:
 
 
 def _public_direction_mode_label(mode: str) -> str:
-    normalized = str(mode).strip().lower()
-    if normalized == "attack":
-        return "fire"
-    return normalized
+    return str(mode).strip().lower()
 
 
 def _resolve_direction_mode(settings: dict[str, Any], requested_mode: str) -> tuple[str, str, str]:
-    settings_mode = _resolve_vector_display_mode(settings)
     normalized_requested = _normalize_viewer_direction_mode(requested_mode)
-    if normalized_requested == VIEWER_DIRECTION_MODE_SETTINGS:
-        return (settings_mode, _public_direction_mode_label(settings_mode), "settings")
     return (normalized_requested, _public_direction_mode_label(normalized_requested), "override")
 
 
@@ -253,26 +207,6 @@ def _resolve_viewer_source(settings: dict[str, Any], requested_source: str) -> s
     if fixture_mode == "neutral":
         return VIEWER_SOURCE_NEUTRAL_TRANSIT_FIXTURE
     return VIEWER_SOURCE_ACTIVE_BATTLE
-
-
-def _build_attack_direction_map(
-    units: tuple[ViewerUnitState, ...],
-    targets: dict[str, str],
-) -> dict[str, tuple[float, float]]:
-    if not targets:
-        return {}
-    point_map = {str(unit.unit_id): (float(unit.x), float(unit.y)) for unit in units}
-    direction_map: dict[str, tuple[float, float]] = {}
-    for attacker_id, defender_id in targets.items():
-        attacker = point_map.get(str(attacker_id))
-        defender = point_map.get(str(defender_id))
-        if attacker is None or defender is None:
-            continue
-        direction_map[str(attacker_id)] = _normalize_vector(
-            float(defender[0]) - float(attacker[0]),
-            float(defender[1]) - float(attacker[1]),
-        )
-    return direction_map
 
 
 def _parse_fleet_body_summary(raw_summary: Any) -> dict[str, dict[str, float]]:
@@ -331,20 +265,16 @@ def _build_frame_position_lookup(frame: ViewerFrame) -> dict[str, tuple[float, f
     }
 
 
-def _resolve_movement_direction(
+def _resolve_raw_movement_direction(
     unit: ViewerUnitState,
     *,
     previous_window_position: tuple[float, float] | None,
     previous_position: tuple[float, float] | None,
     next_position: tuple[float, float] | None,
     next_window_position: tuple[float, float] | None,
-    last_valid_directions: dict[str, tuple[float, float]],
-    fallback_direction: tuple[float, float],
     min_displacement: float,
 ) -> tuple[float, float]:
-    unit_key = _unit_key(unit)
     current_position = (float(unit.x), float(unit.y))
-    last_displayed_direction = last_valid_directions.get(unit_key)
     candidate_windows: list[tuple[float, float]] = []
     if previous_window_position is not None and next_window_position is not None:
         candidate_windows.append(
@@ -396,71 +326,52 @@ def _resolve_movement_direction(
         candidate_direction = _normalize_vector(candidate_displacement[0], candidate_displacement[1])
         if candidate_direction == (0.0, 0.0):
             continue
-        last_valid_directions[unit_key] = candidate_direction
         return candidate_direction
 
-    if last_displayed_direction is not None:
-        return last_displayed_direction
-    if fallback_direction != (0.0, 0.0):
-        return fallback_direction
-    return _normalize_vector(unit.orientation_x, unit.orientation_y)
+    return (0.0, 0.0)
 
 
-def _resolve_posture_direction(
-    *,
+def _resolve_display_direction(
     unit: ViewerUnitState,
-    movement_direction: tuple[float, float],
-    free_direction: tuple[float, float],
-    effective_direction: tuple[float, float],
-    attack_direction: tuple[float, float] | None,
+    *,
+    raw_direction: tuple[float, float],
+    fallback_direction: tuple[float, float],
     last_displayed_directions: dict[str, tuple[float, float]],
+    stabilization_enabled: bool,
 ) -> tuple[float, float]:
     unit_key = _unit_key(unit)
-    previous_posture_direction = last_displayed_directions.get(unit_key)
+    previous_displayed_direction = last_displayed_directions.get(unit_key)
+    resolved_direction = raw_direction
     orientation_direction = _normalize_vector(unit.orientation_x, unit.orientation_y)
-    movement_target = movement_direction
-    if movement_target == (0.0, 0.0):
-        movement_target = effective_direction if effective_direction != (0.0, 0.0) else free_direction
-    if movement_target == (0.0, 0.0):
-        movement_target = orientation_direction
-
-    posture_reference = previous_posture_direction
-    if posture_reference is None or posture_reference == (0.0, 0.0):
-        posture_reference = orientation_direction if orientation_direction != (0.0, 0.0) else movement_target
-    posture_target = _blend_directions(
-        movement_target,
-        posture_reference,
-        secondary_weight=POSTURE_MOVEMENT_MEMORY_BIAS,
+    if not stabilization_enabled:
+        if resolved_direction != (0.0, 0.0):
+            last_displayed_directions[unit_key] = resolved_direction
+            return resolved_direction
+        if fallback_direction != (0.0, 0.0):
+            last_displayed_directions[unit_key] = fallback_direction
+            return fallback_direction
+        last_displayed_directions[unit_key] = orientation_direction
+        return orientation_direction
+    if resolved_direction == (0.0, 0.0):
+        if previous_displayed_direction is not None:
+            return previous_displayed_direction
+        if fallback_direction != (0.0, 0.0):
+            last_displayed_directions[unit_key] = fallback_direction
+            return fallback_direction
+        last_displayed_directions[unit_key] = orientation_direction
+        return orientation_direction
+    if previous_displayed_direction is None or previous_displayed_direction == (0.0, 0.0):
+        last_displayed_directions[unit_key] = resolved_direction
+        return resolved_direction
+    stabilized_direction = _rotate_toward(
+        previous_displayed_direction,
+        resolved_direction,
+        max_turn_radians=DIRECTION_STABILIZATION_MAX_TURN_RADIANS,
     )
-
-    if attack_direction is not None and attack_direction != (0.0, 0.0):
-        broadside_left = _normalize_vector(-float(attack_direction[1]), float(attack_direction[0]))
-        broadside_right = _normalize_vector(float(attack_direction[1]), -float(attack_direction[0]))
-        preference_direction = posture_reference if posture_reference != (0.0, 0.0) else movement_target
-        if _vector_dot(broadside_left, preference_direction) >= _vector_dot(broadside_right, preference_direction):
-            broadside_target = broadside_left
-        else:
-            broadside_target = broadside_right
-        lateralness = abs(_vector_cross_z(movement_target, attack_direction))
-        engaged_bias = POSTURE_ENGAGED_BIAS_BASE + (POSTURE_ENGAGED_BIAS_LATERAL_GAIN * float(lateralness))
-        posture_target = _blend_directions(
-            posture_target,
-            broadside_target,
-            secondary_weight=max(0.0, min(0.70, float(engaged_bias))),
-        )
-
-    if previous_posture_direction is None or previous_posture_direction == (0.0, 0.0):
-        resolved = posture_target
-    else:
-        resolved = _rotate_toward(
-            previous_posture_direction,
-            posture_target,
-            max_turn_radians=POSTURE_MAX_TURN_RADIANS,
-        )
-    if resolved == (0.0, 0.0):
-        resolved = posture_target if posture_target != (0.0, 0.0) else movement_target
-    last_displayed_directions[unit_key] = resolved
-    return resolved
+    if stabilized_direction == (0.0, 0.0):
+        stabilized_direction = resolved_direction
+    last_displayed_directions[unit_key] = stabilized_direction
+    return stabilized_direction
 
 
 def _resolve_frame_display_units(
@@ -471,21 +382,11 @@ def _resolve_frame_display_units(
     previous_positions: dict[str, tuple[float, float]],
     next_positions: dict[str, tuple[float, float]],
     next_window_positions: dict[str, tuple[float, float]],
-    last_movement_directions: dict[str, tuple[float, float]],
+    last_displayed_directions: dict[str, tuple[float, float]],
     movement_min_displacement: float,
-    last_posture_directions: dict[str, tuple[float, float]],
+    direction_stabilization_enabled: bool,
 ) -> tuple[ViewerUnitState, ...]:
     units = frame.units
-    targets = frame.targets
-    attack_direction_map = _build_attack_direction_map(units, targets)
-    centroids = {
-        str(fleet_id): (
-            float(row.get("centroid_x", 0.0)),
-            float(row.get("centroid_y", 0.0)),
-        )
-        for fleet_id, row in frame.fleet_body_summary.items()
-        if isinstance(row, dict)
-    }
     resolved_units: list[ViewerUnitState] = []
 
     for unit in units:
@@ -499,64 +400,25 @@ def _resolve_frame_display_units(
             effective_x = float(unit.x) - float(previous[0])
             effective_y = float(unit.y) - float(previous[1])
         effective_direction = _normalize_vector(effective_x, effective_y)
-        free_direction = _normalize_vector(unit.velocity_x, unit.velocity_y)
-        attack_direction = attack_direction_map.get(unit.unit_id)
-
-        if vector_display_mode == "free":
-            display_direction = free_direction
-        elif vector_display_mode == "attack":
-            display_direction = attack_direction if attack_direction is not None else effective_direction
-        elif vector_display_mode == "composite":
-            if attack_direction is None:
-                display_direction = effective_direction
-            else:
-                display_direction = _normalize_vector(
-                    float(attack_direction[0]) + float(effective_direction[0]),
-                    float(attack_direction[1]) + float(effective_direction[1]),
-                )
-                if display_direction == (0.0, 0.0):
-                    display_direction = effective_direction
-        elif vector_display_mode == "radial_debug":
-            centroid = centroids.get(unit.fleet_id)
-            if centroid is None:
-                display_direction = (0.0, 0.0)
-            else:
-                display_direction = _normalize_vector(
-                    float(centroid[0]) - float(unit.x),
-                    float(centroid[1]) - float(unit.y),
-                )
-        elif vector_display_mode == "movement":
-            display_direction = _resolve_movement_direction(
+        heading_direction = _normalize_vector(unit.orientation_x, unit.orientation_y)
+        if vector_display_mode == "movement":
+            raw_direction = _resolve_raw_movement_direction(
                 unit,
                 previous_window_position=previous_window_positions.get(unit_key),
                 previous_position=previous,
                 next_position=next_position,
                 next_window_position=next_window_positions.get(unit_key),
-                last_valid_directions=last_movement_directions,
-                fallback_direction=effective_direction,
                 min_displacement=movement_min_displacement,
-            )
-        elif vector_display_mode == "posture":
-            movement_direction = _resolve_movement_direction(
-                unit,
-                previous_window_position=previous_window_positions.get(unit_key),
-                previous_position=previous,
-                next_position=next_position,
-                next_window_position=next_window_positions.get(unit_key),
-                last_valid_directions=last_movement_directions,
-                fallback_direction=effective_direction,
-                min_displacement=movement_min_displacement,
-            )
-            display_direction = _resolve_posture_direction(
-                unit=unit,
-                movement_direction=movement_direction,
-                free_direction=free_direction,
-                effective_direction=effective_direction,
-                attack_direction=attack_direction,
-                last_displayed_directions=last_posture_directions,
             )
         else:
-            display_direction = effective_direction
+            raw_direction = heading_direction
+        display_direction = _resolve_display_direction(
+            unit,
+            raw_direction=raw_direction,
+            fallback_direction=effective_direction,
+            last_displayed_directions=last_displayed_directions,
+            stabilization_enabled=bool(direction_stabilization_enabled),
+        )
 
         resolved_units.append(
             replace(
@@ -573,12 +435,12 @@ def _resolve_display_frames(
     *,
     vector_display_mode: str,
     arena_size: float,
+    direction_stabilization_enabled: bool,
 ) -> tuple[ViewerFrame, ...]:
     if vector_display_mode not in INTERNAL_DIRECTION_DISPLAY_MODES:
         raise ValueError(f"unsupported internal direction mode {vector_display_mode!r}.")
     position_lookups = [_build_frame_position_lookup(frame) for frame in frames]
-    last_movement_directions: dict[str, tuple[float, float]] = {}
-    last_posture_directions: dict[str, tuple[float, float]] = {}
+    last_displayed_directions: dict[str, tuple[float, float]] = {}
     movement_min_displacement = max(
         MOVEMENT_MIN_DISPLACEMENT_FLOOR,
         float(arena_size) * MOVEMENT_MIN_DISPLACEMENT_FRACTION,
@@ -603,9 +465,9 @@ def _resolve_display_frames(
                     previous_positions=previous_positions,
                     next_positions=next_positions,
                     next_window_positions=next_window_positions,
-                    last_movement_directions=last_movement_directions,
+                    last_displayed_directions=last_displayed_directions,
                     movement_min_displacement=movement_min_displacement,
-                    last_posture_directions=last_posture_directions,
+                    direction_stabilization_enabled=bool(direction_stabilization_enabled),
                 ),
             )
         )
@@ -624,7 +486,7 @@ def build_replay_bundle(
     fleet_labels: dict[str, str] | None = None,
     fleet_colors: dict[str, str] | None = None,
     metadata: dict[str, Any] | None = None,
-    vector_display_mode: str = "effective",
+    vector_display_mode: str = "heading",
 ) -> ReplayBundle:
     """Normalize captured test_run frames into the maintained viewer replay surface."""
     if not position_frames:
@@ -670,6 +532,7 @@ def build_replay_bundle(
         raw_frames,
         vector_display_mode=str(vector_display_mode),
         arena_size=float(arena_size),
+        direction_stabilization_enabled=bool(metadata.get("direction_stabilization_enabled", True) if metadata is not None else True),
     )
 
     resolved_labels = dict(fleet_labels or {})
@@ -704,19 +567,25 @@ def rebuild_replay_direction_mode(
     replay: ReplayBundle,
     *,
     direction_mode: str,
+    direction_stabilization_enabled: bool | None = None,
     direction_mode_source: str = "override",
 ) -> ReplayBundle:
     """Rebuild viewer-local headings without changing the underlying replay facts."""
     normalized_direction_mode = _normalize_viewer_direction_mode(direction_mode)
-    if normalized_direction_mode == VIEWER_DIRECTION_MODE_SETTINGS:
-        raise ValueError("rebuild_replay_direction_mode requires an explicit non-settings direction mode.")
+    resolved_direction_stabilization_enabled = (
+        bool(replay.metadata.get("direction_stabilization_enabled", True))
+        if direction_stabilization_enabled is None
+        else bool(direction_stabilization_enabled)
+    )
     frames = _resolve_display_frames(
         list(replay.frames),
         vector_display_mode=normalized_direction_mode,
         arena_size=float(replay.arena_size),
+        direction_stabilization_enabled=resolved_direction_stabilization_enabled,
     )
     updated_metadata = dict(replay.metadata)
     updated_metadata["vector_display_mode"] = _public_direction_mode_label(normalized_direction_mode)
+    updated_metadata["direction_stabilization_enabled"] = bool(resolved_direction_stabilization_enabled)
     updated_metadata["direction_mode_source"] = str(direction_mode_source)
     return ReplayBundle(
         source_kind=str(replay.source_kind),
@@ -733,7 +602,8 @@ def load_viewer_replay(
     source: str = VIEWER_SOURCE_AUTO,
     max_steps: int | None = None,
     frame_stride: int = DEFAULT_FRAME_STRIDE,
-    direction_mode: str = VIEWER_DIRECTION_MODE_SETTINGS,
+    direction_mode: str = "heading",
+    direction_stabilization_enabled: bool = True,
 ) -> ReplayBundle:
     """Run the bounded test_run surface and return a viewer-local replay bundle."""
     if frame_stride < 1:
@@ -788,6 +658,7 @@ def load_viewer_replay(
             "max_steps_source": max_steps_source,
             "frame_stride": int(frame_stride),
             "vector_display_mode": active_direction_label,
+            "direction_stabilization_enabled": bool(direction_stabilization_enabled),
             "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
             "direction_mode_source": direction_mode_source,
         }
@@ -805,9 +676,7 @@ def load_viewer_replay(
             vector_display_mode=active_direction_mode,
         )
 
-    capture_target_lines = bool(settings_api.get_visualization_setting(settings, "show_attack_target_lines", False))
-    if settings_vector_display_mode in {"attack", "composite"} or active_direction_mode in {"attack", "composite", "posture"}:
-        capture_target_lines = True
+    capture_target_lines = True
     prepared = scenario.prepare_active_scenario(TEST_RUN_BASE_DIR, settings_override=settings)
     result = test_run_entry.run_active_surface(
         base_dir=TEST_RUN_BASE_DIR,
@@ -838,6 +707,7 @@ def load_viewer_replay(
         "max_steps_source": max_steps_source,
         "frame_stride": int(frame_stride),
         "vector_display_mode": active_direction_label,
+        "direction_stabilization_enabled": bool(direction_stabilization_enabled),
         "settings_vector_display_mode": _public_direction_mode_label(settings_vector_display_mode),
         "direction_mode_source": direction_mode_source,
     }

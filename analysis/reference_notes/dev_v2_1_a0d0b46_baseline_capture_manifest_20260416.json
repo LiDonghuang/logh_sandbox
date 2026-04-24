@@ -1,0 +1,68 @@
+{
+  "baseline_ref": {
+    "branch": "dev_v2.1",
+    "commit": "a0d0b46"
+  },
+  "captures": [
+    {
+      "file": "E:/logh_sandbox/analysis/reference_notes/dev_v2_1_a0d0b46_battle_100v100_baseline_20260416.json",
+      "scenario_label": "battle_100v100",
+      "frame_count": 500,
+      "first_tick": 1,
+      "last_tick": 500,
+      "prepared_summary": {
+        "effective_random_seed": 1166918401,
+        "effective_metatype_random_seed": 3031727040,
+        "effective_background_map_seed": 3008670881,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "hybrid_v2",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "E:/logh_sandbox/analysis/reference_notes/dev_v2_1_a0d0b46_battle_36v36_baseline_20260416.json",
+      "scenario_label": "battle_36v36",
+      "frame_count": 470,
+      "first_tick": 1,
+      "last_tick": 470,
+      "prepared_summary": {
+        "effective_random_seed": 4264466285,
+        "effective_metatype_random_seed": 1365415100,
+        "effective_background_map_seed": 3480664061,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "hybrid_v2",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "E:/logh_sandbox/analysis/reference_notes/dev_v2_1_a0d0b46_neutral_100_baseline_20260416.json",
+      "scenario_label": "neutral_100",
+      "frame_count": 449,
+      "first_tick": 1,
+      "last_tick": 449,
+      "prepared_summary": {
+        "effective_random_seed": 2709750454,
+        "effective_metatype_random_seed": 76682783,
+        "effective_background_map_seed": 961974074,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "off",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "E:/logh_sandbox/analysis/reference_notes/dev_v2_1_a0d0b46_neutral_36_baseline_20260416.json",
+      "scenario_label": "neutral_36",
+      "frame_count": 446,
+      "first_tick": 1,
+      "last_tick": 446,
+      "prepared_summary": {
+        "effective_random_seed": 2857394223,
+        "effective_metatype_random_seed": 70684810,
+        "effective_background_map_seed": 1319950477,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "off",
+        "observer_enabled": true
+      }
+    }
+  ]
+}

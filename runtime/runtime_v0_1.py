@@ -56,6 +56,8 @@ class UnitState:
     hit_points: float = 100.0
     max_hit_points: float = 100.0
     max_speed: float = 5.0
+    reference_max_speed: float = 5.0
+    hold_reference_max_speed: float | None = None
     offense_defense_weight: float = 0.5
     orientation_vector: Vec2 = field(default_factory=lambda: Vec2(x=1.0, y=0.0))
     engaged: bool = False
@@ -78,6 +80,8 @@ class BattleState:
     last_fleet_cohesion_score: Mapping[str, float] = field(default_factory=dict)
     last_target_direction: Dict[str, Tuple[float, float]] = field(default_factory=dict)
     last_engagement_intensity: Dict[str, float] = field(default_factory=dict)
+    coarse_body_heading_current: Dict[str, Tuple[float, float]] = field(default_factory=dict)
+    movement_command_direction: Dict[str, Tuple[float, float]] = field(default_factory=dict)
 
 
 class SeedManager:

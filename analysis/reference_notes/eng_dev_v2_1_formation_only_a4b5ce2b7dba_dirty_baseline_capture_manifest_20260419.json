@@ -1,0 +1,84 @@
+{
+  "baseline_ref": {
+    "branch": "eng/dev-v2.1-formation-only",
+    "commit": "a4b5ce2b7dba",
+    "workspace_dirty": true,
+    "workspace_status": [
+      "M runtime/engine_skeleton.py",
+      " M viz3d_panda/app.py",
+      " M viz3d_panda/replay_source.py",
+      " M viz3d_panda/scene_builder.py",
+      " M viz3d_panda/unit_renderer.py",
+      "?? analysis/engineering_reports/developments/20260419/",
+      "?? docs/archive/ts_handoff_archive/TS_HANDOFF_20260419_020634/",
+      "?? docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md"
+    ],
+    "runtime_behavior_dirty_paths": [
+      "runtime/engine_skeleton.py"
+    ],
+    "baseline_role": "Phase II primary baseline",
+    "historical_anchor_note": "analysis/reference_notes/dev_v2_1_a0d0b46_*.json remains historical anchor, not this working baseline"
+  },
+  "captures": [
+    {
+      "file": "e:/logh_sandbox/analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_battle_36v36_baseline_20260419.json",
+      "scenario_label": "battle_36v36",
+      "frame_count": 500,
+      "first_tick": 1,
+      "last_tick": 500,
+      "prepared_summary": {
+        "effective_random_seed": 642870959,
+        "effective_metatype_random_seed": 2880355326,
+        "effective_background_map_seed": 570817543,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "hybrid_v2",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "e:/logh_sandbox/analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_battle_100v100_baseline_20260419.json",
+      "scenario_label": "battle_100v100",
+      "frame_count": 500,
+      "first_tick": 1,
+      "last_tick": 500,
+      "prepared_summary": {
+        "effective_random_seed": 2785140069,
+        "effective_metatype_random_seed": 684046101,
+        "effective_background_map_seed": 64426283,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "hybrid_v2",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "e:/logh_sandbox/analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_neutral_36_baseline_20260419.json",
+      "scenario_label": "neutral_36",
+      "frame_count": 447,
+      "first_tick": 1,
+      "last_tick": 447,
+      "prepared_summary": {
+        "effective_random_seed": 3656189975,
+        "effective_metatype_random_seed": 2330847243,
+        "effective_background_map_seed": 1634028517,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "off",
+        "observer_enabled": true
+      }
+    },
+    {
+      "file": "e:/logh_sandbox/analysis/reference_notes/eng_dev_v2_1_formation_only_a4b5ce2b7dba_dirty_neutral_100_baseline_20260419.json",
+      "scenario_label": "neutral_100",
+      "frame_count": 448,
+      "first_tick": 1,
+      "last_tick": 448,
+      "prepared_summary": {
+        "effective_random_seed": 3362301394,
+        "effective_metatype_random_seed": 3690202969,
+        "effective_background_map_seed": 423925097,
+        "movement_model": "v4a",
+        "hostile_contact_impedance_mode": "off",
+        "observer_enabled": true
+      }
+    }
+  ]
+}

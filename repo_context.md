@@ -7,28 +7,26 @@ Authority: Reference only, not canonical semantics authority
 ## Repository Identity
 
 - Repository: `LiDonghuang/logh_sandbox`
-- Active cleanup branch: `eng/dev-v2.1-targeting-restore-cleanup`
+- Current PR#9 working branch: `eng/dev-v2.1-formation-only`
 - Maintained movement baseline: `v4a`
 
 ## Current Phase Focus
 
-- The current mainline is now **post-cleanup structural tightening** on top of the recovered `dev_v2.1` anchor.
-- The just-completed engineering wave moved from old-family retirement into owner recovery and readability/layering tightening:
-  - `EngineTickSkeleton` is again the maintained active tick owner
-  - `run_simulation()` remains the maintained execution/orchestration owner
-  - `battle` and `neutral` share the maintained `v4a` movement family, differing only by objective source
-  - maintained battle gap now uses `fire_optimal_range` rather than raw `attack_range`
-  - old 2D viz / BRF / maintained `v3a` execution surfaces are no longer part of the active mainline
-- Current emphasis is:
-  - active-owner truth
-  - human-readable maintained hot paths
-  - same-file internal layering before new file fan-out
-  - bounded viewer-local structural hygiene
-- The large subtraction-first cleanup phase is treated as complete.
-- The current pushable wave is:
-  - post-cleanup owner recovery
-  - same-file structural tightening in runtime / `test_run` / VIZ
-- Formation-line work remains separate and should not be read as part of this structural-optimization wave.
+- Current PR#9 Phase II branch state is a phase-boundary consolidation for:
+  - Unit-layer target/intent/desire owner-path clarification
+  - test-only Unit-local maneuver / behavior-line `back_off_keep_front` experimentation
+  - structural cleanup / subtraction ledger / reader-facing debug-surface alignment
+  - first bounded `signed_longitudinal_backpedal` locomotion capability implementation
+- Current accepted structural posture:
+  - structural cleanup line is paused
+  - Behavior line remains experimental and test-only
+  - locomotion capability line has a first bounded implementation slice for `signed_longitudinal_backpedal`
+  - locomotion capability line also has a bounded `signed_longitudinal_facing_axis_guard`
+    correction so the signed carrier is not replaced by turn-away forward motion
+  - these capabilities are experimental, explicit-gated, and default-off
+- Current comparison anchors include:
+  - Phase II primary baseline captures under `analysis/reference_notes/`
+  - temporary working-anchor and post-subtraction dual-posture anchors for paired comparison
 
 ## Key Entry Documents
 
@@ -43,6 +41,16 @@ Authority: Reference only, not canonical semantics authority
 
 - `docs/governance/Baseline_Replacement_Protocol_v1.0.md`
   - experiment vs baseline-replacement boundary and paired-comparison expectations
+- `docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md`
+  - repo-side PR9 Phase II governance direction export for the Unit-solving layer carrier
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_proposal_20260423.md`
+  - document-first bounded proposal for the first signed longitudinal backpedal capability gate
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the first bounded signed longitudinal backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_facing_coupling_followup_proposal_20260423.md`
+  - follow-up proposal for correcting facing-axis coupling after the first signed backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_facing_axis_guard_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the bounded facing-axis guard correction
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_formal_failure_audit_20260404.md`
   - formal failure audit for the local `v4a` incident
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
@@ -62,12 +70,23 @@ Authority: Reference only, not canonical semantics authority
   - maintained runtime movement now accepts only `v4a`
   - active `v4a` restore is direct:
     - `restore_term = restore_strength * normalize(restore_vector)`
+  - current PR#9 slices now include:
+    - same-tick target selection before combat execution
+    - Unit intent and Unit desire tick-local carriers
+    - test-only local maneuver / behavior-line `back_off_keep_front` response
+    - combat damage scalar cleanup to the current no-coupling working anchor
+    - low-level locomotion realization limits for heading change and speed change
+    - default-off experimental `signed_longitudinal_backpedal` realization through `desired_longitudinal_travel_scale`
+    - default-off `signed_longitudinal_facing_axis_guard` behavior that keeps gate-on facing tied to `desired_heading_xy`
+    - runtime-owned fleet heading memory in `coarse_body_heading_current`
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
     - `cohesion_decision_source`
     - `collapse_signal.v3_*`
     - FSR in the active `v4a` path
-  - current targeting line remains bounded inside `resolve_combat()`
+  - current combat execution consumes the same-tick target carrier and no longer owns target choice
+  - current locomotion capability line now separates the signed travel carrier
+    from turn-away forward motion under the experimental gate
 
 ## Maintained Harness Paths
 
@@ -79,7 +98,11 @@ Authority: Reference only, not canonical semantics authority
   - maintained battle / neutral harness execution host
   - maintained execution/orchestration owner
   - shared `v4a` movement-family host for both `battle` and `neutral`
-  - runtime now owns the maintained tick hot path again; harness supplies preparation, bundle carriers, and observation packaging
+  - runtime owns the maintained tick hot path; harness supplies preparation, bundle carriers, and observation packaging
+  - current harness also hosts:
+    - baseline capture / replay-friendly per-tick recording used for paired comparison
+    - layered settings plumbing for fire-control and low-level locomotion parameters
+    - test-only local maneuver / back-off enablement and tuning surfaces
 - `test_run/test_run_telemetry.py`
   - narrowed maintained telemetry helpers:
     - hostile intermix metrics
@@ -109,6 +132,12 @@ Current viewer read:
 - viewer-facing fleet geometry now reads the maintained `fleet_body_summary` export produced by `test_run`
 - `app.py` owns viewer orchestration / playback / camera / HUD cadence
 - `unit_renderer.py` owns bounded rendering carriers
+- viewer now includes an app-facing toggle for cluster sway, while sway realization remains renderer-local
+- current local viewer work also includes:
+  - heading-based direction mode as the default visual facing read
+  - replay-path support for target lines / local maneuver debug review
+  - playback TPS and camera-take surface updates
+  - random skybox selection / camera-take skybox persistence
 - old 2D viz / BRF launcher surfaces are no longer part of the active mainline
 
 ## Settings Paths
@@ -120,9 +149,14 @@ Current viewer read:
   - `run_control.symmetric_movement_sync_enabled` is now the honest owner of symmetric merge control
   - `runtime.metatype.*` remains a scenario-level high-level interface for Yang/personality sampling only
   - `runtime.observer` is now narrowed to still-active maintained keys
+  - current runtime public additions include:
+    - `runtime.physical.fire_control.fire_cone_half_angle_deg`
+    - `runtime.physical.movement_low_level.*`
+  - current fire-control surface uses `fire_angle_quality_alpha` to distinguish angle quality from range quality
 - `test_run/test_run_v1_0.testonly.settings.json`
   - maintained test-only harness controls
   - `fixture.neutral.stop_radius` is the neutral-only objective termination radius
+  - `runtime.physical.local_desire.experimental_signal_read_realignment_enabled` is the explicit test-only switch for the current local maneuver / back-off family
   - current `v4a` candidate parameters are structured under:
     - `restore`
     - `reference`
@@ -144,6 +178,22 @@ Current viewer read:
 - scenario-prepared high-level payloads still expose sampled `PersonalityParameters` and `effective_metatype_random_seed`
 - `stop_radius` is neutral-only termination semantics, not battle hold semantics
 - `fleet_body_summary` is the maintained viewer-facing fleet-body geometry contract
+- `fire_cone_half_angle_deg` is the maintained combat target-selection cone control
+- same-tick target identity is owned before combat execution; `resolve_combat()` re-checks and resolves fire/damage
+- `engaged_target_id` remains post-resolution engagement writeback, not target-selection owner
+- `local_desire` / Unit-local maneuver behavior is test-only and explicitly switch-gated
+- low-level locomotion realization is now an explicit runtime surface below Formation:
+  - accel limit
+  - decel limit
+  - turn-rate limit
+  - turn-speed floor
+- fleet heading memory is now runtime-owned in `coarse_body_heading_current`
+- `signed_longitudinal_backpedal` is implemented as a first bounded experimental slice:
+  - default-off gate: `runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled`
+  - explicit Unit desire carrier: `desired_longitudinal_travel_scale`
+  - reverse authority limiter: `runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale`
+  - gate-on facing-axis guard keeps facing tied to `desired_heading_xy` and blocks fake backpedal through turned-away forward motion
+- current `attack_speed_backward_scale` is a speed allowance surface, not literal backward-motion capability
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors
   - `cohesion_decision_source`
