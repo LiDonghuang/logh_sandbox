@@ -771,6 +771,33 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
             "runtime.physical.movement_low_level.turn_speed_min_scale must be finite and within [0.0, 1.0], "
             f"got {turn_speed_min_scale}"
         )
+    signed_longitudinal_backpedal_enabled = _require_present(
+        get_runtime("signed_longitudinal_backpedal_enabled", settings_api.MISSING),
+        "testonly runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled",
+    )
+    if not isinstance(signed_longitudinal_backpedal_enabled, bool):
+        raise ValueError(
+            "testonly runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled "
+            "must be a boolean"
+        )
+    signed_longitudinal_backpedal_reverse_authority_scale = float(
+        _require_present(
+            get_runtime(
+                "signed_longitudinal_backpedal_reverse_authority_scale",
+                settings_api.MISSING,
+            ),
+            "testonly runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale",
+        )
+    )
+    if (
+        not math.isfinite(signed_longitudinal_backpedal_reverse_authority_scale)
+        or not 0.0 < signed_longitudinal_backpedal_reverse_authority_scale <= 1.0
+    ):
+        raise ValueError(
+            "testonly runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale "
+            "must be finite and within (0.0, 1.0], "
+            f"got {signed_longitudinal_backpedal_reverse_authority_scale}"
+        )
     movement_model = resolve_movement_model(
         _require_present(
             get_runtime("movement_model", settings_api.MISSING),
@@ -789,6 +816,10 @@ def _build_movement_cfg(get_runtime, get_run) -> dict:
         "max_decel_per_tick": max_decel_per_tick,
         "max_turn_deg_per_tick": max_turn_deg_per_tick,
         "turn_speed_min_scale": turn_speed_min_scale,
+        "signed_longitudinal_backpedal_enabled": signed_longitudinal_backpedal_enabled,
+        "signed_longitudinal_backpedal_reverse_authority_scale": (
+            signed_longitudinal_backpedal_reverse_authority_scale
+        ),
         "v4a_restore_strength": v4a_restore_strength,
         "v4a_reference_surface_mode": v4a_reference_surface_mode,
         "v4a_soft_morphology_relaxation": v4a_soft_morphology_relaxation,

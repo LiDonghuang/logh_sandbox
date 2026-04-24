@@ -21,6 +21,16 @@ RUNTIME_SETTING_PATHS = {
         "local_desire",
         "experimental_signal_read_realignment_enabled",
     ),
+    "signed_longitudinal_backpedal_enabled": (
+        "physical",
+        "locomotion",
+        "experimental_signed_longitudinal_backpedal_enabled",
+    ),
+    "signed_longitudinal_backpedal_reverse_authority_scale": (
+        "physical",
+        "locomotion",
+        "signed_longitudinal_backpedal_reverse_authority_scale",
+    ),
     "contact_hysteresis_h": ("physical", "contact", "contact_hysteresis_h"),
     "boundary_enabled": ("physical", "boundary", "enabled"),
     "boundary_soft_strength": ("physical", "boundary", "soft_strength"),

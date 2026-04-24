@@ -41,6 +41,7 @@ Current maintained runtime read:
   - Unit-layer target/intent/desire seams
   - bounded low-level locomotion realization
   - test-only Unit-local maneuver / behavior-line `back_off_keep_front` experimentation
+  - first bounded `signed_longitudinal_backpedal` locomotion capability implementation
   - paired comparison against Phase II baseline anchors
 - current branch-local runtime slices include:
   - same-tick target selection before combat execution
@@ -48,6 +49,7 @@ Current maintained runtime read:
   - Unit intent and Unit desire tick-local carriers
   - test-only local maneuver / bounded give-ground response behind explicit enablement
   - low-level locomotion realization limits in `integrate_movement()`
+  - default-off signed longitudinal backpedal realization through the Unit desire seam
   - runtime-owned fleet heading memory in `coarse_body_heading_current`
 - active `v4a` no longer depends on:
   - maintained `v3a` movement branch body
@@ -154,6 +156,10 @@ Current viewer read:
   - viewer-local execution contract
 - `docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md`
   - PR9 Phase II governance direction export for the Unit-solving layer carrier
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_proposal_20260423.md`
+  - first bounded proposal for the signed longitudinal backpedal locomotion capability gate
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the first bounded signed longitudinal backpedal slice
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
   - active old-family retirement policy
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_cleanup_methodology_and_lessons_20260409.md`
@@ -182,9 +188,10 @@ Do **not** read the active tree as still owning:
 
 - large maintained files still need careful boundary discipline; do not chase LOC reduction as a standalone goal
 - current Unit-local maneuver / behavior-line family remains test-only / experimental
-- current locomotion capability line is document-first only:
-  - no signed speed carrier exists yet
-  - no explicit reverse/backpedal realization family exists yet
+- current locomotion capability line has a first bounded default-off implementation:
+  - `desired_longitudinal_travel_scale` is the explicit signed Unit desire carrier
+  - signed longitudinal velocity is realized only when the experimental gate is enabled
+  - this is not retreat, lateral strafe, or broad facing/translation decoupling
 - retreat implementation remains separate and closed
 
 ## Interpretation Guardrails

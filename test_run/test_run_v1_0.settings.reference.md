@@ -52,6 +52,8 @@
     - `runtime.physical.local_desire.turn_need_onset`
     - `runtime.physical.local_desire.heading_bias_cap`
     - `runtime.physical.local_desire.speed_brake_strength`
+    - `runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled`
+    - `runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale`
     - `runtime.physical.contact.hostile_contact_impedance`
     - `runtime.movement.v4a.restore.strength`
     - `runtime.movement.v4a.reference.expected_reference_spacing`
@@ -82,6 +84,16 @@
       - an experimental Unit-local maneuver / `back_off_keep_front`
         behavior-line family
       - not literal backward-with-front-preserved locomotion capability
+  - The current `signed_longitudinal_backpedal` locomotion capability surface is
+    test-only and default-off:
+    - `experimental_signed_longitudinal_backpedal_enabled = false` keeps the
+      current unsigned forward-only realization path
+    - when enabled, runtime requires explicit
+      `desired_longitudinal_travel_scale` through the Unit desire seam
+    - `signed_longitudinal_backpedal_reverse_authority_scale` limits negative
+      longitudinal travel below forward authority
+    - this is not retreat, turn-away retirement, lateral strafe, or broad
+      facing/translation decoupling
   - `intent_unified_spacing_v1` has been retired from the maintained mainline.
   - For the current v4a candidate:
     - `runtime.physical.movement_low_level.min_unit_spacing` remains the physical-layer minimum spacing

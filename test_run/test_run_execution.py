@@ -653,6 +653,12 @@ class _ExecutionWiringSupport:
             "turn_speed_min_scale",
         ):
             movement_surface[movement_key] = float(movement_cfg[movement_key])
+        movement_surface["signed_longitudinal_backpedal_enabled"] = bool(
+            movement_cfg["signed_longitudinal_backpedal_enabled"]
+        )
+        movement_surface["signed_longitudinal_backpedal_reverse_authority_scale"] = (
+            float(movement_cfg["signed_longitudinal_backpedal_reverse_authority_scale"])
+        )
         movement_surface["local_desire_experimental_signal_read_realignment_enabled"] = bool(
             movement_cfg["local_desire_experimental_signal_read_realignment_enabled"]
         )
@@ -1238,6 +1244,7 @@ def run_simulation(
         focus_payload: dict[str, dict[str, float]] = {}
         bundle_entries: dict[str, Mapping[str, Any]] = {}
         local_desire_fleet_diag: dict[str, Mapping[str, Any]] = {}
+        signed_longitudinal_fleet_diag: dict[str, Mapping[str, Any]] = {}
         if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL:
             fixture_bundle = getattr(engine, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
             if isinstance(fixture_bundle, Mapping):
@@ -1255,6 +1262,19 @@ def run_simulation(
                 local_desire_fleet_diag = {
                     str(fleet_id): row
                     for fleet_id, row in local_desire_fleets.items()
+                    if isinstance(row, Mapping)
+                }
+        signed_longitudinal_tick = (
+            runtime_diag_tick.get("signed_longitudinal", {})
+            if isinstance(runtime_diag_tick, Mapping)
+            else {}
+        )
+        if isinstance(signed_longitudinal_tick, Mapping):
+            signed_longitudinal_fleets = signed_longitudinal_tick.get("fleets", {})
+            if isinstance(signed_longitudinal_fleets, Mapping):
+                signed_longitudinal_fleet_diag = {
+                    str(fleet_id): row
+                    for fleet_id, row in signed_longitudinal_fleets.items()
                     if isinstance(row, Mapping)
                 }
         fire_efficiency_current: dict[str, float] = {}
@@ -1325,10 +1345,13 @@ def run_simulation(
                         }
         for fleet_id, bundle in bundle_entries.items():
             local_desire_row = local_desire_fleet_diag.get(str(fleet_id), {})
+            signed_longitudinal_row = signed_longitudinal_fleet_diag.get(
+                str(fleet_id), {}
+            )
             target_direction = current_state.last_target_direction.get(str(fleet_id), (0.0, 0.0))
             td_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
             td_y = float(target_direction[1]) if len(target_direction) >= 2 else 0.0
-            focus_payload[str(fleet_id)] = {
+            focus_row = {
                 "td_norm": math.sqrt((td_x * td_x) + (td_y * td_y)),
                 "forward_current": float(bundle.get("forward_extent_current", float("nan"))),
                 "actual_forward": float(bundle.get("actual_forward_extent", float("nan"))),
@@ -1388,6 +1411,20 @@ def run_simulation(
                     bundle.get("forward_transport_positive_fraction", float("nan"))
                 ),
             }
+            if signed_longitudinal_row:
+                focus_row["desired_longitudinal_travel_scale_min"] = float(
+                    signed_longitudinal_row.get(
+                        "desired_longitudinal_travel_scale_min",
+                        float("nan"),
+                    )
+                )
+                focus_row["realized_signed_longitudinal_speed_min"] = float(
+                    signed_longitudinal_row.get(
+                        "realized_signed_longitudinal_speed_min",
+                        float("nan"),
+                    )
+                )
+            focus_payload[str(fleet_id)] = focus_row
         return focus_payload
 
     def _append_empty_shape_metrics(fleet_id: str, series: list[float]) -> None:

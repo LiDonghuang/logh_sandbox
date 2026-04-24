@@ -1456,6 +1456,8 @@ class FleetViewerApp(ShowBase):
                         "relation_gap_raw",
                         "early_embargo_permission",
                         "late_reopen_persistence",
+                        "desired_longitudinal_travel_scale_min",
+                        "realized_signed_longitudinal_speed_min",
                         "brake_drive",
                     )
                 ):
@@ -1465,6 +1467,8 @@ class FleetViewerApp(ShowBase):
                         f"raw_gap={float(row.get('relation_gap_raw', float('nan'))):.2f}  "
                         f"embg={float(row.get('early_embargo_permission', float('nan'))):.2f}  "
                         f"reopen={float(row.get('late_reopen_persistence', float('nan'))):.2f}  "
+                        f"lng={float(row.get('desired_longitudinal_travel_scale_min', float('nan'))):.2f}  "
+                        f"vspd={float(row.get('realized_signed_longitudinal_speed_min', float('nan'))):.2f}  "
                         f"brk={float(row.get('brake_drive', float('nan'))):.2f}"
                     )
         self._status_text.setText("\n".join(status_lines))

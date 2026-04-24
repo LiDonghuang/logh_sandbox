@@ -492,6 +492,33 @@ class _MovementDiagSupport:
                     if isinstance(row, Mapping)
                 }
             }
+        signed_longitudinal_diag_by_fleet = engine._debug_state.get(
+            "signed_longitudinal_diag_by_fleet", {}
+        )
+        if (
+            isinstance(signed_longitudinal_diag_by_fleet, Mapping)
+            and signed_longitudinal_diag_by_fleet
+        ):
+            pending["signed_longitudinal"] = {
+                "fleets": {
+                    str(fleet_id): {
+                        "desired_longitudinal_travel_scale_min": float(
+                            row.get(
+                                "desired_longitudinal_travel_scale_min",
+                                float("nan"),
+                            )
+                        ),
+                        "realized_signed_longitudinal_speed_min": float(
+                            row.get(
+                                "realized_signed_longitudinal_speed_min",
+                                float("nan"),
+                            )
+                        ),
+                    }
+                    for fleet_id, row in signed_longitudinal_diag_by_fleet.items()
+                    if isinstance(row, Mapping)
+                }
+            }
 
         if diag4_enabled:
             pending["diag4"] = _MovementDiagSupport.build_diag4_payload(
@@ -595,6 +622,8 @@ class EngineTickSkeleton:
             "max_decel_per_tick": MOVEMENT_LOW_LEVEL_MAX_DECEL_PER_TICK_DEFAULT,
             "max_turn_deg_per_tick": MOVEMENT_LOW_LEVEL_MAX_TURN_DEG_PER_TICK_DEFAULT,
             "turn_speed_min_scale": MOVEMENT_LOW_LEVEL_TURN_SPEED_MIN_SCALE_DEFAULT,
+            "signed_longitudinal_backpedal_enabled": False,
+            "signed_longitudinal_backpedal_reverse_authority_scale": 0.45,
         }
 
         # Active debug/reference knobs still used by maintained diagnostics.
@@ -613,6 +642,7 @@ class EngineTickSkeleton:
             "unit_intent_target_by_unit": {},
             "unit_desire_by_unit": {},
             "local_desire_diag_by_fleet": {},
+            "signed_longitudinal_diag_by_fleet": {},
         }
 
     # B. Visible stage pipeline.
@@ -621,6 +651,7 @@ class EngineTickSkeleton:
         self._debug_state["unit_intent_target_by_unit"] = {}
         self._debug_state["unit_desire_by_unit"] = {}
         self._debug_state["local_desire_diag_by_fleet"] = {}
+        self._debug_state["signed_longitudinal_diag_by_fleet"] = {}
         next_state = self.evaluate_cohesion(snapshot)
         next_state = self.evaluate_target(next_state)
         next_state = self.evaluate_utility(next_state)
@@ -1713,6 +1744,13 @@ class EngineTickSkeleton:
                 "runtime local_desire_experimental_signal_read_realignment_enabled "
                 "must be a boolean"
             )
+        signed_longitudinal_backpedal_enabled = movement_surface[
+            "signed_longitudinal_backpedal_enabled"
+        ]
+        if not isinstance(signed_longitudinal_backpedal_enabled, bool):
+            raise ValueError(
+                "runtime signed_longitudinal_backpedal_enabled must be a boolean"
+            )
         local_desire_turn_need_onset = float(movement_surface["local_desire_turn_need_onset"])
         if (
             not math.isfinite(local_desire_turn_need_onset)
@@ -1895,6 +1933,7 @@ class EngineTickSkeleton:
                 desired_heading_y = float(base_heading_y)
                 desired_heading_hat = base_heading_hat if base_heading_magnitude > 0.0 else fleet_front_hat
                 desired_speed_scale = 1.0
+                desired_longitudinal_travel_scale = 1.0
                 unit_key = str(unit_id)
                 if unit_key not in unit_intent_target_by_unit:
                     raise KeyError(
@@ -2120,6 +2159,22 @@ class EngineTickSkeleton:
                                         float(late_reopen_persistence_response),
                                     )
                                 )
+                                if signed_longitudinal_backpedal_enabled:
+                                    backpedal_response = self._clamp01(
+                                        max(
+                                            float(standoff_violation_response),
+                                            float(late_reopen_persistence_response),
+                                        )
+                                    )
+                                    if backpedal_response > 0.0:
+                                        desired_longitudinal_travel_scale = -float(
+                                            backpedal_response
+                                        )
+                                    elif early_embargo_response > 0.0:
+                                        desired_longitudinal_travel_scale = max(
+                                            0.0,
+                                            1.0 - float(early_embargo_response),
+                                        )
                                 speed_brake_floor = float(
                                     LOCAL_DESIRE_BACKOFF_SPEED_BRAKE_FLOOR
                                 )
@@ -2159,10 +2214,24 @@ class EngineTickSkeleton:
                                     * float(speed_restraint_weight)
                                 ),
                             )
-                unit_desire_by_unit[str(unit_id)] = {
+                unit_desire = {
                     "desired_heading_xy": (float(desired_heading_x), float(desired_heading_y)),
                     "desired_speed_scale": float(desired_speed_scale),
                 }
+                if signed_longitudinal_backpedal_enabled:
+                    if (
+                        not math.isfinite(desired_longitudinal_travel_scale)
+                        or not -1.0 <= desired_longitudinal_travel_scale <= 1.0
+                    ):
+                        raise ValueError(
+                            "runtime desired_longitudinal_travel_scale producer value "
+                            "must be finite and within [-1.0, 1.0], "
+                            f"got {desired_longitudinal_travel_scale}"
+                        )
+                    unit_desire["desired_longitudinal_travel_scale"] = float(
+                        desired_longitudinal_travel_scale
+                    )
+                unit_desire_by_unit[str(unit_id)] = unit_desire
             if experimental_back_off_behavior_active:
                 local_desire_diag_by_fleet[str(fleet_id)] = {
                     "early_embargo_permission": float(early_embargo_permission_fleet),
@@ -2953,6 +3022,20 @@ class EngineTickSkeleton:
                                 for fleet_id, row in local_desire_fleets.items()
                                 if isinstance(row, Mapping)
                             }
+                    signed_longitudinal_tick = variant_debug_tick.get(
+                        "signed_longitudinal", {}
+                    )
+                    if isinstance(signed_longitudinal_tick, Mapping):
+                        base_tick["signed_longitudinal"] = {"fleets": {}}
+                        signed_longitudinal_fleets = signed_longitudinal_tick.get(
+                            "fleets", {}
+                        )
+                        if isinstance(signed_longitudinal_fleets, Mapping):
+                            base_tick["signed_longitudinal"]["fleets"] = {
+                                str(fleet_id): dict(row)
+                                for fleet_id, row in signed_longitudinal_fleets.items()
+                                if isinstance(row, Mapping)
+                            }
                 else:
                     base_tick = first_debug_snapshot.get("debug_diag_last_tick")
                     if isinstance(base_tick, dict):
@@ -2986,6 +3069,37 @@ class EngineTickSkeleton:
                                 for fleet_id, row in variant_local_desire_fleets.items():
                                     if isinstance(row, Mapping):
                                         base_local_desire_fleets[str(fleet_id)] = dict(row)
+                        signed_longitudinal_tick = variant_debug_tick.get(
+                            "signed_longitudinal", {}
+                        )
+                        if isinstance(signed_longitudinal_tick, Mapping):
+                            base_signed_longitudinal = base_tick.setdefault(
+                                "signed_longitudinal", {"fleets": {}}
+                            )
+                            if not isinstance(base_signed_longitudinal, dict):
+                                base_signed_longitudinal = {"fleets": {}}
+                                base_tick["signed_longitudinal"] = (
+                                    base_signed_longitudinal
+                                )
+                            base_signed_longitudinal_fleets = (
+                                base_signed_longitudinal.setdefault("fleets", {})
+                            )
+                            if not isinstance(base_signed_longitudinal_fleets, dict):
+                                base_signed_longitudinal_fleets = {}
+                                base_signed_longitudinal["fleets"] = (
+                                    base_signed_longitudinal_fleets
+                                )
+                            variant_signed_longitudinal_fleets = (
+                                signed_longitudinal_tick.get("fleets", {})
+                            )
+                            if isinstance(variant_signed_longitudinal_fleets, Mapping):
+                                for fleet_id, row in (
+                                    variant_signed_longitudinal_fleets.items()
+                                ):
+                                    if isinstance(row, Mapping):
+                                        base_signed_longitudinal_fleets[
+                                            str(fleet_id)
+                                        ] = dict(row)
             for unit_id in base_fleets[lead_fleet_id].unit_ids:
                 moved_unit = moved_variant.units.get(unit_id)
                 if moved_unit is not None:
@@ -3107,6 +3221,25 @@ class EngineTickSkeleton:
         max_decel_per_tick = float(movement_surface["max_decel_per_tick"])
         max_turn_deg_per_tick = float(movement_surface["max_turn_deg_per_tick"])
         turn_speed_min_scale = float(movement_surface["turn_speed_min_scale"])
+        signed_longitudinal_backpedal_enabled = movement_surface[
+            "signed_longitudinal_backpedal_enabled"
+        ]
+        if not isinstance(signed_longitudinal_backpedal_enabled, bool):
+            raise ValueError(
+                "runtime signed_longitudinal_backpedal_enabled must be a boolean"
+            )
+        signed_longitudinal_reverse_authority_scale = float(
+            movement_surface["signed_longitudinal_backpedal_reverse_authority_scale"]
+        )
+        if (
+            not math.isfinite(signed_longitudinal_reverse_authority_scale)
+            or not 0.0 < signed_longitudinal_reverse_authority_scale <= 1.0
+        ):
+            raise ValueError(
+                "runtime signed_longitudinal_backpedal_reverse_authority_scale "
+                "must be finite and within (0.0, 1.0], "
+                f"got {signed_longitudinal_reverse_authority_scale}"
+            )
         min_unit_spacing = self.separation_radius
         min_unit_spacing_sq = min_unit_spacing * min_unit_spacing
         attack_range_sq = self.attack_range * self.attack_range
@@ -3225,6 +3358,14 @@ class EngineTickSkeleton:
             unit_intent_target_by_unit=unit_intent_target_by_unit,
         )
         self._debug_state["unit_desire_by_unit"] = dict(unit_desire_by_unit)
+        signed_longitudinal_diag_by_fleet = self._debug_state.get(
+            "signed_longitudinal_diag_by_fleet"
+        )
+        if not isinstance(signed_longitudinal_diag_by_fleet, dict):
+            signed_longitudinal_diag_by_fleet = {}
+            self._debug_state["signed_longitudinal_diag_by_fleet"] = (
+                signed_longitudinal_diag_by_fleet
+            )
 
         updated_units = dict(state.units)
         fixture_trace_units_pending = None
@@ -3291,6 +3432,9 @@ class EngineTickSkeleton:
                 and fixture_trace_anchor_xy is not None
             ):
                 fixture_trace_units = {}
+            signed_longitudinal_travel_min = float("inf")
+            signed_longitudinal_speed_min = float("inf")
+            signed_longitudinal_count = 0
 
             separation_accumulator = {unit_id: [0.0, 0.0] for unit_id in alive_unit_ids}
             alive_snapshot_rows = [
@@ -3479,6 +3623,26 @@ class EngineTickSkeleton:
                 desire_heading_x = float(desire_heading_xy[0]) if len(desire_heading_xy) >= 1 else 0.0
                 desire_heading_y = float(desire_heading_xy[1]) if len(desire_heading_xy) >= 2 else 0.0
                 desired_speed_scale_input = self._clamp01(float(unit_desire["desired_speed_scale"]))
+                desired_longitudinal_travel_scale = 1.0
+                if signed_longitudinal_backpedal_enabled:
+                    if "desired_longitudinal_travel_scale" not in unit_desire:
+                        raise KeyError(
+                            "runtime unit_desire_by_unit missing "
+                            "desired_longitudinal_travel_scale while "
+                            "signed_longitudinal_backpedal is enabled"
+                        )
+                    desired_longitudinal_travel_scale = float(
+                        unit_desire["desired_longitudinal_travel_scale"]
+                    )
+                    if (
+                        not math.isfinite(desired_longitudinal_travel_scale)
+                        or not -1.0 <= desired_longitudinal_travel_scale <= 1.0
+                    ):
+                        raise ValueError(
+                            "runtime desired_longitudinal_travel_scale must be "
+                            "finite and within [-1.0, 1.0], "
+                            f"got {desired_longitudinal_travel_scale}"
+                        )
                 target_term_x = float(desire_heading_x)
                 target_term_y = float(desire_heading_y)
                 separation_term_x = alpha_sep * separation_dir[0]
@@ -3537,25 +3701,81 @@ class EngineTickSkeleton:
                     * float(desired_speed_scale_input)
                     * float(desired_speed_scale)
                 )
-                current_speed = math.sqrt(
-                    (float(unit.velocity.x) * float(unit.velocity.x))
-                    + (float(unit.velocity.y) * float(unit.velocity.y))
-                )
-                if not math.isfinite(current_speed):
-                    current_speed = 0.0
                 max_accel_delta = float(max_accel_per_tick) * float(state.dt)
                 max_decel_delta = float(max_decel_per_tick) * float(state.dt)
-                if desired_speed >= current_speed:
-                    step_speed = min(float(desired_speed), float(current_speed) + float(max_accel_delta))
+                signed_step_distance = 0.0
+                if signed_longitudinal_backpedal_enabled:
+                    longitudinal_authority_scale = (
+                        float(signed_longitudinal_reverse_authority_scale)
+                        if desired_longitudinal_travel_scale < 0.0
+                        else 1.0
+                    )
+                    desired_signed_longitudinal_speed = (
+                        float(desired_speed)
+                        * float(desired_longitudinal_travel_scale)
+                        * float(longitudinal_authority_scale)
+                    )
+                    current_signed_longitudinal_speed = (
+                        (float(unit.velocity.x) * float(current_heading_hat[0]))
+                        + (float(unit.velocity.y) * float(current_heading_hat[1]))
+                    )
+                    if not math.isfinite(current_signed_longitudinal_speed):
+                        raise ValueError(
+                            "runtime current signed longitudinal speed must be finite "
+                            "when signed_longitudinal_backpedal is enabled"
+                        )
+                    if desired_signed_longitudinal_speed >= current_signed_longitudinal_speed:
+                        step_speed = min(
+                            float(desired_signed_longitudinal_speed),
+                            float(current_signed_longitudinal_speed)
+                            + float(max_accel_delta),
+                        )
+                    else:
+                        step_speed = max(
+                            float(desired_signed_longitudinal_speed),
+                            float(current_signed_longitudinal_speed)
+                            - float(max_decel_delta),
+                        )
+                    signed_step_distance = float(step_speed) * float(state.dt)
+                    step_distance = abs(float(signed_step_distance))
+                    signed_longitudinal_travel_min = min(
+                        float(signed_longitudinal_travel_min),
+                        float(desired_longitudinal_travel_scale),
+                    )
+                    signed_longitudinal_speed_min = min(
+                        float(signed_longitudinal_speed_min),
+                        float(step_speed),
+                    )
+                    signed_longitudinal_count += 1
                 else:
-                    step_speed = max(float(desired_speed), float(current_speed) - float(max_decel_delta))
-                step_speed = max(0.0, float(step_speed))
-                step_distance = float(step_speed) * float(state.dt)
+                    current_speed = math.sqrt(
+                        (float(unit.velocity.x) * float(unit.velocity.x))
+                        + (float(unit.velocity.y) * float(unit.velocity.y))
+                    )
+                    if not math.isfinite(current_speed):
+                        current_speed = 0.0
+                    if desired_speed >= current_speed:
+                        step_speed = min(
+                            float(desired_speed),
+                            float(current_speed) + float(max_accel_delta),
+                        )
+                    else:
+                        step_speed = max(
+                            float(desired_speed),
+                            float(current_speed) - float(max_decel_delta),
+                        )
+                    step_speed = max(0.0, float(step_speed))
+                    step_distance = float(step_speed) * float(state.dt)
+                    signed_step_distance = float(step_distance)
                 if total_norm > movement_eps:
-                    pre_projection_step_scale = step_distance / total_norm if step_distance > movement_eps else 0.0
+                    pre_projection_step_scale = (
+                        signed_step_distance / total_norm
+                        if step_distance > movement_eps
+                        else 0.0
+                    )
                 if step_distance > movement_eps:
-                    pre_projection_total_dx = float(realized_heading_hat[0]) * step_distance
-                    pre_projection_total_dy = float(realized_heading_hat[1]) * step_distance
+                    pre_projection_total_dx = float(realized_heading_hat[0]) * signed_step_distance
+                    pre_projection_total_dy = float(realized_heading_hat[1]) * signed_step_distance
                     pre_projection_total_norm = math.sqrt(
                         (pre_projection_total_dx * pre_projection_total_dx)
                         + (pre_projection_total_dy * pre_projection_total_dy)
@@ -3658,6 +3878,18 @@ class EngineTickSkeleton:
 
             if fixture_trace_units is not None:
                 fixture_trace_units_pending = fixture_trace_units
+            if (
+                signed_longitudinal_backpedal_enabled
+                and signed_longitudinal_count > 0
+            ):
+                signed_longitudinal_diag_by_fleet[str(fleet_id)] = {
+                    "desired_longitudinal_travel_scale_min": float(
+                        signed_longitudinal_travel_min
+                    ),
+                    "realized_signed_longitudinal_speed_min": float(
+                        signed_longitudinal_speed_min
+                    ),
+                }
 
         # Single-pass post-movement projection using tentative snapshot positions.
         tentative_positions = {

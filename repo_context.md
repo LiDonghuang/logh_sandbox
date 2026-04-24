@@ -16,12 +16,12 @@ Authority: Reference only, not canonical semantics authority
   - Unit-layer target/intent/desire owner-path clarification
   - test-only Unit-local maneuver / behavior-line `back_off_keep_front` experimentation
   - structural cleanup / subtraction ledger / reader-facing debug-surface alignment
-  - document-first opening of the locomotion capability line
+  - first bounded `signed_longitudinal_backpedal` locomotion capability implementation
 - Current accepted structural posture:
   - structural cleanup line is paused
   - Behavior line remains experimental and test-only
-  - locomotion capability line is open for discussion only
-  - no literal keep-front backward-motion implementation exists yet
+  - locomotion capability line has a first bounded implementation slice for `signed_longitudinal_backpedal`
+  - the new capability is experimental, explicit-gated, and default-off
 - Current comparison anchors include:
   - Phase II primary baseline captures under `analysis/reference_notes/`
   - temporary working-anchor and post-subtraction dual-posture anchors for paired comparison
@@ -41,6 +41,10 @@ Authority: Reference only, not canonical semantics authority
   - experiment vs baseline-replacement boundary and paired-comparison expectations
 - `docs/governance/PR9_Phase2_Unit_Solving_Layer_Governance_Direction_20260419.md`
   - repo-side PR9 Phase II governance direction export for the Unit-solving layer carrier
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_proposal_20260423.md`
+  - document-first bounded proposal for the first signed longitudinal backpedal capability gate
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the first bounded signed longitudinal backpedal slice
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_formal_failure_audit_20260404.md`
   - formal failure audit for the local `v4a` incident
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
@@ -66,6 +70,7 @@ Authority: Reference only, not canonical semantics authority
     - test-only local maneuver / behavior-line `back_off_keep_front` response
     - combat damage scalar cleanup to the current no-coupling working anchor
     - low-level locomotion realization limits for heading change and speed change
+    - default-off experimental `signed_longitudinal_backpedal` realization through `desired_longitudinal_travel_scale`
     - runtime-owned fleet heading memory in `coarse_body_heading_current`
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
@@ -176,7 +181,10 @@ Current viewer read:
   - turn-rate limit
   - turn-speed floor
 - fleet heading memory is now runtime-owned in `coarse_body_heading_current`
-- there is still no dedicated reverse/backpedal locomotion family yet
+- `signed_longitudinal_backpedal` is implemented as a first bounded experimental slice:
+  - default-off gate: `runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled`
+  - explicit Unit desire carrier: `desired_longitudinal_travel_scale`
+  - reverse authority limiter: `runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale`
 - current `attack_speed_backward_scale` is a speed allowance surface, not literal backward-motion capability
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors

@@ -96,6 +96,10 @@
         "heading_bias_cap": "Test-only maximum local heading-bias cap in [0.0, 0.15]. This bounds how far desired_heading_xy may relax from fleet base heading toward local firing opportunity on a single tick when the experimental family is explicitly enabled. Classification: experimental runtime-local, tick-local, non-persistent maneuver parameter owned by the test-only layer.",
         "speed_brake_strength": "Test-only brake-only local speed-adaptation strength in [0.0, 0.10]. Higher values reduce desired_speed_scale more strongly when the experimental behavior-line family is authorized to suppress continued over-commit and reopen some space. Classification: experimental runtime-local, tick-local, non-persistent maneuver parameter owned by the test-only layer."
       },
+      "locomotion": {
+        "experimental_signed_longitudinal_backpedal_enabled": "Explicit test-only gate for the signed_longitudinal_backpedal locomotion-capability experiment. false preserves the current unsigned forward-only realization path. true requires the explicit desired_longitudinal_travel_scale Unit desire carrier and allows bounded signed longitudinal travel along realized facing.",
+        "signed_longitudinal_backpedal_reverse_authority_scale": "Test-only reverse authority limiter in (0.0, 1.0]. Applies only when desired_longitudinal_travel_scale is negative; it caps bounded backward travel below forward authority and is not the primary backpedal design carrier."
+      },
       "contact": {
         "contact_hysteresis_h": "Contact hysteresis band ratio h. Runtime clamp is [0.0, 0.2]. h<=0 disables CH.",
         "hostile_contact_impedance": {

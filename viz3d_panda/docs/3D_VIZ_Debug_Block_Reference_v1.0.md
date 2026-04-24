@@ -212,6 +212,28 @@ Current fields:
     - `_MovementDiagSupport.flush_pending(...)`
     - emitted through pending `local_desire` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
 
+- `lng`
+  - source field: `desired_longitudinal_travel_scale_min`
+  - meaning: minimum signed longitudinal travel ask for the fleet in the current tick
+  - plain-language read:
+    - negative means the enabled signed-longitudinal capability is asking for bounded backward travel along realized facing
+    - positive means forward longitudinal travel remains requested
+  - observer/export path:
+    - `runtime/engine_skeleton.py`
+    - `_MovementDiagSupport.flush_pending(...)`
+    - emitted through pending `signed_longitudinal` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
+
+- `vspd`
+  - source field: `realized_signed_longitudinal_speed_min`
+  - meaning: minimum realized signed longitudinal speed for the fleet in the current tick
+  - plain-language read:
+    - negative means actual backward travel along realized facing occurred
+    - values near zero mean the signed speed is being braked or crossing through zero
+  - observer/export path:
+    - `runtime/engine_skeleton.py`
+    - `_MovementDiagSupport.flush_pending(...)`
+    - emitted through pending `signed_longitudinal` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
+
 - `brk`
   - source field: `brake_drive`
   - meaning: bounded current brake-drive scalar from the maintained battle bundle
@@ -284,6 +306,8 @@ for battle-first review.
 | `relation_gap_raw` | yes | current maneuver-envelope focus line |
 | `early_embargo_permission` | yes | current maneuver-envelope focus line |
 | `late_reopen_persistence` | yes | current maneuver-envelope focus line |
+| `desired_longitudinal_travel_scale_min` | yes | current signed-longitudinal capability focus line |
+| `realized_signed_longitudinal_speed_min` | yes | current signed-longitudinal capability focus line |
 | `brake_drive` | yes | current maneuver-envelope focus line |
 | `td_norm` | no | payload-only |
 | `advance_share` | no | payload-only |
