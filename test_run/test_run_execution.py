@@ -1244,7 +1244,6 @@ def run_simulation(
         focus_payload: dict[str, dict[str, float]] = {}
         bundle_entries: dict[str, Mapping[str, Any]] = {}
         local_desire_fleet_diag: dict[str, Mapping[str, Any]] = {}
-        signed_longitudinal_fleet_diag: dict[str, Mapping[str, Any]] = {}
         if fixture_active and fixture_active_mode == FIXTURE_MODE_NEUTRAL:
             fixture_bundle = getattr(engine, "TEST_RUN_FIXTURE_REFERENCE_BUNDLE", None)
             if isinstance(fixture_bundle, Mapping):
@@ -1262,19 +1261,6 @@ def run_simulation(
                 local_desire_fleet_diag = {
                     str(fleet_id): row
                     for fleet_id, row in local_desire_fleets.items()
-                    if isinstance(row, Mapping)
-                }
-        signed_longitudinal_tick = (
-            runtime_diag_tick.get("signed_longitudinal", {})
-            if isinstance(runtime_diag_tick, Mapping)
-            else {}
-        )
-        if isinstance(signed_longitudinal_tick, Mapping):
-            signed_longitudinal_fleets = signed_longitudinal_tick.get("fleets", {})
-            if isinstance(signed_longitudinal_fleets, Mapping):
-                signed_longitudinal_fleet_diag = {
-                    str(fleet_id): row
-                    for fleet_id, row in signed_longitudinal_fleets.items()
                     if isinstance(row, Mapping)
                 }
         fire_efficiency_current: dict[str, float] = {}
@@ -1345,9 +1331,6 @@ def run_simulation(
                         }
         for fleet_id, bundle in bundle_entries.items():
             local_desire_row = local_desire_fleet_diag.get(str(fleet_id), {})
-            signed_longitudinal_row = signed_longitudinal_fleet_diag.get(
-                str(fleet_id), {}
-            )
             target_direction = current_state.last_target_direction.get(str(fleet_id), (0.0, 0.0))
             td_x = float(target_direction[0]) if len(target_direction) >= 1 else 0.0
             td_y = float(target_direction[1]) if len(target_direction) >= 2 else 0.0
@@ -1411,15 +1394,16 @@ def run_simulation(
                     bundle.get("forward_transport_positive_fraction", float("nan"))
                 ),
             }
-            if signed_longitudinal_row:
+            if "desired_longitudinal_travel_scale_min" in local_desire_row:
                 focus_row["desired_longitudinal_travel_scale_min"] = float(
-                    signed_longitudinal_row.get(
+                    local_desire_row.get(
                         "desired_longitudinal_travel_scale_min",
                         float("nan"),
                     )
                 )
+            if "realized_signed_longitudinal_speed_min" in local_desire_row:
                 focus_row["realized_signed_longitudinal_speed_min"] = float(
-                    signed_longitudinal_row.get(
+                    local_desire_row.get(
                         "realized_signed_longitudinal_speed_min",
                         float("nan"),
                     )

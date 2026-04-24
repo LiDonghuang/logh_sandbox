@@ -221,8 +221,10 @@ Added one compact realized-speed read:
 - `realized_signed_longitudinal_speed_min`
 - VIZ label: `vspd`
 
-These are emitted only when signed-longitudinal diagnostics exist. Default-off
-runs do not grow NaN placeholder fields in the focus payload.
+These are emitted through the existing `local_desire` diagnostics only when the
+gate produces signed-longitudinal reads. Default-off runs do not grow NaN
+placeholder fields in the focus payload, and no separate signed-longitudinal
+diagnostic bucket is kept.
 
 No broad indicator catalog was added.
 

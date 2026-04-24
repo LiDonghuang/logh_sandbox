@@ -221,7 +221,7 @@ Current fields:
   - observer/export path:
     - `runtime/engine_skeleton.py`
     - `_MovementDiagSupport.flush_pending(...)`
-    - emitted through pending `signed_longitudinal` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
+    - emitted through pending `local_desire` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
 
 - `vspd`
   - source field: `realized_signed_longitudinal_speed_min`
@@ -232,7 +232,7 @@ Current fields:
   - observer/export path:
     - `runtime/engine_skeleton.py`
     - `_MovementDiagSupport.flush_pending(...)`
-    - emitted through pending `signed_longitudinal` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
+    - emitted through pending `local_desire` diagnostics and then exported by `test_run/test_run_execution.py::_build_focus_indicator_payload(...)`
 
 - `brk`
   - source field: `brake_drive`

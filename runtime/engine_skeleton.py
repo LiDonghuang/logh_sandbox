@@ -478,46 +478,29 @@ class _MovementDiagSupport:
             }
         local_desire_diag_by_fleet = engine._debug_state.get("local_desire_diag_by_fleet", {})
         if isinstance(local_desire_diag_by_fleet, Mapping) and local_desire_diag_by_fleet:
+            local_desire_fleets = {}
+            for fleet_id, row in local_desire_diag_by_fleet.items():
+                if not isinstance(row, Mapping):
+                    continue
+                local_desire_row = {
+                    "early_embargo_permission": float(
+                        row.get("early_embargo_permission", float("nan"))
+                    ),
+                    "late_reopen_persistence": float(
+                        row.get("late_reopen_persistence", float("nan"))
+                    ),
+                }
+                if "desired_longitudinal_travel_scale_min" in row:
+                    local_desire_row["desired_longitudinal_travel_scale_min"] = float(
+                        row.get("desired_longitudinal_travel_scale_min", float("nan"))
+                    )
+                if "realized_signed_longitudinal_speed_min" in row:
+                    local_desire_row["realized_signed_longitudinal_speed_min"] = float(
+                        row.get("realized_signed_longitudinal_speed_min", float("nan"))
+                    )
+                local_desire_fleets[str(fleet_id)] = local_desire_row
             pending["local_desire"] = {
-                "fleets": {
-                    str(fleet_id): {
-                        "early_embargo_permission": float(
-                            row.get("early_embargo_permission", float("nan"))
-                        ),
-                        "late_reopen_persistence": float(
-                            row.get("late_reopen_persistence", float("nan"))
-                        ),
-                    }
-                    for fleet_id, row in local_desire_diag_by_fleet.items()
-                    if isinstance(row, Mapping)
-                }
-            }
-        signed_longitudinal_diag_by_fleet = engine._debug_state.get(
-            "signed_longitudinal_diag_by_fleet", {}
-        )
-        if (
-            isinstance(signed_longitudinal_diag_by_fleet, Mapping)
-            and signed_longitudinal_diag_by_fleet
-        ):
-            pending["signed_longitudinal"] = {
-                "fleets": {
-                    str(fleet_id): {
-                        "desired_longitudinal_travel_scale_min": float(
-                            row.get(
-                                "desired_longitudinal_travel_scale_min",
-                                float("nan"),
-                            )
-                        ),
-                        "realized_signed_longitudinal_speed_min": float(
-                            row.get(
-                                "realized_signed_longitudinal_speed_min",
-                                float("nan"),
-                            )
-                        ),
-                    }
-                    for fleet_id, row in signed_longitudinal_diag_by_fleet.items()
-                    if isinstance(row, Mapping)
-                }
+                "fleets": local_desire_fleets
             }
 
         if diag4_enabled:
@@ -642,7 +625,6 @@ class EngineTickSkeleton:
             "unit_intent_target_by_unit": {},
             "unit_desire_by_unit": {},
             "local_desire_diag_by_fleet": {},
-            "signed_longitudinal_diag_by_fleet": {},
         }
 
     # B. Visible stage pipeline.
@@ -651,7 +633,6 @@ class EngineTickSkeleton:
         self._debug_state["unit_intent_target_by_unit"] = {}
         self._debug_state["unit_desire_by_unit"] = {}
         self._debug_state["local_desire_diag_by_fleet"] = {}
-        self._debug_state["signed_longitudinal_diag_by_fleet"] = {}
         next_state = self.evaluate_cohesion(snapshot)
         next_state = self.evaluate_target(next_state)
         next_state = self.evaluate_utility(next_state)
@@ -1747,10 +1728,6 @@ class EngineTickSkeleton:
         signed_longitudinal_backpedal_enabled = movement_surface[
             "signed_longitudinal_backpedal_enabled"
         ]
-        if not isinstance(signed_longitudinal_backpedal_enabled, bool):
-            raise ValueError(
-                "runtime signed_longitudinal_backpedal_enabled must be a boolean"
-            )
         local_desire_turn_need_onset = float(movement_surface["local_desire_turn_need_onset"])
         if (
             not math.isfinite(local_desire_turn_need_onset)
@@ -1932,6 +1909,9 @@ class EngineTickSkeleton:
                 desired_heading_x = float(base_heading_x)
                 desired_heading_y = float(base_heading_y)
                 desired_heading_hat = base_heading_hat if base_heading_magnitude > 0.0 else fleet_front_hat
+                if signed_longitudinal_backpedal_enabled and base_heading_magnitude <= 0.0:
+                    desired_heading_x = float(desired_heading_hat[0])
+                    desired_heading_y = float(desired_heading_hat[1])
                 desired_speed_scale = 1.0
                 desired_longitudinal_travel_scale = 1.0
                 unit_key = str(unit_id)
@@ -2219,15 +2199,6 @@ class EngineTickSkeleton:
                     "desired_speed_scale": float(desired_speed_scale),
                 }
                 if signed_longitudinal_backpedal_enabled:
-                    if (
-                        not math.isfinite(desired_longitudinal_travel_scale)
-                        or not -1.0 <= desired_longitudinal_travel_scale <= 1.0
-                    ):
-                        raise ValueError(
-                            "runtime desired_longitudinal_travel_scale producer value "
-                            "must be finite and within [-1.0, 1.0], "
-                            f"got {desired_longitudinal_travel_scale}"
-                        )
                     unit_desire["desired_longitudinal_travel_scale"] = float(
                         desired_longitudinal_travel_scale
                     )
@@ -3022,20 +2993,6 @@ class EngineTickSkeleton:
                                 for fleet_id, row in local_desire_fleets.items()
                                 if isinstance(row, Mapping)
                             }
-                    signed_longitudinal_tick = variant_debug_tick.get(
-                        "signed_longitudinal", {}
-                    )
-                    if isinstance(signed_longitudinal_tick, Mapping):
-                        base_tick["signed_longitudinal"] = {"fleets": {}}
-                        signed_longitudinal_fleets = signed_longitudinal_tick.get(
-                            "fleets", {}
-                        )
-                        if isinstance(signed_longitudinal_fleets, Mapping):
-                            base_tick["signed_longitudinal"]["fleets"] = {
-                                str(fleet_id): dict(row)
-                                for fleet_id, row in signed_longitudinal_fleets.items()
-                                if isinstance(row, Mapping)
-                            }
                 else:
                     base_tick = first_debug_snapshot.get("debug_diag_last_tick")
                     if isinstance(base_tick, dict):
@@ -3069,37 +3026,6 @@ class EngineTickSkeleton:
                                 for fleet_id, row in variant_local_desire_fleets.items():
                                     if isinstance(row, Mapping):
                                         base_local_desire_fleets[str(fleet_id)] = dict(row)
-                        signed_longitudinal_tick = variant_debug_tick.get(
-                            "signed_longitudinal", {}
-                        )
-                        if isinstance(signed_longitudinal_tick, Mapping):
-                            base_signed_longitudinal = base_tick.setdefault(
-                                "signed_longitudinal", {"fleets": {}}
-                            )
-                            if not isinstance(base_signed_longitudinal, dict):
-                                base_signed_longitudinal = {"fleets": {}}
-                                base_tick["signed_longitudinal"] = (
-                                    base_signed_longitudinal
-                                )
-                            base_signed_longitudinal_fleets = (
-                                base_signed_longitudinal.setdefault("fleets", {})
-                            )
-                            if not isinstance(base_signed_longitudinal_fleets, dict):
-                                base_signed_longitudinal_fleets = {}
-                                base_signed_longitudinal["fleets"] = (
-                                    base_signed_longitudinal_fleets
-                                )
-                            variant_signed_longitudinal_fleets = (
-                                signed_longitudinal_tick.get("fleets", {})
-                            )
-                            if isinstance(variant_signed_longitudinal_fleets, Mapping):
-                                for fleet_id, row in (
-                                    variant_signed_longitudinal_fleets.items()
-                                ):
-                                    if isinstance(row, Mapping):
-                                        base_signed_longitudinal_fleets[
-                                            str(fleet_id)
-                                        ] = dict(row)
             for unit_id in base_fleets[lead_fleet_id].unit_ids:
                 moved_unit = moved_variant.units.get(unit_id)
                 if moved_unit is not None:
@@ -3358,14 +3284,7 @@ class EngineTickSkeleton:
             unit_intent_target_by_unit=unit_intent_target_by_unit,
         )
         self._debug_state["unit_desire_by_unit"] = dict(unit_desire_by_unit)
-        signed_longitudinal_diag_by_fleet = self._debug_state.get(
-            "signed_longitudinal_diag_by_fleet"
-        )
-        if not isinstance(signed_longitudinal_diag_by_fleet, dict):
-            signed_longitudinal_diag_by_fleet = {}
-            self._debug_state["signed_longitudinal_diag_by_fleet"] = (
-                signed_longitudinal_diag_by_fleet
-            )
+        local_desire_diag_by_fleet = self._debug_state["local_desire_diag_by_fleet"]
 
         updated_units = dict(state.units)
         fixture_trace_units_pending = None
@@ -3678,6 +3597,16 @@ class EngineTickSkeleton:
                         0.0,
                     )
                 desired_heading_hat = total_direction if total_norm > movement_eps else current_heading_hat
+                if signed_longitudinal_backpedal_enabled:
+                    desired_heading_hat, desired_heading_norm = self._normalize_direction(
+                        float(desire_heading_x),
+                        float(desire_heading_y),
+                    )
+                    if desired_heading_norm <= movement_eps:
+                        raise ValueError(
+                            "runtime desired_heading_xy must provide a finite facing "
+                            "axis while signed_longitudinal_backpedal is enabled"
+                        )
                 realized_heading_hat = self._rotate_direction_toward(
                     current_heading_hat,
                     desired_heading_hat,
@@ -3701,6 +3630,16 @@ class EngineTickSkeleton:
                     * float(desired_speed_scale_input)
                     * float(desired_speed_scale)
                 )
+                if (
+                    signed_longitudinal_backpedal_enabled
+                    and desired_longitudinal_travel_scale >= 0.0
+                    and total_norm > movement_eps
+                ):
+                    desired_speed *= max(
+                        0.0,
+                        (float(total_direction[0]) * float(realized_heading_hat[0]))
+                        + (float(total_direction[1]) * float(realized_heading_hat[1])),
+                    )
                 max_accel_delta = float(max_accel_per_tick) * float(state.dt)
                 max_decel_delta = float(max_decel_per_tick) * float(state.dt)
                 signed_step_distance = 0.0
@@ -3882,14 +3821,13 @@ class EngineTickSkeleton:
                 signed_longitudinal_backpedal_enabled
                 and signed_longitudinal_count > 0
             ):
-                signed_longitudinal_diag_by_fleet[str(fleet_id)] = {
-                    "desired_longitudinal_travel_scale_min": float(
-                        signed_longitudinal_travel_min
-                    ),
-                    "realized_signed_longitudinal_speed_min": float(
-                        signed_longitudinal_speed_min
-                    ),
-                }
+                local_desire_row = local_desire_diag_by_fleet.setdefault(str(fleet_id), {})
+                local_desire_row["desired_longitudinal_travel_scale_min"] = float(
+                    signed_longitudinal_travel_min
+                )
+                local_desire_row["realized_signed_longitudinal_speed_min"] = float(
+                    signed_longitudinal_speed_min
+                )
 
         # Single-pass post-movement projection using tentative snapshot positions.
         tentative_positions = {

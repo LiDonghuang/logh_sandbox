@@ -21,7 +21,9 @@ Authority: Reference only, not canonical semantics authority
   - structural cleanup line is paused
   - Behavior line remains experimental and test-only
   - locomotion capability line has a first bounded implementation slice for `signed_longitudinal_backpedal`
-  - the new capability is experimental, explicit-gated, and default-off
+  - locomotion capability line also has a bounded `signed_longitudinal_facing_axis_guard`
+    correction so the signed carrier is not replaced by turn-away forward motion
+  - these capabilities are experimental, explicit-gated, and default-off
 - Current comparison anchors include:
   - Phase II primary baseline captures under `analysis/reference_notes/`
   - temporary working-anchor and post-subtraction dual-posture anchors for paired comparison
@@ -45,6 +47,10 @@ Authority: Reference only, not canonical semantics authority
   - document-first bounded proposal for the first signed longitudinal backpedal capability gate
 - `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_bounded_implementation_report_20260423.md`
   - implementation and validation report for the first bounded signed longitudinal backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_backpedal_facing_coupling_followup_proposal_20260423.md`
+  - follow-up proposal for correcting facing-axis coupling after the first signed backpedal slice
+- `analysis/engineering_reports/developments/20260423/pr9_phase2_signed_longitudinal_facing_axis_guard_bounded_implementation_report_20260423.md`
+  - implementation and validation report for the bounded facing-axis guard correction
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_formal_failure_audit_20260404.md`
   - formal failure audit for the local `v4a` incident
 - `analysis/engineering_reports/developments/20260404/step3_3d_pr6_old_family_retirement_policy_note_20260409.md`
@@ -71,6 +77,7 @@ Authority: Reference only, not canonical semantics authority
     - combat damage scalar cleanup to the current no-coupling working anchor
     - low-level locomotion realization limits for heading change and speed change
     - default-off experimental `signed_longitudinal_backpedal` realization through `desired_longitudinal_travel_scale`
+    - default-off `signed_longitudinal_facing_axis_guard` behavior that keeps gate-on facing tied to `desired_heading_xy`
     - runtime-owned fleet heading memory in `coarse_body_heading_current`
   - active `v4a` no longer consumes:
     - legacy `v3a` movement branch body
@@ -78,8 +85,8 @@ Authority: Reference only, not canonical semantics authority
     - `collapse_signal.v3_*`
     - FSR in the active `v4a` path
   - current combat execution consumes the same-tick target carrier and no longer owns target choice
-  - current locomotion still couples facing and translation:
-    - no literal keep-front backward-motion capability exists yet
+  - current locomotion capability line now separates the signed travel carrier
+    from turn-away forward motion under the experimental gate
 
 ## Maintained Harness Paths
 
@@ -185,6 +192,7 @@ Current viewer read:
   - default-off gate: `runtime.physical.locomotion.experimental_signed_longitudinal_backpedal_enabled`
   - explicit Unit desire carrier: `desired_longitudinal_travel_scale`
   - reverse authority limiter: `runtime.physical.locomotion.signed_longitudinal_backpedal_reverse_authority_scale`
+  - gate-on facing-axis guard keeps facing tied to `desired_heading_xy` and blocks fake backpedal through turned-away forward motion
 - current `attack_speed_backward_scale` is a speed allowance surface, not literal backward-motion capability
 - maintained public settings/runtime surfaces no longer expose:
   - active `v3a` movement selectors
